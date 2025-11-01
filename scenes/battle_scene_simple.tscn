@@ -1,0 +1,22 @@
+[gd_scene load_steps=5 format=3 uid="uid://chcnn5m1mij6y"]
+
+[ext_resource type="Script" path="res://scripts/battle_scene.gd" id="1_battle"]
+[ext_resource type="Script" path="res://scripts/hex_grid.gd" id="2_hexgrid"]
+[ext_resource type="Script" path="res://scripts/turn_manager.gd" id="3_turnmgr"]
+[ext_resource type="Script" path="res://scripts/battle_ui.gd" id="4_ui"]
+
+[node name="BattleScene" type="Node2D"]
+script = ExtResource("1_battle")
+
+[node name="HexGrid" type="Node2D" parent="."]
+position = Vector2(100, 200)
+script = ExtResource("2_hexgrid")
+
+[node name="TurnManager" type="Node" parent="."]
+script = ExtResource("3_turnmgr")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(540, 960)
+
+[node name="BattleUI" type="CanvasLayer" parent="."]
+script = ExtResource("4_ui")
