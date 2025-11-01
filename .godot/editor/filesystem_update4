@@ -1,3 +1,4 @@
 res://scripts/initiative_screen.gd
 res://scripts/main_menu.gd
 res://scripts/battle_scene.gd
+res://scenes/initiative_screen.tscn
