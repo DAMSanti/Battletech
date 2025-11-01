@@ -31,7 +31,6 @@ func _ready():
 		if battle_scene.turn_manager:
 			battle_scene.turn_manager.turn_changed.connect(_on_turn_changed)
 			battle_scene.turn_manager.phase_changed.connect(_on_phase_changed)
-			battle_scene.turn_manager.unit_activated.connect(_on_unit_activated)
 
 func _setup_ui():
 	# Panel de información superior
@@ -459,3 +458,4 @@ script = SubResource("GDScript_ui")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(540, 960)
+

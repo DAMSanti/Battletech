@@ -1,22 +1,17 @@
 extends Node
 class_name TurnManager
 
+## Gestor de turnos y fases del juego
+## Controla el flujo de la batalla según las reglas de Battletech
+
 signal turn_changed(team: String, turn_number: int)
-signal phase_changed(phase: String)
+signal phase_changed(phase_name: String)
 signal unit_activated(unit)
 signal initiative_rolled(data: Dictionary)
-
-enum Phase {
-	INITIATIVE,
-	MOVEMENT,
-	WEAPON_ATTACK,
-	PHYSICAL_ATTACK,
-	HEAT,
-	END
-}
+signal battle_ended(winner: String)
 
 var current_turn: int = 1
-var current_phase: Phase = Phase.INITIATIVE
+var current_phase: int = GameEnums.TurnPhase.INITIATIVE
 var current_team: String = "player"  # "player" o "enemy"
 
 var player_units: Array = []
@@ -25,34 +20,43 @@ var enemy_units: Array = []
 var units_to_activate: Array = []
 var current_unit_index: int = 0
 
-var initiative_order: Array = []
+var is_processing_phase: bool = false  # Prevenir llamadas concurrentes
 
-func _ready():
-	pass
-
+## Inicia la batalla con las unidades especificadas
 func start_battle(player_mechs: Array, enemy_mechs: Array):
 	player_units = player_mechs
 	enemy_units = enemy_mechs
 	current_turn = 1
 	
+	_log("Starting battle with %d player units and %d enemy units" % [player_units.size(), enemy_units.size()])
+	
 	# Verificar si ya tenemos datos de iniciativa guardados
 	if owner and owner.has_method("get_stored_initiative"):
 		var stored_data = owner.get_stored_initiative()
 		if stored_data and stored_data.size() > 0:
-			# Usar iniciativa pre-calculada
+			_log("Using pre-calculated initiative")
 			use_precalculated_initiative(stored_data)
 			return
 	
 	start_turn()
 
+## Inicia un nuevo turno
 func start_turn():
-	current_phase = Phase.INITIATIVE
-	emit_signal("turn_changed", current_team, current_turn)
-	emit_signal("phase_changed", Phase.keys()[current_phase])
-	# Esperar un poco antes de tirar iniciativa para que se vea
-	await get_tree().create_timer(0.5).timeout
-	roll_initiative()
+	current_phase = GameEnums.TurnPhase.INITIATIVE
+	turn_changed.emit(current_team, current_turn)
+	phase_changed.emit(GameEnums.phase_to_string(current_phase))
+	
+	_log("=== TURN %d START ===" % current_turn)
+	
+	# Solicitar pantalla de iniciativa visual
+	if owner and owner.has_method("show_initiative_screen"):
+		owner.show_initiative_screen()
+	else:
+		# Fallback: tirar iniciativa internamente si no hay pantalla
+		await get_tree().create_timer(0.5).timeout
+		roll_initiative()
 
+## Tirar iniciativa usando 2d6 para cada equipo
 func roll_initiative():
 	# En Battletech, la iniciativa se tira con 2d6
 	var die1_player = (randi() % 6) + 1
@@ -63,27 +67,25 @@ func roll_initiative():
 	var die2_enemy = (randi() % 6) + 1
 	var enemy_initiative = die1_enemy + die2_enemy
 	
-	# Emitir evento con los resultados para mostrar en UI
+	# Preparar datos de iniciativa
 	var initiative_data = {
 		"player_dice": [die1_player, die2_player],
 		"player_total": player_initiative,
 		"enemy_dice": [die1_enemy, die2_enemy],
-		"enemy_total": enemy_initiative
+		"enemy_total": enemy_initiative,
+		"winner": "player" if player_initiative >= enemy_initiative else "enemy"
 	}
 	
-	# Crear señal personalizada para iniciativa
-	if has_signal("initiative_rolled"):
-		emit_signal("initiative_rolled", initiative_data)
+	current_team = initiative_data["winner"]
 	
-	# Quien gana la iniciativa mueve primero
-	if player_initiative >= enemy_initiative:
-		current_team = "player"
-		initiative_data["winner"] = "player"
-	else:
-		current_team = "enemy"
-		initiative_data["winner"] = "enemy"
+	_log("Initiative: Player %d vs Enemy %d - Winner: %s" % [
+		player_initiative, enemy_initiative, current_team.to_upper()
+	])
 	
-	# Notificar al sistema sobre el ganador
+	# Emitir señal de iniciativa
+	initiative_rolled.emit(initiative_data)
+	
+	# Notificar al battle_scene
 	if owner and owner.has_method("_on_initiative_result"):
 		owner._on_initiative_result(initiative_data)
 	
@@ -91,18 +93,23 @@ func roll_initiative():
 	await get_tree().create_timer(1.5).timeout
 	advance_phase()
 
+## Usar datos de iniciativa precalculados (desde pantalla de dados)
 func use_precalculated_initiative(data: Dictionary):
-	# Usar los datos de iniciativa ya calculados en la pantalla de dados
-	current_phase = Phase.INITIATIVE
+	current_phase = GameEnums.TurnPhase.INITIATIVE
+	
+	if not data.has("winner"):
+		push_error("Initiative data missing 'winner' key!")
+		start_turn()
+		return
+	
 	current_team = data["winner"]
 	
-	# Emitir señales
-	emit_signal("turn_changed", current_team, current_turn)
-	emit_signal("phase_changed", Phase.keys()[current_phase])
+	_log("Using precalculated initiative: %s wins" % current_team.to_upper())
 	
-	# Notificar sobre el resultado
-	if has_signal("initiative_rolled"):
-		emit_signal("initiative_rolled", data)
+	# Emitir señales
+	turn_changed.emit(current_team, current_turn)
+	phase_changed.emit(GameEnums.phase_to_string(current_phase))
+	initiative_rolled.emit(data)
 	
 	if owner and owner.has_method("_on_initiative_result"):
 		owner._on_initiative_result(data)
@@ -111,38 +118,83 @@ func use_precalculated_initiative(data: Dictionary):
 	await get_tree().create_timer(0.5).timeout
 	advance_phase()
 
+## Avanza a la siguiente fase del turno
 func advance_phase():
+	if is_processing_phase:
+		_log("advance_phase() called but already processing, ignoring")
+		return
+	
+	is_processing_phase = true
+	_log("Advancing from phase: %s" % GameEnums.phase_to_string(current_phase))
+	
 	match current_phase:
-		Phase.INITIATIVE:
-			current_phase = Phase.MOVEMENT
-			start_movement_phase()
-		Phase.MOVEMENT:
-			current_phase = Phase.WEAPON_ATTACK
-			start_weapon_phase()
-		Phase.WEAPON_ATTACK:
-			current_phase = Phase.PHYSICAL_ATTACK
-			start_physical_phase()
-		Phase.PHYSICAL_ATTACK:
-			current_phase = Phase.HEAT
-			start_heat_phase()
-		Phase.HEAT:
-			current_phase = Phase.END
+		GameEnums.TurnPhase.INITIATIVE:
+			current_phase = GameEnums.TurnPhase.MOVEMENT
+			phase_changed.emit(GameEnums.phase_to_string(current_phase))
+			await start_movement_phase()
+			
+		GameEnums.TurnPhase.MOVEMENT:
+			current_phase = GameEnums.TurnPhase.WEAPON_ATTACK
+			phase_changed.emit(GameEnums.phase_to_string(current_phase))
+			await start_weapon_phase()
+			
+		GameEnums.TurnPhase.WEAPON_ATTACK:
+			current_phase = GameEnums.TurnPhase.PHYSICAL_ATTACK
+			phase_changed.emit(GameEnums.phase_to_string(current_phase))
+			await start_physical_phase()
+			
+		GameEnums.TurnPhase.PHYSICAL_ATTACK:
+			current_phase = GameEnums.TurnPhase.HEAT
+			phase_changed.emit(GameEnums.phase_to_string(current_phase))
+			await start_heat_phase()
+			
+		GameEnums.TurnPhase.HEAT:
+			current_phase = GameEnums.TurnPhase.END
+			phase_changed.emit(GameEnums.phase_to_string(current_phase))
 			end_turn()
-		Phase.END:
+			
+		GameEnums.TurnPhase.END:
 			current_turn += 1
 			start_turn()
 	
-	emit_signal("phase_changed", Phase.keys()[current_phase])
+	is_processing_phase = false
 
+## Inicia la fase de movimiento
 func start_movement_phase():
+	_log("=== MOVEMENT PHASE START ===")
 	_build_activation_order()
 	current_unit_index = 0
-	# Pequeño delay para que la UI se actualice
-	await get_tree().create_timer(0.1).timeout
+	
+	# Pequeño delay para que phase_changed se procese
+	await get_tree().create_timer(GameConstants.PHASE_TRANSITION_DELAY).timeout
 	activate_next_unit()
 
+## Inicia la fase de ataque con armas
+func start_weapon_phase():
+	_log("=== WEAPON ATTACK PHASE START ===")
+	_build_activation_order()
+	current_unit_index = 0
+	
+	await get_tree().create_timer(GameConstants.PHASE_TRANSITION_DELAY).timeout
+	activate_next_unit()
+
+## Inicia la fase de ataque físico
+func start_physical_phase():
+	_log("=== PHYSICAL ATTACK PHASE START ===")
+	_build_activation_order()
+	current_unit_index = 0
+	
+	await get_tree().create_timer(GameConstants.PHASE_TRANSITION_DELAY).timeout
+	activate_next_unit()
+
+## Inicia la fase de disipación de calor
+func start_heat_phase():
+	_log("=== HEAT PHASE START ===")
+	# La fase de calor se procesa automáticamente en battle_scene
+	advance_phase()
+
+## Construye el orden de activación alternando entre equipos
 func _build_activation_order():
-	# En Battletech, las unidades se activan alternadamente
 	units_to_activate.clear()
 	
 	var player_active = player_units.filter(func(u): return not u.is_destroyed)
@@ -162,51 +214,34 @@ func _build_activation_order():
 				units_to_activate.append(enemy_active[i])
 			if i < player_active.size():
 				units_to_activate.append(player_active[i])
+	
+	_log("Built activation order: %d units" % units_to_activate.size())
 
+## Activa la siguiente unidad en el orden
 func activate_next_unit():
 	if current_unit_index >= units_to_activate.size():
+		_log("All units activated, advancing phase")
 		advance_phase()
 		return
 	
 	var unit = units_to_activate[current_unit_index]
 	
-	# Resetear movimiento de la unidad
-	if unit.has_method("reset_movement"):
+	# Resetear movimiento SOLO en fase de movimiento
+	if current_phase == GameEnums.TurnPhase.MOVEMENT and unit.has_method("reset_movement"):
 		unit.reset_movement()
 	
-	emit_signal("unit_activated", unit)
+	_log("Activating unit: %s [%d/%d]" % [unit.mech_name, current_unit_index + 1, units_to_activate.size()])
+	unit_activated.emit(unit)
 
+## Completa la activación de la unidad actual
 func complete_unit_activation():
 	current_unit_index += 1
 	activate_next_unit()
 
-func start_weapon_phase():
-	# Similar a movimiento, pero para disparar
-	_build_activation_order()
-	current_unit_index = 0
-	await get_tree().create_timer(0.1).timeout
-	activate_next_unit()
-
-func start_physical_phase():
-	# Fase de ataques físicos (puñetazos, patadas, cargas)
-	_build_activation_order()
-	current_unit_index = 0
-	await get_tree().create_timer(0.1).timeout
-	activate_next_unit()
-
-func start_heat_phase():
-	# Disipar calor de todas las unidades
-	for unit in player_units:
-		if unit.has_method("dissipate_heat"):
-			unit.dissipate_heat()
-	
-	for unit in enemy_units:
-		if unit.has_method("dissipate_heat"):
-			unit.dissipate_heat()
-	
-	advance_phase()
-
+## Termina el turno actual
 func end_turn():
+	_log("=== TURN %d END ===" % current_turn)
+	
 	# Chequear condiciones de victoria
 	var player_alive = player_units.any(func(u): return not u.is_destroyed)
 	var enemy_alive = enemy_units.any(func(u): return not u.is_destroyed)
@@ -216,14 +251,22 @@ func end_turn():
 	elif not enemy_alive:
 		end_battle("victory")
 	else:
+		# Limpiar los datos de iniciativa para el próximo turno
+		if owner and owner.has_method("clear_initiative_data"):
+			owner.clear_initiative_data()
+		
 		advance_phase()  # Siguiente turno
 
+## Termina la batalla
 func end_battle(result: String):
-	print("Battle ended: " + result)
+	_log("=== BATTLE ENDED: %s ===" % result.to_upper())
+	battle_ended.emit(result)
 	# Aquí se podría mostrar pantalla de resultados
 
+## Utilidades
+
 func get_current_phase_name() -> String:
-	return Phase.keys()[current_phase]
+	return GameEnums.phase_to_string(current_phase)
 
 func is_player_turn() -> bool:
 	if units_to_activate.size() == 0:
@@ -234,3 +277,7 @@ func is_player_turn() -> bool:
 	
 	var current_unit = units_to_activate[current_unit_index]
 	return current_unit in player_units
+
+func _log(message: String):
+	if GameConstants.ENABLE_DEBUG_LOGS:
+		print("[TurnManager] ", message)

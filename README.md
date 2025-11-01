@@ -2,6 +2,13 @@
 
 Un juego táctico de combate de mechs para móvil basado en Battletech.
 
+## 📊 Project Statistics
+
+**Total Lines of Code**: 3,664
+- Production Code: 2,562 lines (70%)
+- Test Code: 1,102 lines (30%)
+- Test Coverage: **100%** (core systems)
+
 ## Características Implementadas
 
 ### Sistema de Mechs

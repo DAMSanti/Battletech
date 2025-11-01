@@ -53,6 +53,7 @@ static func get_reachable_hexes(start_hex: Vector2i, max_distance: int, hex_grid
 			if not hex_grid.is_valid_hex(neighbor):
 				continue
 			
+			# Usar el nuevo sistema de terreno
 			var terrain_cost = hex_grid.get_terrain_cost(neighbor)
 			var new_distance = current_distance + terrain_cost
 			

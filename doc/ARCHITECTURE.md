@@ -1,23 +1,31 @@
 # BATTLETECH GODOT - ARQUITECTURA SOLID
 
-## Estructura del Proyecto
+## Estructura del Proyecto (Actualizada - Nov 2025)
 
 ```
 scripts/
 ├── core/                   # Lógica de negocio central (Single Responsibility)
+│   ├── game_enums.gd                 # ✨ NUEVO: Enumeraciones centralizadas
+│   ├── game_constants.gd             # ✨ NUEVO: Constantes del juego
 │   ├── combat/
 │   │   ├── weapon_system.gd          # Sistema de armas y combate a distancia
+│   │   ├── weapon_attack_system.gd   # Sistema de ataque con armas
 │   │   └── physical_attack_system.gd # Sistema de ataques cuerpo a cuerpo
 │   ├── movement/
 │   │   └── movement_system.gd        # Sistema de movimiento hexagonal
-│   └── heat/
-│       └── heat_system.gd            # Sistema de gestión de calor
+│   ├── heat/
+│   │   └── heat_system.gd            # Sistema de gestión de calor
+│   └── terrain/
+│       └── terrain_type.gd           # Sistema de tipos de terreno
 │
 ├── entities/               # Entidades del juego (Data + Behavior)
 │   └── mech_entity.gd                # Entidad Mech que USA los sistemas
 │
 ├── managers/               # Gestores de alto nivel
-│   └── turn_manager.gd               # Gestor de turnos y fases
+│   ├── turn_manager.gd               # ✅ REFACTORIZADO: Gestor de turnos y fases
+│   ├── battle_state_manager.gd       # ✨ NUEVO: Gestor de estado de batalla
+│   ├── battle_ai.gd                  # ✨ NUEVO: Sistema de IA para enemigos
+│   └── battle_input_handler.gd       # ✨ NUEVO: Manejador de input
 │
 ├── ui/                     # Interfaz de usuario
 │   ├── screens/
@@ -28,9 +36,16 @@ scripts/
 │
 ├── utils/                  # Utilidades y helpers
 │
-├── battle_scene.gd         # Controlador principal de batalla
+├── battle_scene.gd         # Controlador principal de batalla (a refactorizar)
+├── battle_overlay.gd       # Overlay para visualización de hexágonos
 ├── hex_grid.gd             # Grid hexagonal
-└── mech.gd                 # LEGACY - A deprecar
+└── mech.gd                 # LEGACY - A deprecar gradualmente
+```
+
+### Archivos de Backup
+```
+├── managers/
+│   └── turn_manager.gd.backup        # Backup del turn_manager original
 ```
 
 ## Principios SOLID Aplicados
@@ -109,11 +124,68 @@ El archivo `mech.gd` original (461 líneas) ahora se divide en:
 
 ## Próximos Pasos
 
-1. Migrar `battle_scene.gd` para usar `MechEntity` en lugar de `Mech`
-2. Crear `TerrainSystem` para costos de terreno
-3. Crear `InitiativeSystem` para cálculos de iniciativa
-4. Agregar componentes UI reutilizables en `ui/components/`
-5. Deprecar y eliminar `mech.gd` legacy
+### Fase 1: Refactorización Completada ✅
+1. ✅ Crear `GameEnums` y `GameConstants`
+2. ✅ Crear `BattleStateManager`
+3. ✅ Crear `BattleAI`
+4. ✅ Crear `BattleInputHandler`
+5. ✅ Refactorizar `TurnManager`
+
+### Fase 2: Integración (En Progreso)
+1. ⏳ Migrar `battle_scene.gd` para usar los nuevos managers
+2. ⏳ Actualizar `mech.gd` para usar `GameEnums`
+3. ⏳ Integrar `BattleStateManager` en el flujo principal
+4. ⏳ Delegar lógica de IA a `BattleAI`
+5. ⏳ Conectar `BattleInputHandler` con `battle_scene`
+
+### Fase 3: Limpieza (Pendiente)
+1. ⬜ Eliminar código duplicado en `battle_scene.gd`
+2. ⬜ Reducir tamaño de `battle_scene.gd` (actualmente 944 líneas)
+3. ⬜ Eliminar logs de debug excesivos
+4. ⬜ Crear componentes UI reutilizables en `ui/components/`
+5. ⬜ Deprecar y migrar desde `mech.gd` a `MechEntity`
+
+### Fase 4: Mejoras (Futuro)
+1. ⬜ Sistema de guardado/carga
+2. ⬜ Crear `TerrainSystem` para costos de terreno
+3. ⬜ Crear `InitiativeSystem` para cálculos de iniciativa
+4. ⬜ Replay de batalla
+5. ⬜ Editor de mechs
+
+## Documentación Adicional
+
+- **[REFACTORING.md](REFACTORING.md)**: Detalles de la refactorización realizada
+- **[MIGRATION_GUIDE.md](MIGRATION_GUIDE.md)**: Guía paso a paso para migrar código
+- **[TESTING.md](TESTING.md)**: Guía de testing
+- **[dice_system.md](dice_system.md)**: Sistema de dados 3D
+- **[initiative_screen.md](initiative_screen.md)**: Pantalla de iniciativa
+- **[physical_attacks.md](physical_attacks.md)**: Sistema de ataques físicos
+
+## Notas de la Refactorización (Nov 2025)
+
+### Bug Resuelto: Menú de Movimiento en Fase de Armas ✅
+**Problema**: El menú de selección de movimiento (Walk/Run/Jump) aparecía incorrectamente durante la fase de ataque con armas.
+
+**Causa**: Problema de timing en la emisión de señales. La señal `unit_activated` se emitía ANTES de que `phase_changed` actualizara el estado.
+
+**Solución**:
+1. Reordenar `advance_phase()` para emitir `phase_changed` ANTES de iniciar fases
+2. Agregar delays de sincronización (`PHASE_TRANSITION_DELAY`)
+3. Reset condicional de movimiento solo en fase correcta
+4. Estado centralizado en `BattleStateManager`
+
+### Mejoras Arquitecturales
+
+**Separación de Responsabilidades**:
+- **BattleStateManager**: Gestiona estado y validaciones
+- **BattleAI**: Encapsula toda la lógica de IA
+- **BattleInputHandler**: Maneja entrada del usuario
+- **TurnManager**: Solo control de flujo, sin lógica compleja
+
+**Centralización**:
+- **GameEnums**: Un lugar para todos los enums
+- **GameConstants**: Un lugar para todas las constantes
+- Fácil de modificar y mantener
 
 ## Convenciones de Código
 

@@ -4,7 +4,7 @@ extends RefCounted
 ## Sistema de armas - Maneja disparo, cálculo de golpe y daño
 ## Responsabilidad única: Gestión de armas y combate a distancia
 
-static func calculate_to_hit(attacker, target, weapon: Dictionary, range_in_hexes: int) -> int:
+static func calculate_to_hit(attacker, target, weapon: Dictionary, range_in_hexes: int, target_terrain = null) -> int:
 	var base_gunnery = attacker.pilot_gunnery
 	
 	# Modificador por rango
@@ -48,7 +48,12 @@ static func calculate_to_hit(attacker, target, weapon: Dictionary, range_in_hexe
 	if attacker.is_prone:
 		prone_mod = 2
 	
-	var target_number = base_gunnery + range_mod + attacker_movement_mod + target_movement_mod + heat_mod + prone_mod
+	# NUEVO: Modificador por terreno del objetivo
+	var terrain_mod = 0
+	if target_terrain != null:
+		terrain_mod = TerrainType.get_to_hit_modifier(target_terrain)
+	
+	var target_number = base_gunnery + range_mod + attacker_movement_mod + target_movement_mod + heat_mod + prone_mod + terrain_mod
 	
 	return target_number
 
