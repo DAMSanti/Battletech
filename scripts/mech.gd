@@ -50,6 +50,8 @@ var weapons: Array = []
 var is_shutdown: bool = false
 var is_destroyed: bool = false
 var is_prone: bool = false  # Caído en el suelo
+var death_reason: String = ""  # Descripción de cómo fue destruido
+var destroyed_by: String = ""  # Nombre del mech que lo destruyó
 var pilot_name: String = "Pilot"
 var pilot_skill: int = 4  # Gunnery/Piloting skill
 
@@ -64,12 +66,15 @@ var target_movement_modifier: int = 0  # Modificador al ser atacado
 var can_punch_left: bool = true
 var can_punch_right: bool = true
 var can_kick: bool = true
+var has_performed_physical_attack: bool = false  # Flag para prevenir múltiples ataques físicos
 
 # Sprite del mech
 var sprite: Sprite2D
 
 func _ready():
-	_setup_default_weapons()
+	# Solo configurar armas por defecto si no se han configurado desde fuera
+	if weapons.size() == 0:
+		_setup_default_weapons()
 	_setup_sprite()
 
 func _setup_sprite():
@@ -97,23 +102,12 @@ func _draw():
 	draw_line(Vector2.ZERO, facing_point, Color.YELLOW, 3.0)
 	draw_circle(facing_point, 4, Color.YELLOW)
 	
-	# Nombre del mech
+	# Nombre del mech (centrado sobre el sprite)
 	var font = ThemeDB.fallback_font
-	var text_pos = Vector2(-30, -radius - 5)
-	draw_string(font, text_pos, mech_name, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, Color.WHITE)
-	
-	# Barra de calor si hay calor
-	if heat > 0:
-		var heat_percent = float(heat) / float(heat_capacity)
-		var bar_width = radius * 1.5
-		var bar_height = 6
-		var bar_pos = Vector2(-bar_width / 2, radius + 10)
-		
-		# Fondo de la barra
-		draw_rect(Rect2(bar_pos, Vector2(bar_width, bar_height)), Color(0.2, 0.2, 0.2))
-		# Barra de calor
-		var heat_color = Color.ORANGE if heat_percent < 0.7 else Color.RED
-		draw_rect(Rect2(bar_pos, Vector2(bar_width * heat_percent, bar_height)), heat_color)
+	var font_size = 16
+	var text_width = font.get_string_size(mech_name, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
+	var text_pos = Vector2(-text_width / 2, -radius - 5)
+	draw_string(font, text_pos, mech_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
 	
 	# Indicador si está destruido
 	if is_destroyed:
@@ -155,6 +149,7 @@ func start_movement(movement_type: MovementType):
 	movement_type_used = movement_type
 	hexes_moved_this_turn = 0
 	current_movement = get_available_movement(movement_type)
+	has_performed_physical_attack = false  # Reset flag de ataque físico al inicio del turno
 
 func move_to_hex(new_hex: Vector2i, cost: int):
 	# Registra un movimiento a un nuevo hexágono
@@ -167,37 +162,49 @@ func move_to_hex(new_hex: Vector2i, cost: int):
 
 func _calculate_target_movement_modifier():
 	# Calcula el modificador de defensa basado en el movimiento realizado
-	# Según Battletech: modificador = hexes_moved / 2 (redondeado arriba)
-	var base_modifier = int(ceil(float(hexes_moved_this_turn) / 2.0))
-
+	# Según BattleTech Total Warfare:
+	# 0-2 hexes: +0, 3-4: +1, 5-6: +2, 7-9: +3, 10+: +4
+	# Jump añade +1 adicional
+	
 	# Si el mech está en shutdown, es más fácil de impactar (-4 al TN)
 	if is_shutdown:
 		target_movement_modifier = -4
 		return
-
-	match movement_type_used:
-		MovementType.WALK:
-			# Caminar: modificador normal
-			target_movement_modifier = base_modifier
-		MovementType.RUN:
-			# Correr: +1 adicional al modificador
-			target_movement_modifier = base_modifier + 1
-		MovementType.JUMP:
-			# Saltar: +2 adicional (más difícil de impactar)
-			target_movement_modifier = base_modifier + 2
-		_:
-			target_movement_modifier = 0
+	
+	var tmm = 0
+	if hexes_moved_this_turn >= 10:
+		tmm = 4
+	elif hexes_moved_this_turn >= 7:
+		tmm = 3
+	elif hexes_moved_this_turn >= 5:
+		tmm = 2
+	elif hexes_moved_this_turn >= 3:
+		tmm = 1
+	else:
+		tmm = 0
+	
+	# Bonus adicional por salto
+	if movement_type_used == MovementType.JUMP:
+		tmm += 1
+	
+	target_movement_modifier = tmm
 
 func get_attacker_movement_modifier() -> int:
-	# Modificador al disparar basado en cómo te moviste Y el calor
+	# Modificador al disparar basado en cómo te moviste
+	# Según BattleTech Total Warfare:
+	# Walked: +1, Ran: +2, Jumped: +3
 	var movement_mod = 0
 	match movement_type_used:
 		MovementType.WALK:
-			movement_mod = 0  # Sin penalización al caminar
+			movement_mod = 1  # +1 al caminar
 		MovementType.RUN:
-			movement_mod = 2  # +2 de penalización al correr
+			movement_mod = 2  # +2 al correr
 		MovementType.JUMP:
-			movement_mod = 3  # +3 de penalización al saltar
+			movement_mod = 3  # +3 al saltar
+		_:
+			movement_mod = 0  # No se movió
+	
+	return movement_mod
 	
 	# Sumar penalización por calor
 	var heat_mod = get_heat_to_hit_penalty()
@@ -329,14 +336,18 @@ func _handle_location_destruction(location: String):
 	# Cabeza destruida = mech destruido
 	if location == "head":
 		is_destroyed = true
+		if death_reason == "":
+			death_reason = "Head destroyed"
 	
 	# Torso central destruido = mech destruido
 	if location == "center_torso":
 		is_destroyed = true
+		if death_reason == "":
+			death_reason = "Center torso destroyed"
 	
 	# Destruir armas en esa localización
 	for weapon in weapons:
-		if weapon["location"] == location:
+		if weapon.get("location", "") == location:
 			weapon["destroyed"] = true
 
 func _check_destruction() -> bool:
@@ -346,6 +357,8 @@ func _check_destruction() -> bool:
 	
 	# Mech destruido si ambas piernas destruidas
 	if structure["left_leg"]["current"] <= 0 and structure["right_leg"]["current"] <= 0:
+		if death_reason == "":
+			death_reason = "Both legs destroyed"
 		return true
 	
 	return false

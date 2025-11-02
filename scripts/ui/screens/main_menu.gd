@@ -1,6 +1,10 @@
 extends Control
 
 func _ready():
+	# TEMPORAL: Regenerar hangar para limpiar datos corruptos
+	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
+	if mech_bay_manager and mech_bay_manager.force_regenerate_hangar:
+		mech_bay_manager.force_regenerate()
 	
 	# Configurar UI del menú
 	var vbox = VBoxContainer.new()
@@ -55,7 +59,8 @@ func _on_new_battle_pressed():
 	get_tree().change_scene_to_file("res://scenes/battle_scene_simple.tscn")
 
 func _on_mechs_pressed():
-	pass  # Coming soon
+	# Abrir Mech Bay
+	get_tree().change_scene_to_file("res://scenes/mech_bay_screen.tscn")
 
 func _on_options_pressed():
 	pass  # Coming soon

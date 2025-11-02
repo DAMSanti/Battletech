@@ -19,8 +19,7 @@ var enemy_units: Array = []
 
 var units_to_activate: Array = []
 var current_unit_index: int = 0
-
-var is_processing_phase: bool = false  # Prevenir llamadas concurrentes
+var is_phase_transitioning: bool = false  # Prevenir transiciones múltiples
 
 ## Inicia la batalla con las unidades especificadas
 func start_battle(player_mechs: Array, enemy_mechs: Array):
@@ -120,53 +119,59 @@ func use_precalculated_initiative(data: Dictionary):
 
 ## Avanza a la siguiente fase del turno
 func advance_phase():
-	if is_processing_phase:
-		_log("advance_phase() called but already processing, ignoring")
+	if is_phase_transitioning:
+		print("[TURN_MGR] advance_phase() blocked - already transitioning")
 		return
 	
-	is_processing_phase = true
-	_log("Advancing from phase: %s" % GameEnums.phase_to_string(current_phase))
+	is_phase_transitioning = true
+	print("[TURN_MGR] Advancing from phase: %s" % GameEnums.phase_to_string(current_phase))
 	
 	match current_phase:
 		GameEnums.TurnPhase.INITIATIVE:
 			current_phase = GameEnums.TurnPhase.MOVEMENT
 			phase_changed.emit(GameEnums.phase_to_string(current_phase))
 			await start_movement_phase()
+			is_phase_transitioning = false
 			
 		GameEnums.TurnPhase.MOVEMENT:
 			current_phase = GameEnums.TurnPhase.WEAPON_ATTACK
 			phase_changed.emit(GameEnums.phase_to_string(current_phase))
 			await start_weapon_phase()
+			is_phase_transitioning = false
 			
 		GameEnums.TurnPhase.WEAPON_ATTACK:
 			current_phase = GameEnums.TurnPhase.PHYSICAL_ATTACK
 			phase_changed.emit(GameEnums.phase_to_string(current_phase))
 			await start_physical_phase()
+			is_phase_transitioning = false
 			
 		GameEnums.TurnPhase.PHYSICAL_ATTACK:
 			current_phase = GameEnums.TurnPhase.HEAT
 			phase_changed.emit(GameEnums.phase_to_string(current_phase))
 			await start_heat_phase()
+			is_phase_transitioning = false
 			
 		GameEnums.TurnPhase.HEAT:
 			current_phase = GameEnums.TurnPhase.END
 			phase_changed.emit(GameEnums.phase_to_string(current_phase))
 			end_turn()
+			is_phase_transitioning = false
 			
 		GameEnums.TurnPhase.END:
 			current_turn += 1
 			start_turn()
-	
-	is_processing_phase = false
+			is_phase_transitioning = false
 
 ## Inicia la fase de movimiento
 func start_movement_phase():
-	_log("=== MOVEMENT PHASE START ===")
+	print("[TURN_MGR] === MOVEMENT PHASE START ===")
 	_build_activation_order()
 	current_unit_index = 0
 	
+	print("[TURN_MGR] Waiting for phase transition delay...")
 	# Pequeño delay para que phase_changed se procese
 	await get_tree().create_timer(GameConstants.PHASE_TRANSITION_DELAY).timeout
+	print("[TURN_MGR] Delay finished, calling activate_next_unit(), units_to_activate.size()=%d" % units_to_activate.size())
 	activate_next_unit()
 
 ## Inicia la fase de ataque con armas
@@ -194,13 +199,23 @@ func start_heat_phase():
 	advance_phase()
 
 ## Construye el orden de activación alternando entre equipos
+## ESCALABLE: Funciona con cualquier número de unidades por equipo (1-4+)
+## Alterna la activación: Unit1_TeamA, Unit1_TeamB, Unit2_TeamA, Unit2_TeamB, etc.
 func _build_activation_order():
 	units_to_activate.clear()
+	print("[TURN_MGR] Building activation order for phase: %s" % GameEnums.phase_to_string(current_phase))
+	print("[TURN_MGR]   Player units: %d, Enemy units: %d" % [player_units.size(), enemy_units.size()])
+	
+	# Filtrar solo unidades activas (no destruidas)
 	var player_active = player_units.filter(func(u): return not u.is_destroyed)
 	var enemy_active = enemy_units.filter(func(u): return not u.is_destroyed)
+	print("[TURN_MGR]   Active - Player: %d, Enemy: %d" % [player_active.size(), enemy_active.size()])
+	
+	# Determinar el número máximo de unidades para alternar correctamente
 	var max_units = max(player_active.size(), enemy_active.size())
 
-	# Movimiento: el ganador de iniciativa mueve último
+	# FASE DE MOVIMIENTO: El ganador de iniciativa mueve ÚLTIMO (reglas BattleTech)
+	# Ejemplo con 2v2: Si Player gana iniciativa -> Enemy1, Player1, Enemy2, Player2
 	if current_phase == GameEnums.TurnPhase.MOVEMENT:
 		var first_team = enemy_active if current_team == "player" else player_active
 		var last_team = player_active if current_team == "player" else enemy_active
@@ -209,7 +224,9 @@ func _build_activation_order():
 				units_to_activate.append(first_team[i])
 			if i < last_team.size():
 				units_to_activate.append(last_team[i])
-	# Ataque: el ganador de iniciativa ataca primero
+	
+	# FASES DE ATAQUE: El ganador de iniciativa ataca PRIMERO
+	# Ejemplo con 2v2: Si Player gana iniciativa -> Player1, Enemy1, Player2, Enemy2
 	elif current_phase == GameEnums.TurnPhase.WEAPON_ATTACK or current_phase == GameEnums.TurnPhase.PHYSICAL_ATTACK:
 		var first_team = player_active if current_team == "player" else enemy_active
 		var last_team = enemy_active if current_team == "player" else player_active
@@ -231,12 +248,28 @@ func _build_activation_order():
 					units_to_activate.append(enemy_active[i])
 				if i < player_active.size():
 					units_to_activate.append(player_active[i])
-	_log("Built activation order: %d units" % units_to_activate.size())
+	print("[TURN_MGR] Built activation order: %d units" % units_to_activate.size())
+	for i in range(units_to_activate.size()):
+		var unit = units_to_activate[i]
+		var team_str = "player" if unit in player_units else "enemy"
+		print("[TURN_MGR]   [%d] %s (%s)" % [i, unit.mech_name, team_str])
+		# Debug: imprimir armas
+		if typeof(unit.weapons) == TYPE_ARRAY:
+			print("[TURN_MGR]     Weapons: %d" % unit.weapons.size())
+			for w_idx in range(min(3, unit.weapons.size())):
+				print("[TURN_MGR]       - %s" % unit.weapons[w_idx].get("name", "Unknown"))
 
 ## Activa la siguiente unidad en el orden
 func activate_next_unit():
+	print("[TURN_MGR] activate_next_unit(): current_unit_index=%d, units_to_activate.size()=%d" % [current_unit_index, units_to_activate.size()])
+	# Si no hay unidades para activar y es el inicio de la fase, hay un problema
+	if units_to_activate.size() == 0:
+		print("[TURN_MGR] WARNING: No units to activate in phase %s!" % GameEnums.phase_to_string(current_phase))
+		advance_phase()
+		return
+	
 	if current_unit_index >= units_to_activate.size():
-		_log("All units activated, advancing phase")
+		print("[TURN_MGR] All units activated, advancing phase")
 		advance_phase()
 		return
 	
@@ -246,7 +279,7 @@ func activate_next_unit():
 	if current_phase == GameEnums.TurnPhase.MOVEMENT and unit.has_method("reset_movement"):
 		unit.reset_movement()
 	
-	_log("Activating unit: %s [%d/%d]" % [unit.mech_name, current_unit_index + 1, units_to_activate.size()])
+	print("[TURN_MGR] Activating unit: %s [%d/%d]" % [unit.mech_name, current_unit_index + 1, units_to_activate.size()])
 	unit_activated.emit(unit)
 
 ## Completa la activación de la unidad actual
@@ -258,7 +291,8 @@ func complete_unit_activation():
 func end_turn():
 	_log("=== TURN %d END ===" % current_turn)
 	
-	# Chequear condiciones de victoria
+	# Chequear condiciones de victoria (ESCALABLE: funciona con cualquier número de unidades)
+	# Victoria: Al menos 1 unidad propia viva Y todas las enemigas destruidas
 	var player_alive = player_units.any(func(u): return not u.is_destroyed)
 	var enemy_alive = enemy_units.any(func(u): return not u.is_destroyed)
 	

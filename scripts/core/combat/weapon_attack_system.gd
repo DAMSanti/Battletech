@@ -24,50 +24,118 @@ const HIT_LOCATION_TABLE = {
 }
 
 static func calculate_to_hit(attacker, target, weapon, range_hexes: int, terrain_modifier: int = 0) -> Dictionary:
-	# Calcula el número objetivo y modificadores para impactar
-	# Retorna: { "target_number": int, "modifiers": Dictionary }
+	# Calcula el número objetivo y modificadores para impactar según BattleTech Total Warfare
+	# Retorna: { "target_number": int, "modifiers": Dictionary, "breakdown": String }
 	
-	var target_number = BASE_TO_HIT
 	var modifiers = {}
+	var breakdown_lines = []
 	
-	# Modificador por habilidad del piloto (menor es mejor)
-	var pilot_skill = attacker.pilot_skill if "pilot_skill" in attacker else 4
-	modifiers["pilot_skill"] = pilot_skill
-	target_number += pilot_skill
+	# 1. Gunnery Skill del piloto (base)
+	var gunnery_skill = attacker.pilot_skill if "pilot_skill" in attacker else 4
+	modifiers["gunnery_skill"] = gunnery_skill
+	breakdown_lines.append("Gunnery Skill: +%d" % gunnery_skill)
 	
-	# Modificador por movimiento propio (atacante)
+	# 2. Modificador por movimiento del atacante
 	var attacker_movement_mod = attacker.get_attacker_movement_modifier()
 	if attacker_movement_mod > 0:
 		modifiers["attacker_moved"] = attacker_movement_mod
-		target_number += attacker_movement_mod
+		var movement_type = ""
+		if attacker_movement_mod == 1:
+			movement_type = "Walked"
+		elif attacker_movement_mod == 2:
+			movement_type = "Ran"
+		elif attacker_movement_mod == 3:
+			movement_type = "Jumped"
+		breakdown_lines.append("Attacker %s: +%d" % [movement_type, attacker_movement_mod])
 	
-	# Modificador por movimiento del objetivo (TMM)
-	var target_tmm = target.target_movement_modifier if "target_movement_modifier" in target else 0
+	# 3. Modificador por movimiento del objetivo (TMM)
+	var target_tmm = _calculate_target_movement_modifier(target)
 	if target_tmm > 0:
 		modifiers["target_tmm"] = target_tmm
-		target_number += target_tmm
+		breakdown_lines.append("Target Movement: +%d" % target_tmm)
 	
-	# Modificador por rango del arma
+	# 4. Modificador por rango del arma
 	var range_mod = _get_range_modifier(weapon, range_hexes)
-	if range_mod != 0:
+	var range_type = ""
+	if range_mod == 0:
+		range_type = "Short"
+	elif range_mod == 2:
+		range_type = "Medium"
+	elif range_mod == 4:
+		range_type = "Long"
+	else:
+		range_type = "Out of Range"
+	
+	if range_mod != 0 and range_mod < 999:
 		modifiers["range"] = range_mod
-		target_number += range_mod
+		breakdown_lines.append("%s Range: +%d" % [range_type, range_mod])
+	elif range_mod >= 999:
+		modifiers["range"] = range_mod
+		breakdown_lines.append("%s: CANNOT FIRE" % range_type)
 	
-	# Modificador por terreno/cobertura
-	if terrain_modifier != 0:
+	# 5. Modificador por terreno/cobertura
+	if terrain_modifier > 0:
 		modifiers["terrain"] = terrain_modifier
-		target_number += terrain_modifier
+		breakdown_lines.append("Terrain/Cover: +%d" % terrain_modifier)
 	
-	# Modificador por calor (cada 5 puntos de calor = +1 to-hit)
+	# 6. Modificador por calor (cada 5 puntos de calor = +1 to-hit)
 	if "heat" in attacker and attacker.heat >= 5:
 		var heat_mod = int(attacker.heat / 5)
 		modifiers["heat"] = heat_mod
-		target_number += heat_mod
+		breakdown_lines.append("Heat Penalty: +%d" % heat_mod)
+	
+	# Calcular número objetivo total
+	var target_number = gunnery_skill + attacker_movement_mod + target_tmm + range_mod + terrain_modifier
+	if "heat" in attacker and attacker.heat >= 5:
+		target_number += int(attacker.heat / 5)
+	
+	# Crear línea de resumen
+	var breakdown = "\n".join(breakdown_lines)
+	breakdown += "\n─────────────────"
+	breakdown += "\nTarget Number: %d" % target_number
+	breakdown += "\nNeed %d+ on 2D6 to hit" % target_number
 	
 	return {
 		"target_number": target_number,
-		"modifiers": modifiers
+		"modifiers": modifiers,
+		"breakdown": breakdown
 	}
+
+static func _calculate_target_movement_modifier(target) -> int:
+	# Calcula el TMM según las reglas de BattleTech Total Warfare
+	# Basado en hexes movidos este turno
+	
+	var hexes_moved = 0
+	
+	# Obtener hexes movidos de diferentes formas posibles
+	if "hexes_moved_this_turn" in target:
+		hexes_moved = target.hexes_moved_this_turn
+	elif "movement_this_turn" in target:
+		hexes_moved = target.movement_this_turn
+	
+	# Si saltó, añade +1 adicional
+	var jumped = false
+	if "last_movement_type" in target:
+		jumped = (target.last_movement_type == 3)  # JUMP = 3
+	
+	# Tabla de TMM según BattleTech Total Warfare
+	var tmm = 0
+	if hexes_moved >= 10:
+		tmm = 4
+	elif hexes_moved >= 7:
+		tmm = 3
+	elif hexes_moved >= 5:
+		tmm = 2
+	elif hexes_moved >= 3:
+		tmm = 1
+	else:
+		tmm = 0
+	
+	# Bonus adicional por salto
+	if jumped:
+		tmm += 1
+	
+	return tmm
 
 static func _get_range_modifier(weapon, range_hexes: int) -> int:
 	# Retorna el modificador por rango según el tipo de arma

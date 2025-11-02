@@ -16,6 +16,10 @@ run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.5", "Mobile")
 config/icon="res://icon.svg"
 
+[autoload]
+
+MechBayManager="*res://scripts/managers/mech_bay_manager.gd"
+
 [display]
 
 window/size/viewport_width=720
