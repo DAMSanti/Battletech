@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Player Mech (Blue) - Atlas style heavy mech -->
+  <g>
+    <!-- Legs -->
+    <rect x="18" y="48" width="10" height="14" fill="#1a4d7a" stroke="#0d2638" stroke-width="1.5"/>
+    <rect x="36" y="48" width="10" height="14" fill="#1a4d7a" stroke="#0d2638" stroke-width="1.5"/>
+    
+    <!-- Torso -->
+    <rect x="20" y="28" width="24" height="22" fill="#2563eb" stroke="#1e40af" stroke-width="2"/>
+    <rect x="24" y="32" width="16" height="4" fill="#3b82f6"/>
+    
+    <!-- Arms -->
+    <rect x="12" y="30" width="6" height="18" fill="#1e40af" stroke="#0d2638" stroke-width="1.5"/>
+    <rect x="46" y="30" width="6" height="18" fill="#1e40af" stroke="#0d2638" stroke-width="1.5"/>
+    
+    <!-- Weapon barrels -->
+    <rect x="10" y="44" width="4" height="8" fill="#374151"/>
+    <rect x="50" y="44" width="4" height="8" fill="#374151"/>
+    
+    <!-- Head/Cockpit -->
+    <circle cx="32" cy="24" r="6" fill="#3b82f6" stroke="#1e40af" stroke-width="2"/>
+    <circle cx="30" cy="23" r="2" fill="#60a5fa"/>
+    <circle cx="34" cy="23" r="2" fill="#60a5fa"/>
+    
+    <!-- Chest detail -->
+    <rect x="30" y="36" width="4" height="6" fill="#1e3a8a"/>
+    
+    <!-- Armor plates -->
+    <path d="M 22 30 L 28 26 L 34 26 L 40 30" fill="none" stroke="#1e40af" stroke-width="1.5"/>
+  </g>
+</svg>

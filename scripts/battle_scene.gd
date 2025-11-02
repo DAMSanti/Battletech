@@ -32,25 +32,30 @@ var initiative_screen_scene = preload("res://scenes/initiative_screen.tscn")
 var initiative_data_stored: Dictionary = {}
 var battle_started = false
 
+# Sistema de cámara táctil
+var camera: Camera2D
+var is_dragging: bool = false
+var drag_start_pos: Vector2
+var camera_start_pos: Vector2
+var touch_points: Dictionary = {}  # ID del toque -> posición
+var initial_pinch_distance: float = 0.0
+var initial_zoom: Vector2 = Vector2.ONE
+
+# Límites de zoom y movimiento
+const MIN_ZOOM = 0.3
+const MAX_ZOOM = 2.0
+const CAMERA_SMOOTH_SPEED = 10.0
+
 func update_overlays():
 	# Actualizar el redibujado de los overlays
 	if overlay_layer:
 		overlay_layer.queue_redraw()
-	else:
-		print("WARNING: overlay_layer is null!")
 
 func _ready():
-	print("████████████████████████████████████████")
-	print("███ BATTLE SCENE READY ███")
-	print("████████████████████████████████████████")
-	
 	# Mostrar pantalla de iniciativa INMEDIATAMENTE
 	show_initiative_screen()
 
 func show_initiative_screen():
-	print("████████████████████████████████████████")
-	print("███ CREATING INITIATIVE SCREEN ███")
-	print("████████████████████████████████████████")
 	var initiative_screen = initiative_screen_scene.instantiate()
 	
 	# CRÍTICO: Poner el CanvasLayer en un layer MÁS ALTO que el UI
@@ -60,17 +65,9 @@ func show_initiative_screen():
 	add_child(initiative_screen)
 	
 	# Conectar señal (usar CONNECT_ONE_SHOT para que se desconecte automáticamente)
-	if initiative_screen.initiative_complete.connect(_on_initiative_screen_complete, CONNECT_ONE_SHOT) == OK:
-		print("███ Initiative screen signal connected!")
-	else:
-		print("███ ERROR: Could not connect initiative screen signal!")
-	
-	print("███ Initiative screen added to scene tree on layer 100")
-	print("████████████████████████████████████████")
+	initiative_screen.initiative_complete.connect(_on_initiative_screen_complete, CONNECT_ONE_SHOT)
 
 func _on_initiative_screen_complete(data: Dictionary):
-	print("Initiative complete! Data: ", data)
-	
 	# Guardar datos de iniciativa
 	initiative_data_stored = data
 	
@@ -81,17 +78,30 @@ func _on_initiative_screen_complete(data: Dictionary):
 		turn_manager = $TurnManager
 		ui = $BattleUI  # Nombre correcto del nodo en battle_scene_simple.tscn
 		
+		# Crear y configurar cámara ANTES de los overlays
+		camera = Camera2D.new()
+		camera.enabled = true
+		camera.zoom = Vector2(0.8, 0.8)  # Zoom inicial para ver más mapa
+		camera.position_smoothing_enabled = true
+		camera.position_smoothing_speed = CAMERA_SMOOTH_SPEED
+		camera.add_to_group("cameras")
+		call_deferred("add_child", camera)
+		# Hacer la cámara actual después de agregarla al árbol
+		await get_tree().process_frame
+		camera.make_current()
+		
+		# Centrar cámara en el mapa después de un frame
+		await get_tree().process_frame
+		if hex_grid:
+			var map_center = hex_grid.hex_to_pixel(Vector2i(hex_grid.grid_width / 2, hex_grid.grid_height / 2))
+			camera.position = map_center
+		
 		# Crear capa de overlay para hexágonos alcanzables (z_index más alto)
 		overlay_layer = Node2D.new()
 		overlay_layer.z_index = 5  # Encima del grid (0) pero debajo de los mechs (10)
 		overlay_layer.set_script(preload("res://scripts/battle_overlay.gd"))
 		add_child(overlay_layer)
 		overlay_layer.battle_scene = self
-		
-		if ui:
-			print("✅ UI encontrado correctamente")
-		else:
-			print("❌ ERROR: UI no encontrado")
 		
 		# Configurar la batalla
 		_setup_battle()
@@ -107,8 +117,6 @@ func _on_initiative_screen_complete(data: Dictionary):
 		turn_manager.start_battle(player_mechs, enemy_mechs)
 		
 		battle_started = true
-		
-		print("Battle started!")
 	else:
 		# Turno posterior: usar los datos de iniciativa con el turn_manager
 		if turn_manager:
@@ -119,7 +127,6 @@ func get_stored_initiative() -> Dictionary:
 
 func clear_initiative_data():
 	initiative_data_stored = {}
-	print("Initiative data cleared for next turn")
 
 func _setup_battle():
 	# Crear mechs de prueba
@@ -155,14 +162,111 @@ func _setup_battle():
 
 func _input(event):
 	# No procesar input si la batalla aún no ha comenzado
-	if not battle_started or hex_grid == null:
+	if not battle_started or hex_grid == null or camera == null:
 		return
+	
+	# Manejar gestos de cámara primero
+	if _handle_camera_input(event):
+		return  # Si fue un gesto de cámara, no procesar como click en hexágono
 		
-	if event is InputEventScreenTouch or (event is InputEventMouseButton and event.pressed):
-		var touch_pos = event.position
-		var hex = hex_grid.pixel_to_hex(touch_pos - hex_grid.global_position)
-		print("Click at pixel: ", touch_pos, " -> hex: ", hex, " (grid pos: ", hex_grid.global_position, ")")
+	# Click/toque en hexágono
+	if event is InputEventScreenTouch and not event.pressed:  # Solo en release
+		if touch_points.size() == 0:  # Asegurar que no fue un gesto
+			var world_pos = camera.get_global_mouse_position()
+			var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
+			_handle_hex_clicked(hex)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var world_pos = camera.get_global_mouse_position()
+		var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 		_handle_hex_clicked(hex)
+
+func _handle_camera_input(event) -> bool:
+	# Retorna true si el evento fue procesado como gesto de cámara
+	
+	if camera == null:
+		return false
+	
+	# Gestos táctiles
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			# Nuevo toque
+			touch_points[event.index] = event.position
+			
+			if touch_points.size() == 1:
+				# Un dedo: iniciar arrastre
+				is_dragging = true
+				drag_start_pos = event.position
+				camera_start_pos = camera.position
+			elif touch_points.size() == 2:
+				# Dos dedos: iniciar zoom con pellizco
+				is_dragging = false
+				var points = touch_points.values()
+				initial_pinch_distance = points[0].distance_to(points[1])
+				initial_zoom = camera.zoom
+		else:
+			# Soltar toque
+			touch_points.erase(event.index)
+			
+			if touch_points.size() == 0:
+				is_dragging = false
+			elif touch_points.size() == 1:
+				# Volver a modo arrastre con el dedo restante
+				is_dragging = true
+				var remaining_point = touch_points.values()[0]
+				drag_start_pos = remaining_point
+				camera_start_pos = camera.position
+		
+		return touch_points.size() > 0 or is_dragging
+	
+	# Movimiento táctil
+	if event is InputEventScreenDrag:
+		touch_points[event.index] = event.position
+		
+		if touch_points.size() == 1 and is_dragging:
+			# Arrastrar cámara con un dedo
+			var drag_delta = (drag_start_pos - event.position) / camera.zoom.x
+			camera.position = camera_start_pos + drag_delta
+			return true
+		elif touch_points.size() == 2:
+			# Zoom con pellizco (pinch)
+			var points = touch_points.values()
+			var current_distance = points[0].distance_to(points[1])
+			var zoom_factor = initial_pinch_distance / current_distance
+			
+			# Calcular nuevo zoom
+			var new_zoom = initial_zoom * zoom_factor
+			new_zoom.x = clamp(new_zoom.x, MIN_ZOOM, MAX_ZOOM)
+			new_zoom.y = clamp(new_zoom.y, MIN_ZOOM, MAX_ZOOM)
+			camera.zoom = new_zoom
+			return true
+	
+	# Soporte de mouse para testing en PC
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_MIDDLE:
+			if event.pressed:
+				is_dragging = true
+				drag_start_pos = event.position
+				camera_start_pos = camera.position
+			else:
+				is_dragging = false
+			return true
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			camera.zoom *= 1.1
+			camera.zoom.x = clamp(camera.zoom.x, MIN_ZOOM, MAX_ZOOM)
+			camera.zoom.y = clamp(camera.zoom.y, MIN_ZOOM, MAX_ZOOM)
+			return true
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			camera.zoom *= 0.9
+			camera.zoom.x = clamp(camera.zoom.x, MIN_ZOOM, MAX_ZOOM)
+			camera.zoom.y = clamp(camera.zoom.y, MIN_ZOOM, MAX_ZOOM)
+			return true
+	
+	if event is InputEventMouseMotion and is_dragging:
+		var drag_delta = (drag_start_pos - event.position) / camera.zoom.x
+		camera.position = camera_start_pos + drag_delta
+		return true
+	
+	return false
 
 func _handle_hex_clicked(hex: Vector2i):
 	if not hex_grid.is_valid_hex(hex):
@@ -186,14 +290,10 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 	pending_movement_selection = false
 	selected_unit.start_movement(movement_type)
 	
-	print("DEBUG: Calculating reachable hexes from ", selected_unit.hex_position, " with ", selected_unit.current_movement, " MP")
 	
 	# Actualizar hexágonos alcanzables según el tipo de movimiento
 	reachable_hexes = hex_grid.get_reachable_hexes(selected_unit.hex_position, selected_unit.current_movement)
 	
-	print("DEBUG: Found ", reachable_hexes.size(), " reachable hexes")
-	if reachable_hexes.size() > 0:
-		print("DEBUG: First few reachable hexes: ", reachable_hexes.slice(0, min(5, reachable_hexes.size())))
 	
 	var movement_names = ["None", "Walk", "Run", "Jump"]
 	if ui:
@@ -251,14 +351,20 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 			
 			ui.update_unit_info(unit)
 		
-		# Actualizar hexágonos alcanzables
-		if unit.current_movement > 0 and unit in player_mechs:
-			# Solo para el jugador: permitir movimiento adicional
-			reachable_hexes = hex_grid.get_reachable_hexes(unit.hex_position, unit.current_movement)
-		else:
-			# Para enemigos o cuando no queda movimiento: completar activación
+		# Terminar activación del jugador tras el primer movimiento
+		if unit in player_mechs:
 			reachable_hexes.clear()
+			if ui:
+				ui.add_combat_message("Movimiento realizado. Fase terminada.", Color.YELLOW)
+			await get_tree().create_timer(0.5).timeout
 			turn_manager.complete_unit_activation()
+		else:
+			# Para enemigos: lógica normal
+			if unit.current_movement > 0:
+				reachable_hexes = hex_grid.get_reachable_hexes(unit.hex_position, unit.current_movement)
+			else:
+				reachable_hexes.clear()
+				turn_manager.complete_unit_activation()
 		
 		queue_redraw()
 
@@ -387,7 +493,6 @@ func execute_weapon_attack(attacker, target, weapon_indices: Array, range_hexes:
 
 func _end_weapon_attack_phase():
 	# Terminar fase de ataque y continuar
-	current_state = GameEnums.GameState.MOVING
 	current_attack_target = null
 	
 	# Limpiar overlays
@@ -471,7 +576,6 @@ func _roll_hit_location() -> String:
 	return "center_torso"
 
 func _on_turn_changed(team: String, turn_number: int):
-	print("Turn %d - %s team" % [turn_number, team])
 	
 	# Actualizar UI con el turno
 	if ui:
@@ -519,49 +623,28 @@ func _on_initiative_result(data: Dictionary):
 	_on_initiative_rolled(data)
 
 func _on_phase_changed(phase: String):
-	print("═══════════════════════════════════════════════════")
-	print("DEBUG: _on_phase_changed CALLED")
-	print("  Phase name: ", phase)
-	print("  current_state BEFORE = ", GameEnums.GameState.keys()[current_state])
-	print("═══════════════════════════════════════════════════")
-	
 	# IMPORTANTE: phase_to_string() retorna "Movement", "Weapon Attack", "Physical Attack"
 	match phase:
 		"Movement":
 			current_state = GameEnums.GameState.MOVING
-			print("DEBUG: ✓ Set current_state to MOVING (", GameEnums.GameState.MOVING, ")")
 		"Weapon Attack":
 			current_state = GameEnums.GameState.WEAPON_ATTACK
-			print("DEBUG: ✓ Set current_state to WEAPON_ATTACK (", GameEnums.GameState.WEAPON_ATTACK, ")")
 		"Physical Attack":
 			current_state = GameEnums.GameState.PHYSICAL_TARGETING
-			print("DEBUG: ✓ Set current_state to PHYSICAL_TARGETING (", GameEnums.GameState.PHYSICAL_TARGETING, ")")
 		"Heat":
 			# Fase de calor: procesar todos los mechs automáticamente
-			print("DEBUG: ✓ HEAT phase - processing automatically")
 			_process_heat_phase()
 		"Initiative":
 			# No cambiar estado durante iniciativa
-			print("DEBUG: ✓ INITIATIVE phase")
+			pass
 		_:
-			print("DEBUG: ⚠ UNKNOWN PHASE: ", phase)
-	
-	print("DEBUG: current_state AFTER = ", GameEnums.GameState.keys()[current_state])
-	print("═══════════════════════════════════════════════════")
+			pass
 	
 	# Actualizar UI con la fase
 	if ui:
 		ui.update_phase_info(phase)
 
 func _on_unit_activated(unit):
-	print("═══════════════════════════════════════════════════")
-	print("DEBUG: _on_unit_activated CALLED")
-	print("  Unit: ", unit.mech_name)
-	print("  current_state = ", GameEnums.GameState.keys()[current_state])
-	print("  MOVING = ", GameEnums.GameState.MOVING, " (", GameEnums.GameState.keys()[GameEnums.GameState.MOVING], ")")
-	print("  WEAPON_ATTACK = ", GameEnums.GameState.WEAPON_ATTACK, " (", GameEnums.GameState.keys()[GameEnums.GameState.WEAPON_ATTACK], ")")
-	print("═══════════════════════════════════════════════════")
-	
 	selected_unit = unit
 	
 	# Ocultar menú de movimiento siempre al activar una nueva unidad
@@ -577,32 +660,16 @@ func _on_unit_activated(unit):
 	# Actualizar UI inmediatamente
 	if ui:
 		ui.update_unit_info(unit)
-		print("UI updated with unit info")
-	else:
-		print("WARNING: UI is null!")
 	
 	if unit in player_mechs:
 		# Turno del jugador - ESPERAR input del usuario
 		if current_state == GameEnums.GameState.MOVING:
-			print("DEBUG: ✓ MOVEMENT PHASE - Showing movement selector")
 			# Mostrar menú de selección de tipo de movimiento SOLO en fase de movimiento
 			pending_movement_selection = true
 			if ui:
 				ui.show_movement_type_selector(unit)
 				ui.add_combat_message("Your turn: Select movement type for %s" % unit.mech_name, Color.CYAN)
-		elif current_state == GameEnums.GameState.TARGETING or current_state == GameEnums.GameState.WEAPON_ATTACK:
-			print("DEBUG: ✓ WEAPON ATTACK PHASE - Showing weapon targeting")
-			# Cambiar al modo de selección de objetivo para armas
-			current_state = GameEnums.GameState.WEAPON_ATTACK
-			# Mostrar todos los enemigos como objetivos potenciales
-			for enemy in enemy_mechs:
-				if not enemy.is_destroyed:
-					target_hexes.append(enemy.hex_position)
-			if ui:
-				ui.add_combat_message("Your turn: Select target for %s to fire weapons" % unit.mech_name, Color.ORANGE)
-				ui.set_help_text("Click on an enemy to select weapons")
 		elif current_state == GameEnums.GameState.PHYSICAL_TARGETING:
-			print("DEBUG: ✓ PHYSICAL ATTACK PHASE - Showing physical targeting")
 			# Mostrar enemigos adyacentes para ataque físico
 			physical_target_hexes.clear()
 			for enemy in enemy_mechs:
@@ -612,8 +679,16 @@ func _on_unit_activated(unit):
 						physical_target_hexes.append(enemy.hex_position)
 			if ui:
 				ui.add_combat_message("Your turn: Physical attack with %s" % unit.mech_name, Color.MAGENTA)
-		else:
-			print("DEBUG: ⚠ UNKNOWN STATE - ", GameEnums.GameState.keys()[current_state])
+		elif current_state == GameEnums.GameState.TARGETING or current_state == GameEnums.GameState.WEAPON_ATTACK:
+			# Cambiar al modo de selección de objetivo para armas
+			current_state = GameEnums.GameState.WEAPON_ATTACK
+			# Mostrar todos los enemigos como objetivos potenciales
+		for enemy in enemy_mechs:
+			if not enemy.is_destroyed:
+				target_hexes.append(enemy.hex_position)
+		if ui:
+			ui.add_combat_message("Your turn: Select target for %s to fire weapons" % unit.mech_name, Color.ORANGE)
+			ui.set_help_text("Click on an enemy to select weapons")
 	else:
 		# Turno enemigo - ejecutar IA automáticamente
 		if ui:

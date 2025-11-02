@@ -169,6 +169,85 @@ func get_location_armor(location: String) -> int:
 func get_location_structure(location: String) -> int:
 	return internal_structure.get(location, 0)
 
+func get_armor_data_for_ui() -> Dictionary:
+	# Retorna un diccionario con toda la información de armadura y estructura
+	# formateada para el panel de UI
+	
+	
+	var max_armor_by_location = {
+		"head": 9,
+		"center_torso": 47,
+		"left_torso": 32,
+		"right_torso": 32,
+		"left_arm": 34,
+		"right_arm": 34,
+		"left_leg": 41,
+		"right_leg": 41
+	}
+	
+	var max_structure_by_location = {
+		"head": 3,
+		"center_torso": 31,
+		"left_torso": 21,
+		"right_torso": 21,
+		"left_arm": 17,
+		"right_arm": 17,
+		"left_leg": 21,
+		"right_leg": 21
+	}
+	
+	return {
+		"head": {
+			"current": armor_locations.get("head", 0),
+			"max": max_armor_by_location.get("head", 0)
+		},
+		"center_torso": {
+			"current": armor_locations.get("center_torso", 0),
+			"max": max_armor_by_location.get("center_torso", 0)
+		},
+		"left_torso": {
+			"current": armor_locations.get("left_torso", 0),
+			"max": max_armor_by_location.get("left_torso", 0)
+		},
+		"right_torso": {
+			"current": armor_locations.get("right_torso", 0),
+			"max": max_armor_by_location.get("right_torso", 0)
+		},
+		"left_arm": {
+			"current": armor_locations.get("left_arm", 0),
+			"max": max_armor_by_location.get("left_arm", 0)
+		},
+		"right_arm": {
+			"current": armor_locations.get("right_arm", 0),
+			"max": max_armor_by_location.get("right_arm", 0)
+		},
+		"left_leg": {
+			"current": armor_locations.get("left_leg", 0),
+			"max": max_armor_by_location.get("left_leg", 0)
+		},
+		"right_leg": {
+			"current": armor_locations.get("right_leg", 0),
+			"max": max_armor_by_location.get("right_leg", 0)
+		},
+		# Estructura
+		"head_structure": internal_structure.get("head", 0),
+		"head_structure_max": max_structure_by_location.get("head", 0),
+		"center_torso_structure": internal_structure.get("center_torso", 0),
+		"center_torso_structure_max": max_structure_by_location.get("center_torso", 0),
+		"left_torso_structure": internal_structure.get("left_torso", 0),
+		"left_torso_structure_max": max_structure_by_location.get("left_torso", 0),
+		"right_torso_structure": internal_structure.get("right_torso", 0),
+		"right_torso_structure_max": max_structure_by_location.get("right_torso", 0),
+		"left_arm_structure": internal_structure.get("left_arm", 0),
+		"left_arm_structure_max": max_structure_by_location.get("left_arm", 0),
+		"right_arm_structure": internal_structure.get("right_arm", 0),
+		"right_arm_structure_max": max_structure_by_location.get("right_arm", 0),
+		"left_leg_structure": internal_structure.get("left_leg", 0),
+		"left_leg_structure_max": max_structure_by_location.get("left_leg", 0),
+		"right_leg_structure": internal_structure.get("right_leg", 0),
+		"right_leg_structure_max": max_structure_by_location.get("right_leg", 0)
+	}
+
 func reset_turn_state():
 	moved_this_turn = false
 	ran_this_turn = false

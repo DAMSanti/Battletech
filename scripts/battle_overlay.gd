@@ -5,7 +5,6 @@ var battle_scene = null
 
 func _draw():
 	if not battle_scene or not battle_scene.hex_grid:
-		print("Overlay: battle_scene or hex_grid is null")
 		return
 	
 	var hex_grid = battle_scene.hex_grid
@@ -13,7 +12,6 @@ func _draw():
 	var target_hexes = battle_scene.target_hexes
 	var physical_target_hexes = battle_scene.physical_target_hexes
 	
-	print("Overlay drawing: ", reachable_hexes.size(), " reachable, ", target_hexes.size(), " targets")
 	
 	# Dibujar hexágonos alcanzables (azul brillante)
 	for hex in reachable_hexes:

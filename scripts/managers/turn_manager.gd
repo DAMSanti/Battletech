@@ -196,25 +196,41 @@ func start_heat_phase():
 ## Construye el orden de activación alternando entre equipos
 func _build_activation_order():
 	units_to_activate.clear()
-	
 	var player_active = player_units.filter(func(u): return not u.is_destroyed)
 	var enemy_active = enemy_units.filter(func(u): return not u.is_destroyed)
-	
 	var max_units = max(player_active.size(), enemy_active.size())
-	
-	# Alternar activación entre equipos
-	for i in range(max_units):
-		if current_team == "player":
-			if i < player_active.size():
-				units_to_activate.append(player_active[i])
-			if i < enemy_active.size():
-				units_to_activate.append(enemy_active[i])
-		else:
-			if i < enemy_active.size():
-				units_to_activate.append(enemy_active[i])
-			if i < player_active.size():
-				units_to_activate.append(player_active[i])
-	
+
+	# Movimiento: el ganador de iniciativa mueve último
+	if current_phase == GameEnums.TurnPhase.MOVEMENT:
+		var first_team = enemy_active if current_team == "player" else player_active
+		var last_team = player_active if current_team == "player" else enemy_active
+		for i in range(max_units):
+			if i < first_team.size():
+				units_to_activate.append(first_team[i])
+			if i < last_team.size():
+				units_to_activate.append(last_team[i])
+	# Ataque: el ganador de iniciativa ataca primero
+	elif current_phase == GameEnums.TurnPhase.WEAPON_ATTACK or current_phase == GameEnums.TurnPhase.PHYSICAL_ATTACK:
+		var first_team = player_active if current_team == "player" else enemy_active
+		var last_team = enemy_active if current_team == "player" else player_active
+		for i in range(max_units):
+			if i < first_team.size():
+				units_to_activate.append(first_team[i])
+			if i < last_team.size():
+				units_to_activate.append(last_team[i])
+	else:
+		# Por defecto, alternar según current_team
+		for i in range(max_units):
+			if current_team == "player":
+				if i < player_active.size():
+					units_to_activate.append(player_active[i])
+				if i < enemy_active.size():
+					units_to_activate.append(enemy_active[i])
+			else:
+				if i < enemy_active.size():
+					units_to_activate.append(enemy_active[i])
+				if i < player_active.size():
+					units_to_activate.append(player_active[i])
 	_log("Built activation order: %d units" % units_to_activate.size())
 
 ## Activa la siguiente unidad en el orden
@@ -279,5 +295,4 @@ func is_player_turn() -> bool:
 	return current_unit in player_units
 
 func _log(message: String):
-	if GameConstants.ENABLE_DEBUG_LOGS:
-		print("[TurnManager] ", message)
+	pass  # Debug logs disabled

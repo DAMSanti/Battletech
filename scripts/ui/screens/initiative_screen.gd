@@ -18,153 +18,175 @@ var dice_faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"]
 var is_rolling = false
 
 func _ready():
-	print("████ INITIATIVE SCREEN LOADING ████")
 	visible = true
 	layer = 100
 	
-	# TEST: Verificar array de dados
-	print("████ DICE ARRAY TEST ████")
-	for i in range(6):
-		print("Index ", i, " (dice value ", i+1, "): '", dice_faces[i], "'")
-	print("████████████████████████")
-	
 	setup_ui()
-	print("████ INITIATIVE SCREEN READY ████")
 
 func setup_ui():
+	# Obtener tamaño de pantalla
+	var viewport_size = get_viewport().get_visible_rect().size
+	var screen_width = viewport_size.x
+	var screen_height = viewport_size.y
+	var scale_factor = screen_width / 720.0  # Escalar basado en ancho de 720px
+	var margin = 10 * scale_factor
+	
+	
 	# Fondo oscuro
 	var bg = ColorRect.new()
 	bg.color = Color(0.02, 0.02, 0.08, 0.98)
 	bg.position = Vector2.ZERO
-	bg.size = Vector2(1080, 1920)
+	bg.size = viewport_size
 	add_child(bg)
 	
-	# Panel decorativo superior
+	# Panel decorativo superior (95% del ancho)
+	var panel_width = screen_width * 0.95
 	var top_panel = Panel.new()
-	top_panel.position = Vector2(90, 80)
-	top_panel.size = Vector2(900, 180)
+	top_panel.position = Vector2((screen_width - panel_width) / 2, margin * 2)
+	top_panel.size = Vector2(panel_width, screen_height * 0.12)
 	var top_style = StyleBoxFlat.new()
 	top_style.bg_color = Color(0.08, 0.08, 0.15, 0.9)
-	top_style.border_width_top = 3
-	top_style.border_width_bottom = 3
-	top_style.border_width_left = 3
-	top_style.border_width_right = 3
+	top_style.border_width_top = int(3 * scale_factor)
+	top_style.border_width_bottom = int(3 * scale_factor)
+	top_style.border_width_left = int(3 * scale_factor)
+	top_style.border_width_right = int(3 * scale_factor)
 	top_style.border_color = Color.GOLD
-	top_style.corner_radius_top_left = 15
-	top_style.corner_radius_top_right = 15
-	top_style.corner_radius_bottom_left = 15
-	top_style.corner_radius_bottom_right = 15
+	top_style.corner_radius_top_left = int(15 * scale_factor)
+	top_style.corner_radius_top_right = int(15 * scale_factor)
+	top_style.corner_radius_bottom_left = int(15 * scale_factor)
+	top_style.corner_radius_bottom_right = int(15 * scale_factor)
 	top_panel.add_theme_stylebox_override("panel", top_style)
 	add_child(top_panel)
 	
 	# Título
 	var title = Label.new()
 	title.text = "⚔ BATTLETECH INITIATIVE ⚔"
-	title.position = Vector2(180, 110)
-	title.add_theme_font_size_override("font_size", 56)
+	title.position = Vector2(screen_width * 0.05, screen_height * 0.04)
+	title.size = Vector2(screen_width * 0.9, screen_height * 0.06)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", int(32 * scale_factor))
 	title.add_theme_color_override("font_color", Color.GOLD)
 	add_child(title)
 	
 	# Subtítulo
 	subtitle_label = Label.new()
 	subtitle_label.text = "Roll for initiative to determine move order"
-	subtitle_label.position = Vector2(270, 190)
-	subtitle_label.add_theme_font_size_override("font_size", 24)
+	subtitle_label.position = Vector2(screen_width * 0.05, screen_height * 0.10)
+	subtitle_label.size = Vector2(screen_width * 0.9, screen_height * 0.04)
+	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle_label.add_theme_font_size_override("font_size", int(18 * scale_factor))
 	subtitle_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9))
 	add_child(subtitle_label)
 	
 	# Headers y dados
+	var dice_size = screen_width * 0.22  # 22% del ancho
+	var dice_y_pos = screen_height * 0.25
+	
 	var player_header = Label.new()
 	player_header.text = "★ PLAYER DICE ★"
-	player_header.position = Vector2(120, 320)
-	player_header.add_theme_font_size_override("font_size", 36)
+	player_header.position = Vector2(screen_width * 0.05, screen_height * 0.18)
+	player_header.size = Vector2(screen_width * 0.4, screen_height * 0.05)
+	player_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	player_header.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	player_header.add_theme_color_override("font_color", Color.CYAN)
 	add_child(player_header)
 	
-	player_dice.append(create_3d_dice(Vector2(150, 500), Color.CYAN))
-	player_dice.append(create_3d_dice(Vector2(350, 500), Color.CYAN))
+	# Dados del jugador (uno arriba del otro)
+	player_dice.append(create_3d_dice(Vector2(screen_width * 0.25 - dice_size / 2, dice_y_pos), Color.CYAN, dice_size))
+	player_dice.append(create_3d_dice(Vector2(screen_width * 0.25 - dice_size / 2, dice_y_pos + dice_size + margin * 2), Color.CYAN, dice_size))
 	
 	var enemy_header = Label.new()
 	enemy_header.text = "★ ENEMY DICE ★"
-	enemy_header.position = Vector2(620, 320)
-	enemy_header.add_theme_font_size_override("font_size", 36)
+	enemy_header.position = Vector2(screen_width * 0.55, screen_height * 0.18)
+	enemy_header.size = Vector2(screen_width * 0.4, screen_height * 0.05)
+	enemy_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enemy_header.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	enemy_header.add_theme_color_override("font_color", Color.RED)
 	add_child(enemy_header)
 	
-	enemy_dice.append(create_3d_dice(Vector2(600, 500), Color.RED))
-	enemy_dice.append(create_3d_dice(Vector2(800, 500), Color.RED))
+	# Dados del enemigo (uno arriba del otro)
+	enemy_dice.append(create_3d_dice(Vector2(screen_width * 0.75 - dice_size / 2, dice_y_pos), Color.RED, dice_size))
+	enemy_dice.append(create_3d_dice(Vector2(screen_width * 0.75 - dice_size / 2, dice_y_pos + dice_size + margin * 2), Color.RED, dice_size))
 	
 	# Botón Roll
+	var button_y = dice_y_pos + dice_size * 2 + margin * 8
 	roll_button = Button.new()
 	roll_button.text = "🎲 ROLL DICE 🎲"
-	roll_button.position = Vector2(290, 900)
-	roll_button.custom_minimum_size = Vector2(500, 140)
-	roll_button.add_theme_font_size_override("font_size", 52)
+	roll_button.position = Vector2(screen_width * 0.1, button_y)
+	roll_button.custom_minimum_size = Vector2(screen_width * 0.8, screen_height * 0.08)
+	roll_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
 	roll_button.pressed.connect(_on_roll_pressed)
 	add_child(roll_button)
 	
 	# Resultado
 	result_label = Label.new()
-	result_label.position = Vector2(150, 1100)
-	result_label.add_theme_font_size_override("font_size", 48)
+	result_label.position = Vector2(screen_width * 0.05, button_y + screen_height * 0.12)
+	result_label.size = Vector2(screen_width * 0.9, screen_height * 0.15)
+	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	result_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	result_label.add_theme_font_size_override("font_size", int(24 * scale_factor))
 	result_label.visible = false
 	add_child(result_label)
 	
 	# Botón continuar
 	continue_button = Button.new()
 	continue_button.text = "⚔ START BATTLE ⚔"
-	continue_button.position = Vector2(290, 1450)
-	continue_button.custom_minimum_size = Vector2(500, 140)
-	continue_button.add_theme_font_size_override("font_size", 52)
+	continue_button.position = Vector2(screen_width * 0.1, screen_height - screen_height * 0.15)
+	continue_button.custom_minimum_size = Vector2(screen_width * 0.8, screen_height * 0.08)
+	continue_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
 	continue_button.pressed.connect(_on_continue_pressed)
 	continue_button.visible = false
 	add_child(continue_button)
 
-func create_3d_dice(pos: Vector2, glow_color: Color) -> Control:
+func create_3d_dice(pos: Vector2, glow_color: Color, dice_size: float) -> Control:
 	var dice = Control.new()
 	dice.position = pos
-	dice.custom_minimum_size = Vector2(180, 180)
+	dice.custom_minimum_size = Vector2(dice_size, dice_size)
 	add_child(dice)
+	
+	var corner_radius = int(dice_size * 0.14)
+	var border_width = int(dice_size * 0.04)
 	
 	# Sombra
 	var shadow = Panel.new()
-	shadow.position = Vector2(15, 15)
-	shadow.custom_minimum_size = Vector2(180, 180)
+	shadow.position = Vector2(dice_size * 0.08, dice_size * 0.08)
+	shadow.custom_minimum_size = Vector2(dice_size, dice_size)
 	var shadow_style = StyleBoxFlat.new()
 	shadow_style.bg_color = Color(0, 0, 0, 0.5)
-	shadow_style.corner_radius_top_left = 25
-	shadow_style.corner_radius_top_right = 25
-	shadow_style.corner_radius_bottom_left = 25
-	shadow_style.corner_radius_bottom_right = 25
+	shadow_style.corner_radius_top_left = corner_radius
+	shadow_style.corner_radius_top_right = corner_radius
+	shadow_style.corner_radius_bottom_left = corner_radius
+	shadow_style.corner_radius_bottom_right = corner_radius
 	shadow.add_theme_stylebox_override("panel", shadow_style)
 	dice.add_child(shadow)
 	
 	# Panel del dado
 	var panel = Panel.new()
-	panel.custom_minimum_size = Vector2(180, 180)
+	panel.custom_minimum_size = Vector2(dice_size, dice_size)
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color.WHITE
-	style.corner_radius_top_left = 25
-	style.corner_radius_top_right = 25
-	style.corner_radius_bottom_left = 25
-	style.corner_radius_bottom_right = 25
-	style.border_width_top = 8
-	style.border_width_bottom = 8
-	style.border_width_left = 8
-	style.border_width_right = 8
+	style.corner_radius_top_left = corner_radius
+	style.corner_radius_top_right = corner_radius
+	style.corner_radius_bottom_left = corner_radius
+	style.corner_radius_bottom_right = corner_radius
+	style.border_width_top = border_width
+	style.border_width_bottom = border_width
+	style.border_width_left = border_width
+	style.border_width_right = border_width
 	style.border_color = glow_color
 	style.shadow_color = glow_color
-	style.shadow_size = 20
+	style.shadow_size = int(dice_size * 0.11)
 	panel.add_theme_stylebox_override("panel", style)
 	dice.add_child(panel)
 	
 	# Label
 	var label = Label.new()
 	label.text = "?"
-	label.custom_minimum_size = Vector2(180, 180)
+	label.custom_minimum_size = Vector2(dice_size, dice_size)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", 120)
+	label.add_theme_font_size_override("font_size", int(dice_size * 0.67))
 	label.add_theme_color_override("font_color", Color.BLACK)
 	dice.add_child(label)
 	
@@ -173,6 +195,7 @@ func create_3d_dice(pos: Vector2, glow_color: Color) -> Control:
 	dice.set_meta("shadow", shadow)
 	dice.set_meta("glow_color", glow_color)
 	dice.set_meta("original_pos", pos)
+	dice.set_meta("dice_size", dice_size)
 	
 	return dice
 
@@ -189,13 +212,6 @@ func _on_roll_pressed():
 	enemy_results[0] = (randi() % 6) + 1
 	enemy_results[1] = (randi() % 6) + 1
 	
-	print("████ DICE RESULTS ████")
-	print("Player Dice 1: ", player_results[0], " (index:", player_results[0] - 1, " showing: '", dice_faces[player_results[0] - 1], "')")
-	print("Player Dice 2: ", player_results[1], " (index:", player_results[1] - 1, " showing: '", dice_faces[player_results[1] - 1], "')")
-	print("Enemy Dice 1: ", enemy_results[0], " (index:", enemy_results[0] - 1, " showing: '", dice_faces[enemy_results[0] - 1], "')")
-	print("Enemy Dice 2: ", enemy_results[1], " (index:", enemy_results[1] - 1, " showing: '", dice_faces[enemy_results[1] - 1], "')")
-	print("Dice faces array: ", dice_faces)
-	print("████████████████████████")
 	
 	# Animar dados con delays
 	animate_dice_3d(player_dice[0], player_results[0], 0.0)
@@ -214,6 +230,7 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 	var panel = dice.get_meta("panel")
 	var glow_color = dice.get_meta("glow_color")
 	var original_pos = dice.get_meta("original_pos")
+	var dice_size = dice.get_meta("dice_size")
 	
 	if delay > 0:
 		await get_tree().create_timer(delay).timeout
@@ -222,8 +239,8 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 		return
 	
 	# FASE 1: LANZAMIENTO EXPLOSIVO
-	var launch_height = 500
-	var horizontal_throw = (randf() - 0.5) * 150
+	var launch_height = dice_size * 2.5
+	var horizontal_throw = (randf() - 0.5) * dice_size * 0.8
 	
 	var launch = create_tween()
 	launch.set_parallel(true)
@@ -297,7 +314,6 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 	var correct_face = dice_faces[final_result - 1]
 	label.text = correct_face
 	
-	print("████ FINAL DICE: ", final_result, " showing: ", correct_face, " ████")
 	
 	# Bounce épico
 	dice.scale = Vector2(1.8, 1.8)
@@ -312,15 +328,19 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 	var style = panel.get_theme_stylebox("panel")
 	if style == null:
 		return
+	
+	var border_width = int(dice_size * 0.08)
+	var shadow_large = int(dice_size * 0.22)
+	var shadow_small = int(dice_size * 0.14)
 		
 	style = style.duplicate()
-	style.border_width_top = 15
-	style.border_width_bottom = 15
-	style.border_width_left = 15
-	style.border_width_right = 15
+	style.border_width_top = border_width
+	style.border_width_bottom = border_width
+	style.border_width_left = border_width
+	style.border_width_right = border_width
 	style.border_color = Color.YELLOW
 	style.shadow_color = Color.YELLOW
-	style.shadow_size = 40
+	style.shadow_size = shadow_large
 	panel.add_theme_stylebox_override("panel", style)
 	
 	# Pulsar 3 veces
@@ -329,7 +349,7 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 		if not is_instance_valid(panel):
 			return
 		var pulse = style.duplicate()
-		pulse.shadow_size = 40 if i % 2 == 0 else 25
+		pulse.shadow_size = shadow_large if i % 2 == 0 else shadow_small
 		panel.add_theme_stylebox_override("panel", pulse)
 	
 	await get_tree().create_timer(0.3).timeout
@@ -338,28 +358,24 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 		return
 	
 	# Volver al color original
+	var border_normal = int(dice_size * 0.04)
+	var shadow_normal = int(dice_size * 0.14)
 	style = style.duplicate()
-	style.border_width_top = 8
-	style.border_width_bottom = 8
-	style.border_width_left = 8
-	style.border_width_right = 8
+	style.border_width_top = border_normal
+	style.border_width_bottom = border_normal
+	style.border_width_left = border_normal
+	style.border_width_right = border_normal
 	style.border_color = glow_color
 	style.shadow_color = glow_color
-	style.shadow_size = 25
+	style.shadow_size = shadow_normal
 	panel.add_theme_stylebox_override("panel", style)
 
 func show_results():
-	print("████ SHOW_RESULTS CALLED ████")
-	print("player_results array: ", player_results)
-	print("enemy_results array: ", enemy_results)
 	
 	var player_total = player_results[0] + player_results[1]
 	var enemy_total = enemy_results[0] + enemy_results[1]
 	var winner = "player" if player_total >= enemy_total else "enemy"
 	
-	print("Player total: ", player_total, " (", player_results[0], " + ", player_results[1], ")")
-	print("Enemy total: ", enemy_total, " (", enemy_results[0], " + ", enemy_results[1], ")")
-	print("████████████████████████")
 	
 	subtitle_label.text = "Initiative determined!"
 	
@@ -408,7 +424,6 @@ func _on_continue_pressed():
 		"winner": "player" if player_total >= enemy_total else "enemy"
 	}
 	
-	print("Initiative complete: ", data)
 	
 	# Fade out
 	for dice in player_dice + enemy_dice:

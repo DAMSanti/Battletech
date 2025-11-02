@@ -65,46 +65,62 @@ var can_punch_left: bool = true
 var can_punch_right: bool = true
 var can_kick: bool = true
 
+# Sprite del mech
+var sprite: Sprite2D
+
 func _ready():
 	_setup_default_weapons()
-	queue_redraw()  # Forzar dibujado inicial
+	_setup_sprite()
+
+func _setup_sprite():
+	# Crear sprite para el mech
+	sprite = Sprite2D.new()
+	
+	# Cargar sprite según si es jugador o enemigo
+	if pilot_name == "Player":
+		sprite.texture = load("res://assets/sprites/mech_player.svg")
+	else:
+		sprite.texture = load("res://assets/sprites/mech_enemy.svg")
+	
+	# Escalar el sprite
+	sprite.scale = Vector2(1.2, 1.2)
+	add_child(sprite)
+	
+	# Configurar z-index para que aparezca sobre el terreno
+	sprite.z_index = 1
 
 func _draw():
-	# Dibujar círculo para el mech
-	var radius = 30
-	# Verde para jugador, Rojo para enemigo
-	var color = Color.GREEN if pilot_name == "Player" else Color.RED
-	if is_destroyed:
-		color = Color.DARK_GRAY
-	
-	# Círculo principal
-	draw_circle(Vector2.ZERO, radius, color)
-	
-	# Borde
-	draw_arc(Vector2.ZERO, radius, 0, TAU, 32, Color.WHITE, 3.0)
-	
-	# Indicador de dirección (facing)
-	var facing_angle = deg_to_rad(facing * 60)  # 0-5 direcciones hexagonales
-	var facing_point = Vector2(cos(facing_angle), sin(facing_angle)) * radius * 0.7
-	draw_line(Vector2.ZERO, facing_point, Color.YELLOW, 4.0)
+	# Dibujar indicador de dirección (facing)
+	var radius = 40
+	var facing_angle = deg_to_rad(facing * 60 - 90)  # -90 para que apunte hacia arriba
+	var facing_point = Vector2(cos(facing_angle), sin(facing_angle)) * radius * 0.5
+	draw_line(Vector2.ZERO, facing_point, Color.YELLOW, 3.0)
+	draw_circle(facing_point, 4, Color.YELLOW)
 	
 	# Nombre del mech
 	var font = ThemeDB.fallback_font
-	var text_pos = Vector2(-20, -radius - 10)
-	draw_string(font, text_pos, mech_name, HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color.WHITE)
+	var text_pos = Vector2(-30, -radius - 5)
+	draw_string(font, text_pos, mech_name, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, Color.WHITE)
 	
 	# Barra de calor si hay calor
 	if heat > 0:
 		var heat_percent = float(heat) / float(heat_capacity)
-		var bar_width = radius * 2
-		var bar_height = 5
-		var bar_pos = Vector2(-radius, radius + 5)
+		var bar_width = radius * 1.5
+		var bar_height = 6
+		var bar_pos = Vector2(-bar_width / 2, radius + 10)
 		
 		# Fondo de la barra
 		draw_rect(Rect2(bar_pos, Vector2(bar_width, bar_height)), Color(0.2, 0.2, 0.2))
 		# Barra de calor
 		var heat_color = Color.ORANGE if heat_percent < 0.7 else Color.RED
 		draw_rect(Rect2(bar_pos, Vector2(bar_width * heat_percent, bar_height)), heat_color)
+	
+	# Indicador si está destruido
+	if is_destroyed:
+		draw_circle(Vector2.ZERO, 50, Color(0.2, 0.2, 0.2, 0.7))
+		var destroyed_text = "DESTROYED"
+		var destroyed_pos = Vector2(-40, 5)
+		draw_string(font, destroyed_pos, destroyed_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 18, Color.RED)
 
 func update_visual_position(hex_grid):
 	# Actualizar posición en pantalla basado en hex_position
@@ -117,10 +133,9 @@ func update_visual_position(hex_grid):
 ## SISTEMA DE MOVIMIENTO ##
 
 func get_available_movement(movement_type: MovementType) -> int:
-	# Retorna los MP disponibles según el tipo de movimiento
+	# Retorna los MP disponibles según el tipo de movimiento (BT TW)
 	if is_prone:
 		return 1  # Mechs caídos solo pueden arrastrarse
-	
 	var base_mp = 0
 	match movement_type:
 		MovementType.WALK:
@@ -131,8 +146,7 @@ func get_available_movement(movement_type: MovementType) -> int:
 			base_mp = jump_mp
 		_:
 			return 0
-	
-	# Aplicar penalización por calor
+	# Penalización por calor
 	var heat_penalty = get_heat_movement_penalty()
 	return max(1, base_mp - heat_penalty)  # Mínimo 1 MP
 
@@ -155,7 +169,12 @@ func _calculate_target_movement_modifier():
 	# Calcula el modificador de defensa basado en el movimiento realizado
 	# Según Battletech: modificador = hexes_moved / 2 (redondeado arriba)
 	var base_modifier = int(ceil(float(hexes_moved_this_turn) / 2.0))
-	
+
+	# Si el mech está en shutdown, es más fácil de impactar (-4 al TN)
+	if is_shutdown:
+		target_movement_modifier = -4
+		return
+
 	match movement_type_used:
 		MovementType.WALK:
 			# Caminar: modificador normal
@@ -188,9 +207,13 @@ func can_change_facing(direction: int) -> bool:
 	# Verifica si puede girar en una dirección (cuesta 1 MP por hex)
 	return current_movement >= 1
 
-func change_facing(new_facing: int):
-	# Cambia la dirección del mech (cuesta 1 MP)
-	if can_change_facing(new_facing):
+func change_facing(new_facing: int, is_jump: bool=false):
+	# Cambia la dirección del mech
+	# Caminar/correr: cada giro cuesta 1 MP
+	# Saltar: giros gratis
+	if is_jump:
+		facing = new_facing % 6
+	elif can_change_facing(new_facing):
 		facing = new_facing % 6
 		current_movement -= 1
 
@@ -203,7 +226,14 @@ func reset_movement():
 
 func finalize_movement():
 	# Aplica efectos del movimiento (calor) al finalizar
-	var movement_heat = HeatSystem.calculate_movement_heat(movement_type_used, hexes_moved_this_turn)
+	var movement_heat = 0
+	match movement_type_used:
+		MovementType.WALK:
+			movement_heat = 1
+		MovementType.RUN:
+			movement_heat = 2
+		MovementType.JUMP:
+			movement_heat = hexes_moved_this_turn  # 1 por hex saltado
 	if movement_heat > 0:
 		add_heat(movement_heat)
 	return movement_heat
@@ -649,3 +679,22 @@ func stand_up():
 		is_prone = false
 		# Levantarse cuesta todo el movimiento del turno
 		current_movement = 0
+
+func get_armor_data_for_ui() -> Dictionary:
+	# Retorna un diccionario con toda la información de armadura y estructura
+	# formateada para el panel de UI
+	var result = {}
+	
+	# Copiar datos de armadura
+	for location in armor.keys():
+		result[location] = {
+			"current": armor[location]["current"],
+			"max": armor[location]["max"]
+		}
+	
+	# Agregar datos de estructura
+	for location in structure.keys():
+		result[location + "_structure"] = structure[location]["current"]
+		result[location + "_structure_max"] = structure[location]["max"]
+	
+	return result

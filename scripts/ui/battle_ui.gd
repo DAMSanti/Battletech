@@ -1,10 +1,14 @@
+
 extends CanvasLayer
+var scale_factor := 1.0
+var margin := 10.0
 
 @onready var battle_scene = get_parent()
 
 var turn_label: Label
 var phase_label: Label
 var unit_info_label: Label
+var armor_panel: Control = null
 var end_turn_button: Button
 var help_label: Label
 var combat_log: RichTextLabel
@@ -42,119 +46,146 @@ func _ready():
 			turn_manager.unit_activated.connect(_on_unit_activated)
 
 func _setup_ui():
-	# Panel de información superior
+	# Obtener tamaño de la pantalla
+	var viewport_size = get_viewport().get_visible_rect().size
+	var screen_width = viewport_size.x
+	var screen_height = viewport_size.y
+	
+	
+	# Escalar todo basado en el ancho de pantalla
+	scale_factor = screen_width / 720.0  # Resolución base 720px de ancho
+	margin = 10 * scale_factor
+	
+	# Panel de información superior (20% del ancho de pantalla)
 	var info_panel = Panel.new()
-	info_panel.position = Vector2(10, 10)
-	info_panel.size = Vector2(400, 200)
+	info_panel.position = Vector2(margin, margin)
+	info_panel.size = Vector2(screen_width * 0.95, screen_height * 0.18)
 	add_child(info_panel)
 	
 	var vbox = VBoxContainer.new()
-	vbox.position = Vector2(15, 15)
-	vbox.size = Vector2(370, 170)
+	vbox.position = Vector2(margin, margin)
+	vbox.size = Vector2(info_panel.size.x - margin * 2, info_panel.size.y - margin * 2)
 	info_panel.add_child(vbox)
 	
 	turn_label = Label.new()
 	turn_label.text = "Turn: 1"
-	turn_label.add_theme_font_size_override("font_size", 20)
+	turn_label.add_theme_font_size_override("font_size", int(24 * scale_factor))
 	vbox.add_child(turn_label)
 	
 	phase_label = Label.new()
 	phase_label.text = "Phase: Movement"
-	phase_label.add_theme_font_size_override("font_size", 18)
+	phase_label.add_theme_font_size_override("font_size", int(20 * scale_factor))
 	phase_label.add_theme_color_override("font_color", Color.CYAN)
 	vbox.add_child(phase_label)
 	
 	unit_info_label = Label.new()
 	unit_info_label.text = "No unit selected"
-	unit_info_label.add_theme_font_size_override("font_size", 14)
+	unit_info_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
 	vbox.add_child(unit_info_label)
+
+	# Panel gráfico de armadura alineado a la derecha dentro del vbox (CustomArmorPanel)
+	var CustomArmorPanel = load("res://scripts/ui/custom_armor_panel.gd")
+	armor_panel = CustomArmorPanel.new()
+	armor_panel.custom_minimum_size = Vector2(180 * scale_factor, vbox.size.y)
+	armor_panel.size_flags_horizontal = Control.SIZE_SHRINK_END
+	armor_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vbox.add_child(armor_panel)
 	
 	# Label de ayuda
 	help_label = Label.new()
 	help_label.text = ""
-	help_label.add_theme_font_size_override("font_size", 16)
+	help_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
 	help_label.add_theme_color_override("font_color", Color.YELLOW)
 	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	help_label.custom_minimum_size = Vector2(370, 40)
+	help_label.custom_minimum_size = Vector2(vbox.size.x, 40 * scale_factor)
 	vbox.add_child(help_label)
 	
 	# Botón de fin de turno
 	end_turn_button = Button.new()
 	end_turn_button.text = "End Activation"
-	end_turn_button.position = Vector2(10, 220)
-	end_turn_button.size = Vector2(200, 50)
-	end_turn_button.add_theme_font_size_override("font_size", 18)
+	end_turn_button.position = Vector2(margin, info_panel.position.y + info_panel.size.y + margin)
+	end_turn_button.size = Vector2(screen_width * 0.95, 70 * scale_factor)
+	end_turn_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
 	add_child(end_turn_button)
 	
-	# Log de combate
+	# Log de combate (en la parte inferior, 23% de la altura)
+	var log_height = screen_height * 0.23
 	var log_panel = Panel.new()
-	log_panel.position = Vector2(10, 1600)
-	log_panel.size = Vector2(1060, 300)
+	log_panel.position = Vector2(margin, screen_height - log_height - margin)
+	log_panel.size = Vector2(screen_width * 0.95, log_height)
 	add_child(log_panel)
 	
 	var log_title = Label.new()
 	log_title.text = "Combat Log:"
-	log_title.position = Vector2(15, 10)
-	log_title.add_theme_font_size_override("font_size", 16)
+	log_title.position = Vector2(margin, margin)
+	log_title.add_theme_font_size_override("font_size", int(18 * scale_factor))
 	log_panel.add_child(log_title)
 	
 	combat_log = RichTextLabel.new()
-	combat_log.position = Vector2(15, 40)
-	combat_log.size = Vector2(1030, 250)
+	combat_log.position = Vector2(margin, 35 * scale_factor)
+	combat_log.size = Vector2(log_panel.size.x - margin * 2, log_panel.size.y - 40 * scale_factor)
 	combat_log.bbcode_enabled = true
 	combat_log.scroll_following = true
+	combat_log.add_theme_font_size_override("normal_font_size", int(14 * scale_factor))
 	log_panel.add_child(combat_log)
 	
-	# Panel selector de tipo de movimiento (inicialmente oculto)
+	# Panel selector de tipo de movimiento (centrado, 50% del ancho)
+	var movement_panel_width = screen_width * 0.85
+	var movement_panel_height = screen_height * 0.35
 	movement_selector_panel = Panel.new()
-	movement_selector_panel.position = Vector2(400, 800)
-	movement_selector_panel.size = Vector2(280, 240)
+	movement_selector_panel.position = Vector2((screen_width - movement_panel_width) / 2, (screen_height - movement_panel_height) / 2)
+	movement_selector_panel.size = Vector2(movement_panel_width, movement_panel_height)
 	movement_selector_panel.visible = false
 	add_child(movement_selector_panel)
 	
 	var selector_title = Label.new()
 	selector_title.text = "SELECT MOVEMENT TYPE"
-	selector_title.position = Vector2(20, 10)
-	selector_title.add_theme_font_size_override("font_size", 18)
+	selector_title.position = Vector2(margin, margin)
+	selector_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
 	selector_title.add_theme_color_override("font_color", Color.GOLD)
 	movement_selector_panel.add_child(selector_title)
 	
+	var button_height = (movement_panel_height - 80 * scale_factor) / 3
+	var button_width = movement_panel_width - margin * 2
+	
 	walk_button = Button.new()
 	walk_button.text = "WALK"
-	walk_button.position = Vector2(20, 50)
-	walk_button.size = Vector2(240, 50)
-	walk_button.add_theme_font_size_override("font_size", 20)
+	walk_button.position = Vector2(margin, 50 * scale_factor)
+	walk_button.size = Vector2(button_width, button_height)
+	walk_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	walk_button.pressed.connect(_on_walk_pressed)
 	movement_selector_panel.add_child(walk_button)
 	
 	run_button = Button.new()
 	run_button.text = "RUN"
-	run_button.position = Vector2(20, 110)
-	run_button.size = Vector2(240, 50)
-	run_button.add_theme_font_size_override("font_size", 20)
+	run_button.position = Vector2(margin, 50 * scale_factor + button_height + 5)
+	run_button.size = Vector2(button_width, button_height)
+	run_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	run_button.pressed.connect(_on_run_pressed)
 	movement_selector_panel.add_child(run_button)
 	
 	jump_button = Button.new()
 	jump_button.text = "JUMP"
-	jump_button.position = Vector2(20, 170)
-	jump_button.size = Vector2(240, 50)
-	jump_button.add_theme_font_size_override("font_size", 20)
+	jump_button.position = Vector2(margin, 50 * scale_factor + (button_height + 5) * 2)
+	jump_button.size = Vector2(button_width, button_height)
+	jump_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	jump_button.pressed.connect(_on_jump_pressed)
 	movement_selector_panel.add_child(jump_button)
 	
-	# Panel selector de armas (inicialmente oculto)
+	# Panel selector de armas (85% del ancho, 65% de la altura)
+	var weapon_panel_width = screen_width * 0.85
+	var weapon_panel_height = screen_height * 0.65
 	weapon_selector_panel = Panel.new()
-	weapon_selector_panel.position = Vector2(300, 400)
-	weapon_selector_panel.size = Vector2(480, 600)
+	weapon_selector_panel.position = Vector2((screen_width - weapon_panel_width) / 2, (screen_height - weapon_panel_height) / 2)
+	weapon_selector_panel.size = Vector2(weapon_panel_width, weapon_panel_height)
 	weapon_selector_panel.visible = false
 	add_child(weapon_selector_panel)
 	
 	var weapon_title = Label.new()
 	weapon_title.text = "SELECT WEAPONS TO FIRE"
-	weapon_title.position = Vector2(20, 10)
-	weapon_title.add_theme_font_size_override("font_size", 20)
+	weapon_title.position = Vector2(margin, margin)
+	weapon_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
 	weapon_title.add_theme_color_override("font_color", Color.GOLD)
 	weapon_selector_panel.add_child(weapon_title)
 	
@@ -163,77 +194,82 @@ func _setup_ui():
 	# Botón para confirmar disparo
 	fire_button = Button.new()
 	fire_button.text = "FIRE SELECTED WEAPONS"
-	fire_button.position = Vector2(20, 500)
-	fire_button.size = Vector2(440, 40)
-	fire_button.add_theme_font_size_override("font_size", 18)
+	fire_button.position = Vector2(margin, weapon_panel_height - 120 * scale_factor)
+	fire_button.size = Vector2(weapon_panel_width - margin * 2, 55 * scale_factor)
+	fire_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	fire_button.pressed.connect(_on_fire_weapons_pressed)
 	weapon_selector_panel.add_child(fire_button)
 	
 	# Botón para cancelar
 	cancel_weapon_button = Button.new()
 	cancel_weapon_button.text = "CANCEL"
-	cancel_weapon_button.position = Vector2(20, 550)
-	cancel_weapon_button.size = Vector2(440, 40)
-	cancel_weapon_button.add_theme_font_size_override("font_size", 18)
+	cancel_weapon_button.position = Vector2(margin, weapon_panel_height - 60 * scale_factor)
+	cancel_weapon_button.size = Vector2(weapon_panel_width - margin * 2, 55 * scale_factor)
+	cancel_weapon_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	cancel_weapon_button.pressed.connect(_on_cancel_weapons_pressed)
 	weapon_selector_panel.add_child(cancel_weapon_button)
 	
-	# Panel selector de ataque físico (inicialmente oculto)
+	# Panel selector de ataque físico (85% del ancho, 50% de la altura)
+	var physical_panel_width = screen_width * 0.85
+	var physical_panel_height = screen_height * 0.50
 	physical_attack_panel = Panel.new()
-	physical_attack_panel.position = Vector2(350, 500)
-	physical_attack_panel.size = Vector2(380, 400)
+	physical_attack_panel.position = Vector2((screen_width - physical_panel_width) / 2, (screen_height - physical_panel_height) / 2)
+	physical_attack_panel.size = Vector2(physical_panel_width, physical_panel_height)
 	physical_attack_panel.visible = false
 	add_child(physical_attack_panel)
 	
 	var physical_title = Label.new()
 	physical_title.text = "SELECT PHYSICAL ATTACK"
-	physical_title.position = Vector2(20, 10)
-	physical_title.add_theme_font_size_override("font_size", 20)
+	physical_title.position = Vector2(margin, margin)
+	physical_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
 	physical_title.add_theme_color_override("font_color", Color.MAGENTA)
 	physical_attack_panel.add_child(physical_title)
+	
+	var phys_button_height = (physical_panel_height - 80 * scale_factor) / 5
+	var phys_button_width = physical_panel_width - margin * 2
 	
 	# Botón puñetazo izquierdo
 	punch_left_button = Button.new()
 	punch_left_button.text = "PUNCH (Left Arm)"
-	punch_left_button.position = Vector2(20, 60)
-	punch_left_button.size = Vector2(340, 50)
-	punch_left_button.add_theme_font_size_override("font_size", 18)
+	punch_left_button.position = Vector2(margin, 50 * scale_factor)
+	punch_left_button.size = Vector2(phys_button_width, phys_button_height)
+	punch_left_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	punch_left_button.pressed.connect(_on_punch_left_pressed)
 	physical_attack_panel.add_child(punch_left_button)
 	
 	# Botón puñetazo derecho
 	punch_right_button = Button.new()
 	punch_right_button.text = "PUNCH (Right Arm)"
-	punch_right_button.position = Vector2(20, 120)
-	punch_right_button.size = Vector2(340, 50)
-	punch_right_button.add_theme_font_size_override("font_size", 18)
+	punch_right_button.position = Vector2(margin, 50 * scale_factor + phys_button_height + 5)
+	punch_right_button.size = Vector2(phys_button_width, phys_button_height)
+	punch_right_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	punch_right_button.pressed.connect(_on_punch_right_pressed)
 	physical_attack_panel.add_child(punch_right_button)
 	
 	# Botón patada
 	kick_button = Button.new()
 	kick_button.text = "KICK"
-	kick_button.position = Vector2(20, 180)
-	kick_button.size = Vector2(340, 50)
-	kick_button.add_theme_font_size_override("font_size", 18)
+	kick_button.position = Vector2(margin, 50 * scale_factor + (phys_button_height + 5) * 2)
+	kick_button.size = Vector2(phys_button_width, phys_button_height)
+	kick_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	kick_button.pressed.connect(_on_kick_pressed)
 	physical_attack_panel.add_child(kick_button)
 	
 	# Botón embestida
 	charge_button = Button.new()
 	charge_button.text = "CHARGE"
-	charge_button.position = Vector2(20, 240)
-	charge_button.size = Vector2(340, 50)
-	charge_button.add_theme_font_size_override("font_size", 18)
+	charge_button.position = Vector2(margin, 50 * scale_factor + (phys_button_height + 5) * 3)
+	charge_button.size = Vector2(phys_button_width, phys_button_height)
+	charge_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	charge_button.pressed.connect(_on_charge_pressed)
 	physical_attack_panel.add_child(charge_button)
 	
 	# Botón cancelar
 	cancel_physical_button = Button.new()
 	cancel_physical_button.text = "CANCEL"
-	cancel_physical_button.position = Vector2(20, 320)
-	cancel_physical_button.size = Vector2(340, 50)
-	cancel_physical_button.add_theme_font_size_override("font_size", 18)
+	cancel_physical_button.position = Vector2(margin, 50 * scale_factor + (phys_button_height + 5) * 4)
+	cancel_physical_button.size = Vector2(phys_button_width, phys_button_height)
+	cancel_physical_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	cancel_physical_button.pressed.connect(_on_cancel_physical_pressed)
 	physical_attack_panel.add_child(cancel_physical_button)
 
@@ -267,13 +303,43 @@ func update_turn_info(turn_number: int, team: String):
 
 func _on_unit_activated(unit):
 	if unit_info_label and unit:
-		var info = "%s - Heat: %d/%d - Armor: %d" % [
-			unit.name,
-			unit.heat,
-			unit.heat_capacity,
-			unit.armor
-		]
+		# Obtener nombre del mech correctamente
+		var name = ""
+		if "mech_name" in unit:
+			name = unit.mech_name
+		elif "pilot_name" in unit:
+			name = unit.pilot_name
+		else:
+			name = "Mech"
+
+		var mp = unit.current_movement if "current_movement" in unit else 0
+		var heat = unit.heat if "heat" in unit else 0
+		var heat_cap = unit.heat_capacity if "heat_capacity" in unit else 0
+
+		# Resumir armadura: suma de valores actuales y máximos
+		var armor_str = "?"
+		if "armor" in unit and typeof(unit.armor) == TYPE_DICTIONARY:
+			var armor_dict = unit.armor
+			var armor_current = 0
+			var armor_max = 0
+			for k in armor_dict.keys():
+				armor_current += armor_dict[k]["current"]
+				armor_max += armor_dict[k]["max"]
+			armor_str = "%d/%d" % [armor_current, armor_max]
+		else:
+			armor_str = str(unit.armor) if "armor" in unit else "?"
+
+		var info = "%s - MP: %s | Heat: %s/%s" % [name, mp, heat, heat_cap]
 		unit_info_label.text = info
+
+		# Mostrar valores individuales de armadura en el panel gráfico
+		if armor_panel:
+			if unit.has_method("get_armor_data_for_ui"):
+				armor_panel.set_armor(unit.get_armor_data_for_ui())
+			elif "armor" in unit and typeof(unit.armor) == TYPE_DICTIONARY:
+				armor_panel.set_armor(unit.armor)
+			else:
+				armor_panel.set_armor(null)
 
 func update_unit_info(unit):
 	# Alias para _on_unit_activated para compatibilidad
@@ -305,19 +371,12 @@ func update_end_turn_button(enabled: bool, text: String = "End Activation"):
 ## SELECTOR DE TIPO DE MOVIMIENTO ##
 
 func show_movement_type_selector(unit):
-	print("═══════════════════════════════════════════════════")
-	print("DEBUG: show_movement_type_selector CALLED")
-	print("  Unit: ", unit.mech_name)
-	print("  Called from:")
 	var stack = get_stack()
 	for i in range(min(5, stack.size())):  # Mostrar las primeras 5 líneas del stack
 		var frame = stack[i]
-		print("    [", i, "] ", frame.source, ":", frame.line, " in ", frame.function)
-	print("═══════════════════════════════════════════════════")
 	
 	# Muestra el selector con información del mech
 	if movement_selector_panel:
-		print("DEBUG: Setting panel visible to true")
 		# Actualizar textos de botones con MP disponibles
 		walk_button.text = "WALK (%d MP)\nNo penalty" % unit.walk_mp
 		run_button.text = "RUN (%d MP)\n+1 defense, +2 to fire" % unit.run_mp
@@ -330,9 +389,6 @@ func show_movement_type_selector(unit):
 			jump_button.disabled = true
 		
 		movement_selector_panel.visible = true
-		print("DEBUG: Panel visible = ", movement_selector_panel.visible)
-	else:
-		print("ERROR: movement_selector_panel is null!")
 
 func hide_movement_type_selector():
 	# Oculta el selector
@@ -471,36 +527,56 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 	weapon_selector_panel.set_meta("target", target)
 	weapon_selector_panel.set_meta("range", range_hexes)
 	
-	# Crear botones para cada arma
+	# Crear botones para cada arma, mostrando también el desglose de modificadores
 	var y_pos = 50
 	var weapon_index = 0
 	
 	for weapon in attacker.weapons:
 		var weapon_btn = CheckButton.new()
 		
-		# Información del arma
-		var weapon_info = "%s (Dmg:%d Heat:%d)" % [
+		# Calcular modificadores de impacto para esta arma
+		var WeaponAttackSystem = preload("res://scripts/core/combat/weapon_attack_system.gd")
+		var to_hit_data = WeaponAttackSystem.calculate_to_hit(attacker, target, weapon, range_hexes)
+		var target_number = to_hit_data["target_number"]
+		var modifiers = to_hit_data["modifiers"]
+		
+		# Construir texto de modificadores para el tooltip
+		var mod_text = ""
+		for mod_name in modifiers.keys():
+			var mod_val = modifiers[mod_name]
+			if mod_val != 0:
+				mod_text += "%s: %+d\n" % [str(mod_name).capitalize().replace("_", " "), mod_val]
+		
+		# Texto compacto para el botón
+		var weapon_info = "%s (Dmg:%d Heat:%d)  To-Hit: %d" % [
 			weapon.get("name", "Unknown"),
 			weapon.get("damage", 0),
-			weapon.get("heat", 0)
+			weapon.get("heat", 0),
+			target_number
 		]
 		
 		# Verificar si está en rango
 		var in_range = _is_weapon_in_range(weapon, range_hexes)
 		if not in_range:
-			weapon_info += " [OUT OF RANGE]"
+			weapon_info += "  [OUT OF RANGE]"
 			weapon_btn.disabled = true
 		
 		weapon_btn.text = weapon_info
 		weapon_btn.position = Vector2(20, y_pos)
-		weapon_btn.size = Vector2(440, 40)
+		weapon_btn.size = Vector2(480, 40)
+		weapon_btn.add_theme_font_size_override("font_size", 14)
 		weapon_btn.set_meta("weapon_index", weapon_index)
 		weapon_btn.toggled.connect(_on_weapon_toggled.bind(weapon_index))
 		
+		# Tooltip con el desglose de modificadores
+		var tooltip = "To-Hit: %d\n" % target_number
+		if mod_text != "":
+			tooltip += mod_text.strip_edges()
+		weapon_btn.tooltip_text = tooltip
+		
 		weapon_selector_panel.add_child(weapon_btn)
 		weapon_buttons.append(weapon_btn)
-		
-		y_pos += 50
+		y_pos += 45
 		weapon_index += 1
 	
 	# Mostrar panel

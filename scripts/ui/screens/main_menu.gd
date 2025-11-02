@@ -1,9 +1,6 @@
 extends Control
 
 func _ready():
-	print("████████████████████████████████████████")
-	print("███ MAIN MENU LOADED ███")
-	print("████████████████████████████████████████")
 	
 	# Configurar UI del menú
 	var vbox = VBoxContainer.new()
@@ -55,16 +52,13 @@ func _ready():
 	vbox.add_child(quit_btn)
 
 func _on_new_battle_pressed():
-	print("████████████████████████████████████████")
-	print("███ LOADING BATTLE SCENE (SIMPLE) ███")
-	print("████████████████████████████████████████")
 	get_tree().change_scene_to_file("res://scenes/battle_scene_simple.tscn")
 
 func _on_mechs_pressed():
-	print("Mech Bay - Coming soon")
+	pass  # Coming soon
 
 func _on_options_pressed():
-	print("Options - Coming soon")
+	pass  # Coming soon
 
 func _on_quit_pressed():
 	get_tree().quit()
