@@ -4,6 +4,7 @@ extends Node2D
 const WeaponAttackSystem = preload("res://scripts/core/combat/weapon_attack_system.gd")
 const HeatSystem = preload("res://scripts/core/combat/heat_system.gd")
 const PhysicalAttackSystem = preload("res://scripts/core/combat/physical_attack_system.gd")
+const ComponentDatabase = preload("res://scripts/core/component_database.gd")
 
 # Referencias (sin @onready porque necesitamos esperar)
 var hex_grid
@@ -23,6 +24,8 @@ var physical_target_hexes: Array = []  # Enemigos adyacentes para ataque físico
 
 # Sistema de movimiento
 var pending_movement_selection: bool = false  # Esperando que el jugador elija Walk/Run/Jump
+var ignore_next_click: bool = false  # Ignorar el próximo click (usado después de cerrar UI)
+var ui_interaction_cooldown: float = 0.0  # Tiempo de cooldown después de interacción con UI
 
 # USAR GameEnums en lugar de enum local
 var current_state: int = GameEnums.GameState.MOVING
@@ -43,8 +46,10 @@ var initial_zoom: Vector2 = Vector2.ONE
 
 # Sistema de tap largo para inspección
 var long_press_timer: float = 0.0
-var long_press_start_pos: Vector2
+var long_press_start_pos: Vector2  # Posición en pantalla
+var long_press_start_hex: Vector2i  # Hexágono donde empezó el long press
 var long_press_active: bool = false
+var long_press_indicator: Node2D = null  # Indicador visual del long press
 const LONG_PRESS_DURATION: float = 0.5  # Medio segundo para tap largo
 
 # Límites de zoom y movimiento
@@ -58,20 +63,46 @@ func update_overlays():
 		overlay_layer.queue_redraw()
 
 func _ready():
+	# Crear indicador de long press
+	_create_long_press_indicator()
+	
 	# Mostrar pantalla de iniciativa INMEDIATAMENTE
 	show_initiative_screen()
 
 func _process(delta):
+	# Decrementar cooldown de interacción con UI
+	if ui_interaction_cooldown > 0:
+		ui_interaction_cooldown -= delta
+	
 	# Procesar timer de tap largo
 	if long_press_active:
 		long_press_timer += delta
+		
+		# Actualizar indicador visual
+		if long_press_indicator:
+			long_press_indicator.visible = true
+			long_press_indicator.global_position = long_press_start_pos
+			long_press_indicator.queue_redraw()
+		
 		if long_press_timer >= LONG_PRESS_DURATION:
 			# Tap largo completado - inspeccionar mech
 			long_press_active = false
-			var world_pos = camera.get_global_mouse_position() if camera else get_global_mouse_position()
-			if hex_grid:
-				var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
-				_handle_mech_inspect(hex)
+			
+			# Feedback háptico en móvil
+			if OS.has_feature("mobile"):
+				Input.vibrate_handheld(50)  # 50ms de vibración
+			
+			# Ocultar indicador
+			if long_press_indicator:
+				long_press_indicator.visible = false
+			
+			# Inspeccionar el mech en el hexágono donde empezó el long press
+			print("[DEBUG] Long press completed at hex:", long_press_start_hex)
+			_handle_mech_inspect(long_press_start_hex)
+	else:
+		# Ocultar indicador si no está activo
+		if long_press_indicator:
+			long_press_indicator.visible = false
 
 func show_initiative_screen():
 	var initiative_screen = initiative_screen_scene.instantiate()
@@ -135,6 +166,10 @@ func _on_initiative_screen_complete(data: Dictionary):
 		turn_manager.start_battle(player_mechs, enemy_mechs)
 		
 		battle_started = true
+		
+		# Mostrar mensaje de ayuda para inspección de mechs
+		if ui and ui.has_method("add_combat_message"):
+			ui.add_combat_message("💡 TIP: Long press on a mech to inspect its armor and status", Color(0.7, 0.9, 1.0))
 	else:
 		# Turno posterior: usar los datos de iniciativa con el turn_manager
 		if turn_manager:
@@ -147,24 +182,34 @@ func clear_initiative_data():
 	initiative_data_stored = {}
 
 func _setup_battle():
-	# Obtener mechs configurados del MechBayManager
+	# Primero verificar si hay un loadout seleccionado desde el Mech Bay
+	var loadout_manager = get_node_or_null("/root/SelectedLoadoutManager")
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
+	var player_mech_data: Dictionary = {}
 	
-	if mech_bay_manager:
-		# Mostrar índice y nombre del mech seleccionado
-		print("[DEBUG] selected_mech_index:", mech_bay_manager.selected_mech_index)
-		var player_mech_data = mech_bay_manager.get_first_player_mech()
-		print("[DEBUG] get_first_player_mech() returned: ", player_mech_data.get("name", "Unknown"))
-		if player_mech_data.has("weapons"):
-			print("[DEBUG] Weapons count: ", player_mech_data["weapons"].size())
-			for i in range(player_mech_data["weapons"].size()):
-				var weapon = player_mech_data["weapons"][i]
-				print("[DEBUG]   Weapon %d: %s" % [i, weapon.get("name", "Unknown")])
+	if loadout_manager and loadout_manager.has_loadout():
+		print("[BATTLE] Using selected loadout from Mech Bay")
+		var loadout = loadout_manager.get_selected_loadout()
+		player_mech_data = _convert_loadout_to_mech_data(loadout)
 		_create_player_mech_from_data(player_mech_data, Vector2i(2, 8))
 	else:
-		# Fallback si no existe el manager
-		print("[WARNING] MechBayManager not found, using default Atlas")
-		_create_player_mech("Atlas", Vector2i(2, 8), 100, 3, 5, 0)
+		# Fallback: usar MechBayManager si no hay loadout seleccionado
+		
+		if mech_bay_manager:
+			# Mostrar índice y nombre del mech seleccionado
+			print("[DEBUG] selected_mech_index:", mech_bay_manager.selected_mech_index)
+			player_mech_data = mech_bay_manager.get_first_player_mech()
+			print("[DEBUG] get_first_player_mech() returned: ", player_mech_data.get("name", "Unknown"))
+			if player_mech_data.has("weapons"):
+				print("[DEBUG] Weapons count: ", player_mech_data["weapons"].size())
+				for i in range(player_mech_data["weapons"].size()):
+					var weapon = player_mech_data["weapons"][i]
+					print("[DEBUG]   Weapon %d: %s" % [i, weapon.get("name", "Unknown")])
+			_create_player_mech_from_data(player_mech_data, Vector2i(2, 8))
+		else:
+			# Fallback si no existe el manager
+			print("[WARNING] MechBayManager not found, using default Atlas")
+			_create_player_mech("Atlas", Vector2i(2, 8), 100, 3, 5, 0)
 	
 	# Equipo enemigo - usar datos del manager también
 	if mech_bay_manager:
@@ -211,6 +256,10 @@ func _create_player_mech_from_data(mech_data: Dictionary, position: Vector2i) ->
 	if mech_data.has("heat_capacity"):
 		mech.heat_capacity = mech_data["heat_capacity"]
 	
+	# Copiar heat dissipation
+	if mech_data.has("heat_dissipation"):
+		mech.heat_dissipation = mech_data["heat_dissipation"]
+	
 	# Copiar gunnery skill (se mapea a pilot_skill en Mech)
 	if mech_data.has("gunnery_skill"):
 		mech.pilot_skill = mech_data["gunnery_skill"]
@@ -248,6 +297,10 @@ func _create_enemy_mech_from_data(mech_data: Dictionary, position: Vector2i) -> 
 	if mech_data.has("heat_capacity"):
 		mech.heat_capacity = mech_data["heat_capacity"]
 	
+	# Copiar heat dissipation
+	if mech_data.has("heat_dissipation"):
+		mech.heat_dissipation = mech_data["heat_dissipation"]
+	
 	# Copiar gunnery skill (se mapea a pilot_skill en Mech)
 	if mech_data.has("gunnery_skill"):
 		mech.pilot_skill = mech_data["gunnery_skill"]
@@ -260,6 +313,124 @@ func _create_enemy_mech_from_data(mech_data: Dictionary, position: Vector2i) -> 
 	
 	print("[BATTLE] Created enemy mech: ", mech.mech_name, " (", mech.tonnage, " tons)")
 	return mech
+
+## Convierte un loadout del Mech Bay al formato de mech_data para batalla
+func _convert_loadout_to_mech_data(loadout: Dictionary) -> Dictionary:
+	var mech_data = {}
+	
+	# Datos básicos del mech
+	mech_data["name"] = loadout.get("mech_name", "Custom Mech")
+	mech_data["tonnage"] = loadout.get("mech_tonnage", 50)
+	var engine_rating = loadout.get("engine_rating", 200)
+	
+	# Calcular movimiento basado en engine rating y tonnage
+	# Walk MP = engine_rating / tonnage (redondeado hacia abajo)
+	var walk_mp = int(engine_rating / mech_data["tonnage"])
+	mech_data["walk_mp"] = walk_mp
+	mech_data["run_mp"] = int(walk_mp * 1.5)  # Run es 1.5x walk
+	
+	# Contar jump jets en el loadout
+	var jump_jet_count = 0
+	var loadout_components = loadout.get("loadout", {})
+	for location in loadout_components.keys():
+		for component in loadout_components[location]:
+			if component.get("id", "") == "jump_jet":
+				jump_jet_count += 1
+	mech_data["jump_mp"] = jump_jet_count
+	
+	# Extraer armas del loadout
+	var weapons = []
+	for location in loadout_components.keys():
+		for component in loadout_components[location]:
+			var comp_type = component.get("type", -1)
+			# Solo añadir armas (no equipamiento)
+			if comp_type in [
+				ComponentDatabase.ComponentType.WEAPON_ENERGY,
+				ComponentDatabase.ComponentType.WEAPON_BALLISTIC,
+				ComponentDatabase.ComponentType.WEAPON_MISSILE
+			]:
+				# Crear copia del arma con datos completos
+				var weapon = component.duplicate(true)
+				# Convertir location enum a string para compatibilidad con battle system
+				weapon["location"] = _convert_location_to_string(location)
+				weapons.append(weapon)
+	
+	mech_data["weapons"] = weapons
+	print("[BATTLE] Converted loadout with %d weapons" % weapons.size())
+	
+	# Calcular heat capacity basado en heat sinks
+	var heat_sink_count = 10  # Engine incluye 10 por defecto
+	for location in loadout_components.keys():
+		for component in loadout_components[location]:
+			if component.get("type", -1) == ComponentDatabase.ComponentType.EQUIPMENT_HEATSINK:
+				heat_sink_count += component.get("heat_dissipation", 1)
+	
+	# Heat capacity = 30 + (heat sinks adicionales * 1)
+	# Por defecto el mech tiene capacidad 30, cada heat sink adicional suma 1
+	mech_data["heat_capacity"] = 30 + (heat_sink_count - 10)
+	
+	# Heat dissipation = número total de heat sinks
+	# Cada heat sink disipa 1 punto de calor por turno
+	mech_data["heat_dissipation"] = heat_sink_count
+	
+	print("[BATTLE] Loadout heat sinks: %d (Dissipation: %d/turn, Capacity: %d)" % [
+		heat_sink_count,
+		heat_sink_count,
+		mech_data["heat_capacity"]
+	])
+	
+	# Gunnery skill por defecto
+	mech_data["gunnery_skill"] = 4
+	
+	# TODO: Armadura - por ahora usar valores por defecto basados en tonnage
+	# En el futuro, el loadout debería incluir configuración de armadura
+	mech_data["armor"] = _generate_default_armor(mech_data["tonnage"])
+	
+	return mech_data
+
+## Genera valores de armadura por defecto basados en tonnage
+func _generate_default_armor(tonnage: int) -> Dictionary:
+	# Armadura aproximada: usar ~80% de la capacidad máxima
+	var armor_points = int(tonnage * 3.2)  # Aproximadamente 3.2 puntos por tonelada
+	
+	# Distribución por localización (porcentajes aproximados)
+	return {
+		"head": {"current": max(9, int(armor_points * 0.04)), "max": max(9, int(armor_points * 0.04))},
+		"center_torso": {"current": int(armor_points * 0.20), "max": int(armor_points * 0.20)},
+		"left_torso": {"current": int(armor_points * 0.15), "max": int(armor_points * 0.15)},
+		"right_torso": {"current": int(armor_points * 0.15), "max": int(armor_points * 0.15)},
+		"left_arm": {"current": int(armor_points * 0.12), "max": int(armor_points * 0.12)},
+		"right_arm": {"current": int(armor_points * 0.12), "max": int(armor_points * 0.12)},
+		"left_leg": {"current": int(armor_points * 0.11), "max": int(armor_points * 0.11)},
+		"right_leg": {"current": int(armor_points * 0.11), "max": int(armor_points * 0.11)}
+	}
+
+## Convierte location enum (del loadout) a string (para battle system)
+func _convert_location_to_string(location) -> String:
+	# Si ya es un string, devolverlo tal cual
+	if typeof(location) == TYPE_STRING:
+		return location
+	
+	# Si es un int (enum), convertirlo
+	match location:
+		0:  # HEAD
+			return "head"
+		1:  # CENTER_TORSO
+			return "center_torso"
+		2:  # LEFT_TORSO
+			return "left_torso"
+		3:  # RIGHT_TORSO
+			return "right_torso"
+		4:  # LEFT_ARM
+			return "left_arm"
+		5:  # RIGHT_ARM
+			return "right_arm"
+		6:  # LEFT_LEG
+			return "left_leg"
+		7:  # RIGHT_LEG
+			return "right_leg"
+		_:
+			return "center_torso"
 
 ## Crea un mech para el equipo del jugador (legacy - para compatibilidad)
 func _create_player_mech(name: String, position: Vector2i, tonnage: int, walk: int, run: int, jump: int) -> Mech:
@@ -307,6 +478,10 @@ func _input(event):
 			long_press_active = true
 			long_press_timer = 0.0
 			long_press_start_pos = event.position
+			
+			# Calcular el hexágono donde empezó el long press
+			var world_pos = camera.get_global_mouse_position()
+			long_press_start_hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 	
 	# Cancelar tap largo si se mueve mucho o se suelta antes de tiempo
 	if event is InputEventScreenDrag or event is InputEventMouseMotion:
@@ -333,11 +508,29 @@ func _input(event):
 	# Click/toque en hexágono
 	if event is InputEventScreenTouch and not event.pressed:  # Solo en release
 		if touch_points.size() == 0 and not long_press_active:  # Asegurar que no fue un gesto o tap largo
+			# Verificar cooldown de interacción con UI
+			if ui_interaction_cooldown > 0:
+				return
+			
+			# Verificar si debemos ignorar este click
+			if ignore_next_click:
+				ignore_next_click = false
+				return
+			
 			var world_pos = camera.get_global_mouse_position()
 			var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 			_handle_hex_clicked(hex)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if not long_press_active:  # Solo si no está en proceso de tap largo
+			# Verificar cooldown de interacción con UI (solo en móvil, no en PC)
+			if OS.has_feature("mobile") and ui_interaction_cooldown > 0:
+				return
+			
+			# Verificar si debemos ignorar este click
+			if ignore_next_click:
+				ignore_next_click = false
+				return
+			
 			var world_pos = camera.get_global_mouse_position()
 			var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 			_handle_hex_clicked(hex)
@@ -452,6 +645,10 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 		return
 	
 	pending_movement_selection = false
+	
+	# Activar cooldown para evitar que el release del botón se interprete como click en mapa
+	ui_interaction_cooldown = 0.2  # 200ms de cooldown
+	
 	selected_unit.start_movement(movement_type)
 	
 	
@@ -1208,15 +1405,31 @@ func _process_mech_heat(mech):
 	if initial_heat >= 19:
 		var ammo_check = HeatSystem.check_ammo_explosion(initial_heat)
 		if ammo_check["explodes"]:
-			# Explosión de munición - daño masivo al torso central
+			# Explosión de munición - verificar si hay CASE para mitigar daño
 			if ui:
 				ui.add_combat_message("  ☠☠☠ AMMO EXPLOSION! (Rolled %d vs %d)" % [ammo_check["roll"], ammo_check["target"]], Color.RED)
-			var damage_result = mech.take_damage("center_torso", 20)
-			if damage_result.get("mech_destroyed", false):
-				mech.death_reason = "Ammo explosion"
+			
+			# Determinar localización de la explosión (normalmente torsos donde hay munición)
+			var explosion_location = _find_ammo_explosion_location(mech)
+			var has_case = ComponentDatabase.has_case_in_location(mech, explosion_location)
+			
+			if has_case:
+				# CASE ventila la explosión - daño reducido solo a esa localización
 				if ui:
-					ui.add_combat_message("    %s DESTROYED BY AMMO EXPLOSION!" % mech.mech_name.to_upper(), Color.DARK_RED)
-				_check_battle_end()
+					ui.add_combat_message("    ✓ CASE activated! Explosion vented safely.", Color.YELLOW)
+				var damage_result = mech.take_damage(explosion_location, 10)  # Daño reducido
+				# Destruir la munición en esa localización
+				_destroy_ammo_in_location(mech, explosion_location)
+			else:
+				# Sin CASE - explosión catastrófica al torso central
+				if ui:
+					ui.add_combat_message("    ⚠ NO CASE! Catastrophic explosion!", Color.ORANGE)
+				var damage_result = mech.take_damage("center_torso", 20)  # Daño completo
+				if damage_result.get("mech_destroyed", false):
+					mech.death_reason = "Ammo explosion"
+					if ui:
+						ui.add_combat_message("    %s DESTROYED BY AMMO EXPLOSION!" % mech.mech_name.to_upper(), Color.DARK_RED)
+					_check_battle_end()
 		elif ammo_check["target"] > 0:
 			if ui:
 				ui.add_combat_message("  ✓ Avoided ammo explosion (Rolled %d vs %d)" % [ammo_check["roll"], ammo_check["target"]], Color.YELLOW)
@@ -1247,6 +1460,10 @@ func get_turn_manager():
 func end_current_activation():
 	if turn_manager:
 		turn_manager.complete_unit_activation()
+
+func notify_ui_interaction():
+	"""Llamar esta función desde la UI cuando se hace click en un botón para evitar clics fantasma en el mapa"""
+	ui_interaction_cooldown = 0.2  # 200ms de cooldown
 
 func _check_battle_end():
 	# Verificar si todos los mechs de un bando están destruidos
@@ -1312,3 +1529,67 @@ func _handle_mech_inspect(hex: Vector2i):
 	var unit = hex_grid.get_unit(hex)
 	if unit and ui and ui.has_method("show_mech_inspector"):
 		ui.show_mech_inspector(unit)
+
+func _find_ammo_explosion_location(mech) -> String:
+	# Encuentra dónde está la munición explosiva (prioridad: torsos > brazos)
+	# Retorna la localización con munición, o "center_torso" por defecto
+	
+	var locations_priority = ["left_torso", "right_torso", "center_torso", "left_arm", "right_arm"]
+	
+	for location in locations_priority:
+		var ammo = ComponentDatabase.get_explosive_ammo_in_location(mech, location)
+		if ammo.size() > 0:
+			return location
+	
+	# Fallback si no se encuentra munición
+	return "center_torso"
+
+func _destroy_ammo_in_location(mech, location: String):
+	# Destruye toda la munición en una localización específica
+	if not "weapons" in mech:
+		return
+	
+	for weapon in mech.weapons:
+		if weapon.get("explosive", false):
+			var weapon_location = weapon.get("location", "")
+			if weapon_location == location:
+				weapon["destroyed"] = true
+				if ui:
+					ui.add_combat_message("      → %s destroyed" % weapon.get("name", "Ammo"), Color.GRAY)
+
+func _create_long_press_indicator():
+	# Crear un nodo 2D para el indicador visual del long press
+	long_press_indicator = Node2D.new()
+	long_press_indicator.name = "LongPressIndicator"
+	long_press_indicator.visible = false
+	long_press_indicator.z_index = 1000  # Muy arriba para que se vea sobre todo
+	long_press_indicator.draw.connect(_draw_long_press_indicator)
+	add_child(long_press_indicator)
+
+func _draw_long_press_indicator():
+	if not long_press_indicator or not long_press_active:
+		return
+	
+	# Calcular progreso (0.0 a 1.0)
+	var progress = min(long_press_timer / LONG_PRESS_DURATION, 1.0)
+	
+	# Radio del círculo
+	var radius = 30.0
+	
+	# Dibujar círculo de fondo (semi-transparente)
+	long_press_indicator.draw_circle(Vector2.ZERO, radius, Color(0.2, 0.2, 0.2, 0.5))
+	
+	# Dibujar borde del círculo
+	long_press_indicator.draw_arc(Vector2.ZERO, radius, 0, TAU, 32, Color.WHITE, 2.0)
+	
+	# Dibujar progreso (arco que se llena)
+	if progress > 0:
+		var end_angle = -PI/2 + (TAU * progress)  # Empezar arriba y girar en sentido horario
+		long_press_indicator.draw_arc(Vector2.ZERO, radius - 5, -PI/2, end_angle, 32, Color.CYAN, 6.0)
+	
+	# Dibujar icono de inspección en el centro (opcional)
+	if progress > 0.8:  # Mostrar el icono cuando está casi completo
+		var icon_text = "👁"  # Emoji de ojo
+		# Nota: Para un texto centrado necesitarías usar draw_string con una fuente
+		# Por simplicidad, solo dibujamos un punto central
+		long_press_indicator.draw_circle(Vector2.ZERO, 5.0, Color.CYAN)

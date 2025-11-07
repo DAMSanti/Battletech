@@ -261,6 +261,7 @@ func _setup_ui():
 	weapon_info_panel.position = Vector2(weapon_panel_width * 0.52, 50 * scale_factor)
 	weapon_info_panel.size = Vector2(info_panel_width, info_panel_height)
 	weapon_info_panel.visible = false
+	weapon_info_panel.z_index = 10  # Asegurar que aparezca encima de los botones
 	
 	# Crear StyleBox para fondo opaco
 	var style_box = StyleBoxFlat.new()
@@ -391,44 +392,47 @@ func update_turn_info(turn_number: int, team: String):
 
 func _on_unit_activated(unit):
 	if unit_info_label and unit:
-		# Obtener nombre del mech correctamente
-		var name = ""
-		if "mech_name" in unit:
-			name = unit.mech_name
-		elif "pilot_name" in unit:
-			name = unit.pilot_name
-		else:
-			name = "Mech"
+		# Verificar si es una unidad del jugador
+		var is_player_unit = false
+		if battle_scene and battle_scene.has_method("is_player_mech"):
+			is_player_unit = battle_scene.is_player_mech(unit)
+		elif battle_scene and "player_mechs" in battle_scene:
+			is_player_unit = unit in battle_scene.player_mechs
+		
+		# SOLO actualizar info superior si es unidad del jugador
+		if is_player_unit:
+			# Obtener nombre del mech correctamente
+			var name = ""
+			if "mech_name" in unit:
+				name = unit.mech_name
+			elif "pilot_name" in unit:
+				name = unit.pilot_name
+			else:
+				name = "Mech"
 
-		var mp = unit.current_movement if "current_movement" in unit else 0
-		var heat = unit.heat if "heat" in unit else 0
-		var heat_cap = unit.heat_capacity if "heat_capacity" in unit else 0
+			var mp = unit.current_movement if "current_movement" in unit else 0
+			var heat = unit.heat if "heat" in unit else 0
+			var heat_cap = unit.heat_capacity if "heat_capacity" in unit else 0
 
-		# Resumir armadura: suma de valores actuales y máximos
-		var armor_str = "?"
-		if "armor" in unit and typeof(unit.armor) == TYPE_DICTIONARY:
-			var armor_dict = unit.armor
-			var armor_current = 0
-			var armor_max = 0
-			for k in armor_dict.keys():
-				armor_current += armor_dict[k]["current"]
-				armor_max += armor_dict[k]["max"]
-			armor_str = "%d/%d" % [armor_current, armor_max]
-		else:
-			armor_str = str(unit.armor) if "armor" in unit else "?"
+			# Resumir armadura: suma de valores actuales y máximos
+			var armor_str = "?"
+			if "armor" in unit and typeof(unit.armor) == TYPE_DICTIONARY:
+				var armor_dict = unit.armor
+				var armor_current = 0
+				var armor_max = 0
+				for k in armor_dict.keys():
+					armor_current += armor_dict[k]["current"]
+					armor_max += armor_dict[k]["max"]
+				armor_str = "%d/%d" % [armor_current, armor_max]
+			else:
+				armor_str = str(unit.armor) if "armor" in unit else "?"
 
-		var info = "%s - MP: %s | Heat: %s/%s" % [name, mp, heat, heat_cap]
-		unit_info_label.text = info
+			var info = "%s - MP: %s | Heat: %s/%s" % [name, mp, heat, heat_cap]
+			unit_info_label.text = info
 
 		# Mostrar valores individuales de armadura en el panel gráfico
 		# SOLO para unidades del jugador, no mostrar armadura de enemigos
 		if armor_panel:
-			var is_player_unit = false
-			if battle_scene and battle_scene.has_method("is_player_mech"):
-				is_player_unit = battle_scene.is_player_mech(unit)
-			elif battle_scene and "player_mechs" in battle_scene:
-				is_player_unit = unit in battle_scene.player_mechs
-			
 			if is_player_unit:
 				if unit.has_method("get_armor_data_for_ui"):
 					armor_panel.set_armor(unit.get_armor_data_for_ui())
@@ -662,6 +666,10 @@ func hide_movement_type_selector():
 	# Oculta el selector
 	if movement_selector_panel:
 		movement_selector_panel.visible = false
+	
+	# Notificar al battle_scene para evitar clicks fantasma
+	if battle_scene and battle_scene.has_method("notify_ui_interaction"):
+		battle_scene.notify_ui_interaction()
 
 func _on_walk_pressed():
 	if battle_scene and battle_scene.has_method("select_movement_type"):
@@ -736,6 +744,10 @@ func hide_physical_attack_options():
 	# Ocultar opciones de ataque físico
 	if physical_attack_panel:
 		physical_attack_panel.visible = false
+	
+	# Notificar al battle_scene para evitar clicks fantasma
+	if battle_scene and battle_scene.has_method("notify_ui_interaction"):
+		battle_scene.notify_ui_interaction()
 
 func _on_punch_left_pressed():
 	if not physical_attack_panel:
@@ -879,6 +891,10 @@ func hide_weapon_selector():
 		selected_weapons.clear()
 	if weapon_info_panel:
 		weapon_info_panel.visible = false
+	
+	# Notificar al battle_scene para evitar clicks fantasma
+	if battle_scene and battle_scene.has_method("notify_ui_interaction"):
+		battle_scene.notify_ui_interaction()
 
 func _on_weapon_label_clicked(event: InputEvent, weapon_index: int, weapon: Dictionary, breakdown: String, to_hit_data: Dictionary):
 	# Mostrar info solo cuando se hace clic en el label (no en el checkbox)
@@ -906,7 +922,8 @@ func _on_weapon_clicked(weapon_index: int, weapon: Dictionary, breakdown: String
 	
 	# Tipo de arma
 	var weapon_type = weapon.get("type", "energy")
-	info_text += "\nType: [color=cyan]%s[/color]\n" % weapon_type.capitalize()
+	var weapon_type_str = str(weapon_type) if typeof(weapon_type) == TYPE_INT else weapon_type
+	info_text += "\nType: [color=cyan]%s[/color]\n" % weapon_type_str
 	
 	# Información de to-hit
 	info_text += "\n[color=yellow]TO-HIT CALCULATION[/color]\n"
@@ -919,7 +936,8 @@ func _on_weapon_clicked(weapon_index: int, weapon: Dictionary, breakdown: String
 		for mod_name in modifiers.keys():
 			var mod_val = modifiers[mod_name]
 			var color = "green" if mod_val <= 0 else "red"
-			info_text += "%s: [color=%s]%+d[/color]\n" % [mod_name.replace("_", " ").capitalize(), color, mod_val]
+			var mod_name_str = str(mod_name) if typeof(mod_name) != TYPE_STRING else mod_name
+			info_text += "%s: [color=%s]%+d[/color]\n" % [mod_name_str.replace("_", " ").capitalize(), color, mod_val]
 	
 	weapon_info_label.text = info_text
 
@@ -998,6 +1016,7 @@ func show_game_over(winner_name: String, loser_name: String, loser_death_reason:
 	vbox.position = Vector2(margin * 2, margin * 2)
 	vbox.size = Vector2(panel_width - margin * 4, panel_height - margin * 4)
 	vbox.add_theme_constant_override("separation", int(20 * scale_factor))
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER  # Centrar verticalmente
 	game_over_panel.add_child(vbox)
 	
 	# Título "BATTLE ENDED"
@@ -1006,6 +1025,9 @@ func show_game_over(winner_name: String, loser_name: String, loser_death_reason:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", int(40 * scale_factor))
 	title.add_theme_color_override("font_color", Color.GOLD)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # Prevenir overflow
+	title.clip_text = true  # Cortar texto si es muy largo
+	title.custom_minimum_size = Vector2(panel_width - margin * 4, 0)  # Asegurar ancho
 	vbox.add_child(title)
 	
 	# Espaciador
@@ -1019,6 +1041,9 @@ func show_game_over(winner_name: String, loser_name: String, loser_death_reason:
 	winner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	winner_label.add_theme_font_size_override("font_size", int(32 * scale_factor))
 	winner_label.add_theme_color_override("font_color", Color.GREEN)
+	winner_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART  # Prevenir overflow
+	winner_label.clip_text = true  # Cortar texto si es muy largo
+	winner_label.custom_minimum_size = Vector2(panel_width - margin * 4, 0)  # Asegurar ancho
 	vbox.add_child(winner_label)
 	
 	# Espaciador

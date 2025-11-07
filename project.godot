@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 MechBayManager="*res://scripts/managers/mech_bay_manager.gd"
+SelectedLoadoutManager="*res://scripts/managers/selected_loadout_manager.gd"
 
 [display]
 

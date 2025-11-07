@@ -1,0 +1,327 @@
+[gd_scene load_steps=2 format=3 uid="uid://dwqm8k3vx5n7p"]
+
+[ext_resource type="Script" path="res://scripts/ui/mech_bay_ui.gd" id="1_mech_bay"]
+
+[node name="MechBayAdvanced" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_mech_bay")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.1, 0.1, 0.15, 1)
+
+[node name="TopBar" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 60.0
+grow_horizontal = 2
+
+[node name="Title" type="Label" parent="TopBar"]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 20.0
+offset_top = -15.0
+offset_right = 300.0
+offset_bottom = 15.0
+grow_vertical = 2
+theme_override_font_sizes/font_size = 24
+text = "MECH BAY - ADVANCED LOADOUT"
+
+[node name="BackButton" type="Button" parent="TopBar"]
+layout_mode = 1
+anchors_preset = 6
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -110.0
+offset_top = -20.0
+offset_right = -10.0
+offset_bottom = 20.0
+grow_horizontal = 0
+grow_vertical = 2
+text = "< Back"
+
+[node name="MainContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 60.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MechDisplay" type="Panel" parent="MainContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MainContainer/MechDisplay"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="MechNameLabel" type="Label" parent="MainContainer/MechDisplay/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Mech Critical Slots"
+horizontal_alignment = 1
+
+[node name="MechSelector" type="OptionButton" parent="MainContainer/MechDisplay/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+alignment = 1
+text_overrun_behavior = 3
+
+[node name="WeightDisplay" type="Label" parent="MainContainer/MechDisplay/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Weight: 0.0 / 50 tons"
+horizontal_alignment = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MainContainer/MechDisplay/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="CenterContainer" type="CenterContainer" parent="MainContainer/MechDisplay/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="LocationsContainer" type="GridContainer" parent="MainContainer/MechDisplay/VBoxContainer/ScrollContainer/CenterContainer"]
+layout_mode = 2
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 10
+columns = 3
+
+[node name="ButtonsContainer" type="HBoxContainer" parent="MainContainer/MechDisplay/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="SaveButton" type="Button" parent="MainContainer/MechDisplay/VBoxContainer/ButtonsContainer"]
+layout_mode = 2
+text = "Save Loadout"
+
+[node name="LoadButton" type="Button" parent="MainContainer/MechDisplay/VBoxContainer/ButtonsContainer"]
+layout_mode = 2
+text = "Load Loadout"
+
+[node name="BottomPanel" type="Panel" parent="MainContainer"]
+custom_minimum_size = Vector2(0, 180)
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="MainContainer/BottomPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="ValidationContainer" type="VBoxContainer" parent="MainContainer/BottomPanel/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Label" type="Label" parent="MainContainer/BottomPanel/HBoxContainer/ValidationContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Validation"
+horizontal_alignment = 1
+
+[node name="ValidationPanel" type="ItemList" parent="MainContainer/BottomPanel/HBoxContainer/ValidationContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_font_sizes/font_size = 11
+
+[node name="StatsContainer" type="VBoxContainer" parent="MainContainer/BottomPanel/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatsLabel" type="Label" parent="MainContainer/BottomPanel/HBoxContainer/StatsContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Loadout Stats"
+horizontal_alignment = 1
+
+[node name="StatsPanel" type="RichTextLabel" parent="MainContainer/BottomPanel/HBoxContainer/StatsContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+theme_override_font_sizes/normal_font_size = 13
+text = "[b]Weapons:[/b] 0
+[b]Heat:[/b] 0
+[b]Damage:[/b] 0"
+fit_content = true
+scroll_active = false
+
+[node name="ApplyButton" type="Button" parent="MainContainer/BottomPanel/HBoxContainer/StatsContainer"]
+layout_mode = 2
+text = "Apply to Mech"
+
+[node name="ComponentSelectorPopup" type="PopupPanel" parent="."]
+title = "Select Component"
+initial_position = 2
+size = Vector2i(500, 600)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="ComponentSelectorPopup"]
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 496.0
+offset_bottom = 596.0
+
+[node name="Title" type="Label" parent="ComponentSelectorPopup/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Select Component"
+horizontal_alignment = 1
+
+[node name="SearchBox" type="LineEdit" parent="ComponentSelectorPopup/VBoxContainer"]
+layout_mode = 2
+placeholder_text = "Search components..."
+
+[node name="ScrollContainer" type="ScrollContainer" parent="ComponentSelectorPopup/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+follow_focus = true
+horizontal_scroll_mode = 0
+
+[node name="ComponentsList" type="ItemList" parent="ComponentSelectorPopup/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="InfoPanel" type="RichTextLabel" parent="ComponentSelectorPopup/VBoxContainer"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+bbcode_enabled = true
+text = "[color=gray]Select a component to see details[/color]"
+fit_content = true
+
+[node name="ButtonContainer" type="HBoxContainer" parent="ComponentSelectorPopup/VBoxContainer"]
+layout_mode = 2
+
+[node name="CancelButton" type="Button" parent="ComponentSelectorPopup/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Cancel"
+
+[node name="AddButton" type="Button" parent="ComponentSelectorPopup/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Add Component"
+
+[node name="SaveLoadoutPopup" type="PopupPanel" parent="."]
+title = "Save Loadout"
+initial_position = 2
+size = Vector2i(400, 200)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="SaveLoadoutPopup"]
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 396.0
+offset_bottom = 196.0
+
+[node name="Title" type="Label" parent="SaveLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Save Loadout"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="SaveLoadoutPopup/VBoxContainer"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="Label" type="Label" parent="SaveLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+text = "Enter a name for this loadout:"
+
+[node name="LoadoutNameInput" type="LineEdit" parent="SaveLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+placeholder_text = "e.g., Hunchback Sniper"
+max_length = 50
+
+[node name="Spacer2" type="Control" parent="SaveLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ButtonContainer" type="HBoxContainer" parent="SaveLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+
+[node name="CancelButton" type="Button" parent="SaveLoadoutPopup/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Cancel"
+
+[node name="SaveButton" type="Button" parent="SaveLoadoutPopup/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Save"
+
+[node name="LoadLoadoutPopup" type="PopupPanel" parent="."]
+title = "Load Loadout"
+initial_position = 2
+size = Vector2i(500, 400)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LoadLoadoutPopup"]
+offset_left = 4.0
+offset_top = 4.0
+offset_right = 496.0
+offset_bottom = 396.0
+
+[node name="Title" type="Label" parent="LoadLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Load Saved Loadout"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="LoadLoadoutPopup/VBoxContainer"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="LoadoutsList" type="ItemList" parent="LoadLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ButtonContainer" type="HBoxContainer" parent="LoadLoadoutPopup/VBoxContainer"]
+layout_mode = 2
+
+[node name="DeleteButton" type="Button" parent="LoadLoadoutPopup/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+text = "Delete"
+
+[node name="CancelButton" type="Button" parent="LoadLoadoutPopup/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Cancel"
+
+[node name="LoadButton" type="Button" parent="LoadLoadoutPopup/VBoxContainer/ButtonContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Load"

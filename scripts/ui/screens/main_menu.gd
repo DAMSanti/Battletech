@@ -41,6 +41,13 @@ func _ready():
 	mechs_btn.pressed.connect(_on_mechs_pressed)
 	vbox.add_child(mechs_btn)
 	
+	# Botón de loadout avanzado
+	var loadout_btn = Button.new()
+	loadout_btn.text = "Advanced Loadout"
+	loadout_btn.custom_minimum_size = Vector2(200, 50)
+	loadout_btn.pressed.connect(_on_advanced_loadout_pressed)
+	vbox.add_child(loadout_btn)
+	
 	# Botón de opciones
 	var options_btn = Button.new()
 	options_btn.text = "Options"
@@ -61,6 +68,10 @@ func _on_new_battle_pressed():
 func _on_mechs_pressed():
 	# Abrir Mech Bay
 	get_tree().change_scene_to_file("res://scenes/mech_bay_screen.tscn")
+
+func _on_advanced_loadout_pressed():
+	# Abrir Advanced Loadout con sistema de slots críticos
+	get_tree().change_scene_to_file("res://scenes/mech_bay_advanced.tscn")
 
 func _on_options_pressed():
 	pass  # Coming soon

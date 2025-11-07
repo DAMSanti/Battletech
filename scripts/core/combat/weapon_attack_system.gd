@@ -4,6 +4,9 @@ extends RefCounted
 ## Sistema de ataque con armas
 ## Responsabilidad: Calcular to-hit, aplicar daño, generar calor
 
+# Referencia a ComponentDatabase para verificar ECM/BAP
+const ComponentDatabase = preload("res://scripts/core/component_database.gd")
+
 # Modificadores base para to-hit
 const BASE_TO_HIT = 4  # Target number base en Battletech
 
@@ -84,10 +87,25 @@ static func calculate_to_hit(attacker, target, weapon, range_hexes: int, terrain
 		modifiers["heat"] = heat_mod
 		breakdown_lines.append("Heat Penalty: +%d" % heat_mod)
 	
+	# 7. Modificadores de equipamiento electrónico (ECM/BAP)
+	var ecm_bap_mods = _calculate_ecm_bap_modifiers(attacker, target, weapon, range_hexes)
+	if ecm_bap_mods.has("ecm_penalty"):
+		modifiers["ecm"] = ecm_bap_mods["ecm_penalty"]
+		breakdown_lines.append("ECM Interference: +%d" % ecm_bap_mods["ecm_penalty"])
+	if ecm_bap_mods.has("bap_bonus"):
+		modifiers["bap"] = ecm_bap_mods["bap_bonus"]
+		breakdown_lines.append("BAP Targeting: %d" % ecm_bap_mods["bap_bonus"])
+	
 	# Calcular número objetivo total
 	var target_number = gunnery_skill + attacker_movement_mod + target_tmm + range_mod + terrain_modifier
 	if "heat" in attacker and attacker.heat >= 5:
 		target_number += int(attacker.heat / 5)
+	
+	# Aplicar modificadores de ECM/BAP
+	if ecm_bap_mods.has("ecm_penalty"):
+		target_number += ecm_bap_mods["ecm_penalty"]
+	if ecm_bap_mods.has("bap_bonus"):
+		target_number += ecm_bap_mods["bap_bonus"]  # Será negativo para mejorar
 	
 	# Crear línea de resumen
 	var breakdown = "\n".join(breakdown_lines)
@@ -192,3 +210,38 @@ static func calculate_heat_generated(weapons_fired: Array) -> int:
 	for weapon in weapons_fired:
 		total_heat += weapon.get("heat", 0)
 	return total_heat
+
+static func _calculate_ecm_bap_modifiers(attacker, target, weapon, range_hexes: int) -> Dictionary:
+	# Calcula modificadores de ECM (Electronic Counter-Measures) y BAP (Beagle Active Probe)
+	# según las reglas de BattleTech Total Warfare
+	
+	var modifiers = {}
+	
+	# Verificar si el objetivo tiene ECM activo
+	var target_has_ecm = ComponentDatabase.has_ecm_suite(target) if ComponentDatabase else false
+	var attacker_has_bap = ComponentDatabase.has_beagle_probe(attacker) if ComponentDatabase else false
+	
+	# ECM afecta a armas de misiles si el atacante está dentro del rango de ECM
+	if target_has_ecm and _is_missile_weapon(weapon):
+		# Verificar si el atacante está dentro del rango de ECM (6 hexes)
+		if "hex_position" in attacker and "hex_position" in target:
+			var distance = ComponentDatabase.hex_distance(attacker.hex_position, target.hex_position) if ComponentDatabase else range_hexes
+			if distance <= 6:
+				# ECM da +1 to-hit a armas de misiles
+				# Pero si el atacante tiene BAP, lo niega
+				if not attacker_has_bap:
+					modifiers["ecm_penalty"] = 1
+	
+	# BAP proporciona bonus a corto alcance (opcional, para hacerlo útil)
+	if attacker_has_bap:
+		var short_range = weapon.get("range_short", 3)
+		if range_hexes <= short_range:
+			# BAP da -1 to-hit a corto alcance (mejor targeting)
+			modifiers["bap_bonus"] = -1
+	
+	return modifiers
+
+static func _is_missile_weapon(weapon: Dictionary) -> bool:
+	# Verifica si el arma es de tipo misil
+	var weapon_type = weapon.get("type", -1)
+	return weapon_type == ComponentDatabase.ComponentType.WEAPON_MISSILE if ComponentDatabase else false
