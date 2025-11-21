@@ -77,22 +77,21 @@ func _ready():
 		_setup_default_weapons()
 	_setup_sprite()
 
+var sprite_manager: MechSpriteManager
+
 func _setup_sprite():
+	# Inicializar sprite manager
+	sprite_manager = MechSpriteManager.new()
+	
 	# Crear sprite para el mech
 	sprite = Sprite2D.new()
-	
-	# Cargar sprite según si es jugador o enemigo
-	if pilot_name == "Player":
-		sprite.texture = load("res://assets/sprites/mech_player.svg")
-	else:
-		sprite.texture = load("res://assets/sprites/mech_enemy.svg")
-	
-	# Escalar el sprite
-	sprite.scale = Vector2(1.2, 1.2)
 	add_child(sprite)
 	
 	# Configurar z-index para que aparezca sobre el terreno
 	sprite.z_index = 1
+	
+	# Actualizar sprite inicial
+	_update_sprite()
 
 func _draw():
 	# Dibujar indicador de dirección (facing)
@@ -119,10 +118,22 @@ func _draw():
 func update_visual_position(hex_grid):
 	# Actualizar posición en pantalla basado en hex_position
 	if hex_grid:
-		var base_pos = hex_grid.hex_to_pixel(hex_position)
+		# Usar hex_to_pixel con elevación para que el mech se posicione correctamente
+		var base_pos = hex_grid.hex_to_pixel(hex_position, true)
 		# El mech es hijo de battle_scene, no de hex_grid, así que necesitamos las coordenadas globales
 		position = base_pos + hex_grid.position
-		queue_redraw()
+		
+		# Ajustar z_index basado en la elevación y posición Y para simular profundidad
+		var elevation = hex_grid.get_elevation(hex_position)
+		# Usar posición Y para que cosas al sur (Y mayor) aparezcan delante
+		z_index = int(position.y) + (elevation * 1000)
+	# Siempre redibujar para actualizar facing y otros indicadores visuales
+	queue_redraw()
+
+func update_facing_visual():
+	# Actualizar solo la dirección visual sin mover el mech
+	_update_sprite()  # Actualizar textura del sprite según facing
+	queue_redraw()    # Actualizar indicador de dirección
 
 ## SISTEMA DE MOVIMIENTO ##
 
@@ -219,10 +230,29 @@ func change_facing(new_facing: int, is_jump: bool=false):
 	# Caminar/correr: cada giro cuesta 1 MP
 	# Saltar: giros gratis
 	if is_jump:
-		facing = new_facing % 6
+		facing = new_facing % 8
 	elif can_change_facing(new_facing):
-		facing = new_facing % 6
+		facing = new_facing % 8
 		current_movement -= 1
+	
+	# Actualizar sprite con la nueva orientación
+	_update_sprite()
+
+func _update_sprite():
+	if sprite_manager:
+		# Obtener el sprite correcto según tonelaje y orientación
+		sprite.texture = sprite_manager.get_sprite_for_mech(tonnage, facing)
+		
+		# Aplicar efectos visuales según estado
+		if is_prone:
+			sprite.rotation_degrees = 90
+			modulate = Color(0.7, 0.7, 0.7)
+		elif is_shutdown:
+			sprite.rotation_degrees = 0
+			modulate = Color(0.5, 0.5, 0.5)
+		else:
+			sprite.rotation_degrees = 0
+			modulate = Color.WHITE
 
 func reset_movement():
 	# Resetea el movimiento al inicio del turno

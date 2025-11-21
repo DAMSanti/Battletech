@@ -24,6 +24,9 @@ var walk_button: Button
 var run_button: Button
 var jump_button: Button
 
+# Selector de orientación (facing)
+var facing_selector: Control
+
 # Selector de armas para disparo
 var weapon_selector_panel: Panel
 var weapon_selector_title: Label
@@ -217,6 +220,14 @@ func _setup_ui():
 	jump_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	jump_button.pressed.connect(_on_jump_pressed)
 	movement_selector_panel.add_child(jump_button)
+	
+	# Selector de orientación (facing) - capa superior
+	var FacingSelector = load("res://scripts/ui/facing_selector.gd")
+	facing_selector = FacingSelector.new()
+	facing_selector.size = Vector2(300 * scale_factor, 300 * scale_factor)
+	facing_selector.visible = false
+	facing_selector.facing_selected.connect(_on_facing_selected)
+	add_child(facing_selector)
 	
 	# Panel selector de armas (85% del ancho, 65% de la altura)
 	var weapon_panel_width = screen_width * 0.85
@@ -685,6 +696,37 @@ func _on_jump_pressed():
 	if battle_scene and battle_scene.has_method("select_movement_type"):
 		battle_scene.select_movement_type(3)  # Mech.MovementType.JUMP
 	hide_movement_type_selector()
+
+## SELECTOR DE ORIENTACIÓN (FACING) ##
+
+func show_facing_selector(screen_position: Vector2):
+	"""Muestra el selector de orientación en una posición de pantalla (para despliegue)"""
+	if facing_selector:
+		facing_selector.show_at_position(screen_position, -1, 99)
+
+func show_facing_selector_with_current(screen_position: Vector2, current_facing: int, available_mp: int):
+	"""Muestra el selector de orientación con facing actual y MPs disponibles"""
+	if facing_selector:
+		facing_selector.show_at_position(screen_position, current_facing, available_mp)
+
+func hide_facing_selector():
+	"""Oculta el selector de orientación"""
+	if facing_selector:
+		facing_selector.visible = false
+
+func is_facing_selector_visible() -> bool:
+	"""Retorna true si el selector de facing está visible"""
+	return facing_selector and facing_selector.visible
+
+func _on_facing_selected(facing: int):
+	"""Maneja la selección de una orientación"""
+	hide_facing_selector()
+	
+	# Pequeño delay para evitar clics accidentales
+	await get_tree().create_timer(0.1).timeout
+	
+	if battle_scene and battle_scene.has_method("on_facing_selected"):
+		battle_scene.on_facing_selected(facing)
 
 ## ATAQUES FÍSICOS ##
 

@@ -35,6 +35,13 @@ var initiative_screen_scene = preload("res://scenes/initiative_screen.tscn")
 var initiative_data_stored: Dictionary = {}
 var battle_started = false
 
+# Sistema de despliegue
+var deployment_phase: bool = false
+var deployment_zones: Dictionary = {}  # Zonas de despliegue por equipo
+var mechs_to_deploy: Array = []  # Mechs pendientes de desplegar
+var current_deploying_mech = null  # Mech que se está desplegando
+var valid_deployment_hexes: Array = []  # Hexágonos válidos para despliegue
+
 # Sistema de cámara táctil
 var camera: Camera2D
 var is_dragging: bool = false
@@ -63,11 +70,50 @@ func update_overlays():
 		overlay_layer.queue_redraw()
 
 func _ready():
+	print("[BATTLE] _ready() called")
+	
 	# Crear indicador de long press
 	_create_long_press_indicator()
 	
-	# Mostrar pantalla de iniciativa INMEDIATAMENTE
-	show_initiative_screen()
+	# Obtener referencias a los nodos
+	hex_grid = $HexGrid
+	turn_manager = $TurnManager
+	ui = $BattleUI
+	
+	print("[BATTLE] Got references - hex_grid: %s, turn_manager: %s, ui: %s" % [hex_grid != null, turn_manager != null, ui != null])
+	
+	# Crear y configurar cámara
+	camera = Camera2D.new()
+	camera.enabled = true
+	camera.zoom = Vector2(0.8, 0.8)
+	camera.position_smoothing_enabled = true
+	camera.position_smoothing_speed = CAMERA_SMOOTH_SPEED
+	camera.add_to_group("cameras")
+	add_child(camera)
+	camera.make_current()
+	
+	# Centrar cámara en el mapa
+	if hex_grid:
+		var map_center = hex_grid.hex_to_pixel(Vector2i(hex_grid.grid_width / 2, hex_grid.grid_height / 2))
+		camera.position = map_center
+		print("[BATTLE] Camera centered at: %s" % map_center)
+	
+	# Crear capa de overlay
+	overlay_layer = Node2D.new()
+	overlay_layer.z_index = 5
+	overlay_layer.set_script(preload("res://scripts/battle_overlay.gd"))
+	add_child(overlay_layer)
+	overlay_layer.battle_scene = self
+	
+	# Conectar señales
+	turn_manager.turn_changed.connect(_on_turn_changed)
+	turn_manager.phase_changed.connect(_on_phase_changed)
+	turn_manager.unit_activated.connect(_on_unit_activated)
+	turn_manager.initiative_rolled.connect(_on_initiative_rolled)
+	
+	# Iniciar la batalla con fase de despliegue
+	print("[BATTLE] Starting setup_battle...")
+	_setup_battle()
 
 func _process(delta):
 	# Decrementar cooldown de interacción con UI
@@ -120,48 +166,8 @@ func _on_initiative_screen_complete(data: Dictionary):
 	# Guardar datos de iniciativa
 	initiative_data_stored = data
 	
-	# Si es la primera vez, configurar la batalla
+	# Si es la primera vez, iniciar la batalla
 	if not battle_started:
-		# Obtener referencias a los nodos
-		hex_grid = $HexGrid
-		turn_manager = $TurnManager
-		ui = $BattleUI  # Nombre correcto del nodo en battle_scene_simple.tscn
-		
-		# Crear y configurar cámara ANTES de los overlays
-		camera = Camera2D.new()
-		camera.enabled = true
-		camera.zoom = Vector2(0.8, 0.8)  # Zoom inicial para ver más mapa
-		camera.position_smoothing_enabled = true
-		camera.position_smoothing_speed = CAMERA_SMOOTH_SPEED
-		camera.add_to_group("cameras")
-		call_deferred("add_child", camera)
-		# Hacer la cámara actual después de agregarla al árbol
-		await get_tree().process_frame
-		camera.make_current()
-		
-		# Centrar cámara en el mapa después de un frame
-		await get_tree().process_frame
-		if hex_grid:
-			var map_center = hex_grid.hex_to_pixel(Vector2i(hex_grid.grid_width / 2, hex_grid.grid_height / 2))
-			camera.position = map_center
-		
-		# Crear capa de overlay para hexágonos alcanzables (z_index más alto)
-		overlay_layer = Node2D.new()
-		overlay_layer.z_index = 5  # Encima del grid (0) pero debajo de los mechs (10)
-		overlay_layer.set_script(preload("res://scripts/battle_overlay.gd"))
-		add_child(overlay_layer)
-		overlay_layer.battle_scene = self
-		
-		# Configurar la batalla
-		_setup_battle()
-		
-		# Conectar señales DESPUÉS de setup
-		# NOTA: unit_activated también necesita conectarse aquí para battle_scene
-		turn_manager.turn_changed.connect(_on_turn_changed)
-		turn_manager.phase_changed.connect(_on_phase_changed)
-		turn_manager.unit_activated.connect(_on_unit_activated)  # Necesario para lógica de juego
-		turn_manager.initiative_rolled.connect(_on_initiative_rolled)
-		
 		# Iniciar el sistema de turnos
 		turn_manager.start_battle(player_mechs, enemy_mechs)
 		
@@ -182,6 +188,29 @@ func clear_initiative_data():
 	initiative_data_stored = {}
 
 func _setup_battle():
+	# Definir zonas de despliegue
+	# Jugador: borde sur (filas 14-17 de un mapa de 18 filas)
+	# Enemigo: borde norte (filas 0-3)
+	deployment_zones["player"] = []
+	deployment_zones["enemy"] = []
+	
+	# Generar hexágonos de despliegue para cada equipo
+	for x in range(hex_grid.grid_width):
+		for y in range(hex_grid.grid_height):
+			var hex_pos = Vector2i(x, y)
+			var terrain = hex_grid.get_terrain(hex_pos)
+			
+			# No permitir despliegue en agua
+			if terrain == TerrainType.Type.WATER:
+				continue
+			
+			# Zona del jugador (sur del mapa)
+			if y >= hex_grid.grid_height - 4:
+				deployment_zones["player"].append(hex_pos)
+			# Zona enemiga (norte del mapa)
+			elif y < 4:
+				deployment_zones["enemy"].append(hex_pos)
+	
 	# Primero verificar si hay un loadout seleccionado desde el Mech Bay
 	var loadout_manager = get_node_or_null("/root/SelectedLoadoutManager")
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
@@ -191,43 +220,189 @@ func _setup_battle():
 		print("[BATTLE] Using selected loadout from Mech Bay")
 		var loadout = loadout_manager.get_selected_loadout()
 		player_mech_data = _convert_loadout_to_mech_data(loadout)
-		_create_player_mech_from_data(player_mech_data, Vector2i(2, 8))
 	else:
 		# Fallback: usar MechBayManager si no hay loadout seleccionado
-		
 		if mech_bay_manager:
-			# Mostrar índice y nombre del mech seleccionado
 			print("[DEBUG] selected_mech_index:", mech_bay_manager.selected_mech_index)
 			player_mech_data = mech_bay_manager.get_first_player_mech()
 			print("[DEBUG] get_first_player_mech() returned: ", player_mech_data.get("name", "Unknown"))
-			if player_mech_data.has("weapons"):
-				print("[DEBUG] Weapons count: ", player_mech_data["weapons"].size())
-				for i in range(player_mech_data["weapons"].size()):
-					var weapon = player_mech_data["weapons"][i]
-					print("[DEBUG]   Weapon %d: %s" % [i, weapon.get("name", "Unknown")])
-			_create_player_mech_from_data(player_mech_data, Vector2i(2, 8))
 		else:
 			# Fallback si no existe el manager
 			print("[WARNING] MechBayManager not found, using default Atlas")
-			_create_player_mech("Atlas", Vector2i(2, 8), 100, 3, 5, 0)
+			player_mech_data = {
+				"name": "Atlas",
+				"tonnage": 100,
+				"walk_mp": 3,
+				"run_mp": 5,
+				"jump_mp": 0
+			}
 	
-	# Equipo enemigo - usar datos del manager también
+	# Crear mechs pero NO colocarlos todavía - guardarlos para despliegue
+	var player_mech = _create_mech_for_deployment(player_mech_data, "player")
+	mechs_to_deploy.append(player_mech)
+	
+	# Equipo enemigo
+	var enemy_mech_data: Dictionary
 	if mech_bay_manager:
-		var enemy_mech_data = mech_bay_manager.get_mech_data("Mad Cat", "Timber Wolf Prime")
-		if enemy_mech_data:
-			_create_enemy_mech_from_data(enemy_mech_data, Vector2i(8, 8))
-		else:
-			_create_enemy_mech("Mad Cat", Vector2i(8, 8), 75, 4, 6, 0)
+		enemy_mech_data = mech_bay_manager.get_mech_data("Mad Cat", "Timber Wolf Prime")
+		if not enemy_mech_data:
+			enemy_mech_data = {
+				"name": "Mad Cat",
+				"tonnage": 75,
+				"walk_mp": 4,
+				"run_mp": 6,
+				"jump_mp": 0
+			}
 	else:
-		_create_enemy_mech("Mad Cat", Vector2i(8, 8), 75, 4, 6, 0)
+		enemy_mech_data = {
+			"name": "Mad Cat",
+			"tonnage": 75,
+			"walk_mp": 4,
+			"run_mp": 6,
+			"jump_mp": 0
+		}
 	
-	# Asegurar que selected_unit apunte al Mech correcto (el primero del array, que es el seleccionado)
+	var enemy_mech = _create_mech_for_deployment(enemy_mech_data, "enemy")
+	mechs_to_deploy.append(enemy_mech)
+	
+	# Iniciar fase de despliegue
+	_start_deployment_phase()
+
+func _create_mech_for_deployment(mech_data: Dictionary, team: String) -> Mech:
+	"""Crea un mech pero no lo coloca en el mapa todavía"""
+	var mech = Mech.new()
+	mech.mech_name = mech_data.get("name", "Unknown")
+	mech.pilot_name = "Player" if team == "player" else "Enemy"
+	mech.tonnage = mech_data.get("tonnage", 50)
+	mech.walk_mp = mech_data.get("walk_mp", 4)
+	mech.run_mp = mech_data.get("run_mp", 6)
+	mech.jump_mp = mech_data.get("jump_mp", 0)
+	mech.current_movement = mech.walk_mp
+	
+	# Copiar armadura
+	if mech_data.has("armor"):
+		mech.armor = mech_data["armor"].duplicate(true)
+	
+	# Copiar armas
+	if mech_data.has("weapons"):
+		mech.weapons = mech_data["weapons"].duplicate(true)
+	
+	# Copiar heat capacity y dissipation
+	if mech_data.has("heat_capacity"):
+		mech.heat_capacity = mech_data["heat_capacity"]
+	if mech_data.has("heat_dissipation"):
+		mech.heat_dissipation = mech_data["heat_dissipation"]
+	
+	# Copiar gunnery skill
+	if mech_data.has("gunnery_skill"):
+		mech.pilot_skill = mech_data["gunnery_skill"]
+	
+	mech.z_index = 10
+	mech.set_meta("team", team)  # Guardar el equipo como metadata
+	
+	return mech
+
+func _start_deployment_phase():
+	"""Inicia la fase de despliegue"""
+	deployment_phase = true
+	print("[DEPLOYMENT] Starting deployment phase - mechs to deploy: %d" % mechs_to_deploy.size())
+	
+	if ui:
+		ui.add_combat_message("=== DEPLOYMENT PHASE ===", Color.GOLD)
+		ui.add_combat_message("Place your mechs in the deployment zone", Color.CYAN)
+	
+	# Comenzar con el primer mech del jugador
+	_deploy_next_mech()
+
+func _deploy_next_mech():
+	"""Selecciona el siguiente mech para desplegar"""
+	print("[DEPLOYMENT] _deploy_next_mech called - remaining: %d" % mechs_to_deploy.size())
+	
+	if mechs_to_deploy.is_empty():
+		_end_deployment_phase()
+		return
+	
+	current_deploying_mech = mechs_to_deploy.pop_front()
+	var team = current_deploying_mech.get_meta("team")
+	
+	print("[DEPLOYMENT] Deploying %s mech: %s" % [team, current_deploying_mech.mech_name])
+	
+	if team == "player":
+		# Jugador despliega manualmente
+		valid_deployment_hexes = deployment_zones["player"].duplicate()
+		print("[DEPLOYMENT] Player deployment - valid hexes: %d" % valid_deployment_hexes.size())
+		if ui:
+			ui.add_combat_message("Deploy %s - Click on a hex in the deployment zone" % current_deploying_mech.mech_name, Color.CYAN)
+		update_overlays()
+	else:
+		# IA despliega automáticamente
+		print("[DEPLOYMENT] AI deploying...")
+		_deploy_ai_mech()
+
+func _deploy_ai_mech():
+	"""Despliega un mech de la IA automáticamente"""
+	var team = current_deploying_mech.get_meta("team")
+	var zone = deployment_zones[team]
+	
+	# Elegir una posición aleatoria válida
+	var valid_hexes = []
+	for hex in zone:
+		if not hex_grid.get_unit(hex):
+			valid_hexes.append(hex)
+	
+	if valid_hexes.is_empty():
+		push_error("No valid deployment hexes for AI")
+		return
+	
+	var deploy_hex = valid_hexes[randi() % valid_hexes.size()]
+	var facing = randi() % 6  # Orientación aleatoria
+	
+	_place_mech(current_deploying_mech, deploy_hex, facing)
+	
+	# Continuar con el siguiente mech después de un delay
+	await get_tree().create_timer(0.5).timeout
+	_deploy_next_mech()
+
+func _place_mech(mech: Mech, hex: Vector2i, facing: int):
+	"""Coloca un mech en el mapa"""
+	mech.hex_position = hex
+	mech.facing = facing
+	
+	var team = mech.get_meta("team")
+	
+	add_child(mech)
+	mech.visible = true  # Asegurar que sea visible
+	hex_grid.set_unit(hex, mech)
+	mech.update_visual_position(hex_grid)
+	mech.update_facing_visual()  # Actualizar sprite según facing
+	
+	# Añadir a la lista correcta
+	if team == "player":
+		player_mechs.append(mech)
+		print("[DEPLOYMENT] Placed player mech: %s at [%d,%d] facing %d" % [mech.mech_name, hex.x, hex.y, facing])
+	else:
+		enemy_mechs.append(mech)
+		print("[DEPLOYMENT] Placed enemy mech: %s at [%d,%d] facing %d" % [mech.mech_name, hex.x, hex.y, facing])
+
+func _end_deployment_phase():
+	"""Finaliza la fase de despliegue e inicia la batalla"""
+	deployment_phase = false
+	valid_deployment_hexes.clear()
+	current_deploying_mech = null
+	
+	print("[DEPLOYMENT] Deployment phase complete")
+	
+	if ui:
+		ui.add_combat_message("=== DEPLOYMENT COMPLETE ===", Color.GOLD)
+	
+	# Asegurar que selected_unit apunte al primer mech del jugador
 	if player_mechs.size() > 0:
 		selected_unit = player_mechs[0]
-		print("[DEBUG] selected_unit set to: %s" % selected_unit.mech_name)
 	
-	# Iniciar batalla con todos los mechs creados
-	turn_manager.start_battle(player_mechs, enemy_mechs)
+	update_overlays()
+	
+	# Mostrar pantalla de iniciativa DESPUÉS del despliegue
+	show_initiative_screen()
 
 ## Crea un mech desde datos del MechBayManager
 func _create_player_mech_from_data(mech_data: Dictionary, position: Vector2i) -> Mech:
@@ -467,8 +642,12 @@ func _create_enemy_mech(name: String, position: Vector2i, tonnage: int, walk: in
 	return mech
 
 func _input(event):
-	# No procesar input si la batalla aún no ha comenzado
-	if not battle_started or hex_grid == null or camera == null:
+	# Permitir input durante la fase de despliegue
+	if hex_grid == null or camera == null:
+		return
+	
+	# Bloquear input solo si no estamos en despliegue y la batalla no ha comenzado
+	if not deployment_phase and not battle_started:
 		return
 	
 	# Detectar inicio de tap largo (táctil o mouse)
@@ -512,6 +691,10 @@ func _input(event):
 			if ui_interaction_cooldown > 0:
 				return
 			
+			# Bloquear clics si el facing selector está visible
+			if ui and ui.has_method("is_facing_selector_visible") and ui.is_facing_selector_visible():
+				return
+			
 			# Verificar si debemos ignorar este click
 			if ignore_next_click:
 				ignore_next_click = false
@@ -524,6 +707,10 @@ func _input(event):
 		if not long_press_active:  # Solo si no está en proceso de tap largo
 			# Verificar cooldown de interacción con UI (solo en móvil, no en PC)
 			if OS.has_feature("mobile") and ui_interaction_cooldown > 0:
+				return
+			
+			# Bloquear clics si el facing selector está visible
+			if ui and ui.has_method("is_facing_selector_visible") and ui.is_facing_selector_visible():
 				return
 			
 			# Verificar si debemos ignorar este click
@@ -627,6 +814,11 @@ func _handle_hex_clicked(hex: Vector2i):
 	if not hex_grid.is_valid_hex(hex):
 		return
 	
+	# Manejar fase de despliegue
+	if deployment_phase:
+		_handle_deployment_click(hex)
+		return
+	
 	print("[DEBUG] _handle_hex_clicked: hex=%s, current_state=%d" % [hex, current_state])
 	
 	match current_state:
@@ -638,6 +830,87 @@ func _handle_hex_clicked(hex: Vector2i):
 			_handle_weapon_attack_click(hex)
 		GameEnums.GameState.PHYSICAL_TARGETING:
 			_handle_physical_targeting_click(hex)
+
+func _handle_deployment_click(hex: Vector2i):
+	"""Maneja clics durante la fase de despliegue"""
+	if not current_deploying_mech:
+		return
+	
+	# Verificar que el hex esté en la zona de despliegue válida
+	if hex not in valid_deployment_hexes:
+		if ui:
+			ui.add_combat_message("Invalid deployment location", Color.RED)
+		return
+	
+	# Verificar que no haya otro mech en esa posición
+	if hex_grid.get_unit(hex):
+		if ui:
+			ui.add_combat_message("Hex already occupied", Color.RED)
+		return
+	
+	# Mostrar selector de orientación
+	# Guardar el hex seleccionado temporalmente
+	selected_hex = hex
+	
+	# Convertir posición del hex a posición de pantalla (con elevación)
+	var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
+	var screen_pos = hex_pixel
+	if camera:
+		# Ajustar por la posición de la cámara
+		screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
+	
+	if ui and ui.has_method("show_facing_selector"):
+		ui.show_facing_selector(screen_pos)
+
+func on_facing_selected(facing: int):
+	"""Llamado cuando el jugador selecciona una orientación"""
+	print("[BATTLE] Facing selected: %d" % facing)
+	
+	if deployment_phase and current_deploying_mech and selected_hex != Vector2i(-1, -1):
+		# Estamos en fase de despliegue
+		_place_mech(current_deploying_mech, selected_hex, facing)
+		selected_hex = Vector2i(-1, -1)  # Reset
+		
+		# Siguiente mech
+		_deploy_next_mech()
+	elif selected_unit and selected_unit in player_mechs and selected_hex != Vector2i(-1, -1):
+		# Estamos después del movimiento - calcular rotación necesaria
+		var current_facing = selected_unit.facing
+		var rotations_needed = _calculate_rotations(current_facing, facing)
+		
+		print("[BATTLE] Current facing: %d, Target facing: %d, Rotations: %d" % [current_facing, facing, rotations_needed])
+		
+		if rotations_needed <= selected_unit.current_movement:
+			# Aplicar rotación
+			selected_unit.facing = facing
+			selected_unit.current_movement -= rotations_needed
+			selected_unit.update_visual_position(hex_grid)
+			selected_unit.update_facing_visual()  # Forzar actualización visual
+			
+			if ui:
+				ui.add_combat_message("  → Rotated to facing %d (-%d MP)" % [facing, rotations_needed], Color.CYAN)
+				ui.add_combat_message("  → Final facing: %d, MPs remaining: %d" % [facing, selected_unit.current_movement], Color.WHITE)
+				ui.update_unit_info(selected_unit)
+			
+			# Modo secuencial: finalizar
+			await get_tree().create_timer(0.3).timeout
+			turn_manager.complete_unit_activation()
+		else:
+			if ui:
+				ui.add_combat_message("Not enough MPs for that rotation!", Color.RED)
+		
+		selected_hex = Vector2i(-1, -1)  # Reset
+
+func _calculate_rotations(from_facing: int, to_facing: int) -> int:
+	"""Calcula el número mínimo de rotaciones (cada una cuesta 1 MP)"""
+	# Calcular diferencia
+	var diff = (to_facing - from_facing + 6) % 6
+	
+	# El camino más corto es el mínimo entre ir en sentido horario o antihorario
+	var clockwise = diff
+	var counter_clockwise = 6 - diff
+	
+	return min(clockwise, counter_clockwise)
 
 func select_movement_type(movement_type: int):  # Mech.MovementType
 	"""Llamado cuando el jugador selecciona Walk/Run/Jump"""
@@ -678,6 +951,7 @@ func _handle_movement_click(hex: Vector2i):
 	if hex in reachable_hexes:
 		_move_unit_to_hex(selected_unit, hex)
 
+
 func _move_unit_to_hex(unit, hex: Vector2i):
 	# Calcular camino
 	var path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
@@ -704,6 +978,7 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 			ui.add_combat_message("%s %s from [%d,%d] to [%d,%d] (TMM: +%d)" % [
 				unit.mech_name, move_type_str, old_pos.x, old_pos.y, hex.x, hex.y, unit.target_movement_modifier
 			], Color.WHITE)
+			ui.add_combat_message("  → MPs remaining: %d" % unit.current_movement, Color.CYAN)
 			
 			# Registrar calor del movimiento (no aplicar aún, se procesará en fase de calor)
 			var movement_heat = unit.finalize_movement()
@@ -712,13 +987,32 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 			
 			ui.update_unit_info(unit)
 		
-		# Terminar activación tras el movimiento
+		# Para jugadores: mostrar selector de facing si hay MPs restantes
 		if unit in player_mechs:
 			reachable_hexes.clear()
-			if ui:
-				ui.add_combat_message("Movimiento realizado. Fase terminada.", Color.YELLOW)
-			await get_tree().create_timer(0.5).timeout
-			turn_manager.complete_unit_activation()
+			
+			if unit.current_movement > 0:
+				# Hay MPs restantes, permitir rotación
+				if ui:
+					ui.add_combat_message("Select final facing (costs 1 MP per rotation)", Color.YELLOW)
+				
+				# Mostrar selector de facing
+				selected_hex = hex  # Guardar posición actual
+				var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
+				var screen_pos = hex_pixel
+				if camera:
+					screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
+				
+				if ui and ui.has_method("show_facing_selector_with_current"):
+					ui.show_facing_selector_with_current(screen_pos, unit.facing, unit.current_movement)
+				elif ui and ui.has_method("show_facing_selector"):
+					ui.show_facing_selector(screen_pos)
+			else:
+				# No hay MPs, finalizar
+				if ui:
+					ui.add_combat_message("No MPs remaining. Movement complete.", Color.YELLOW)
+				await get_tree().create_timer(0.5).timeout
+				turn_manager.complete_unit_activation()
 		else:
 			# Para enemigos: también completar activación después de moverse
 			reachable_hexes.clear()

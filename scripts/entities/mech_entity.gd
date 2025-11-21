@@ -33,7 +33,7 @@ signal mech_stood_up()
 
 # Estado
 var hex_position: Vector2i = Vector2i(0, 0)
-var facing: int = 0  # 0-5 para las 6 direcciones hexagonales
+var facing: int = 0  # 0-7 para las 8 direcciones
 var is_prone: bool = false
 var is_shutdown: bool = false
 var moved_this_turn: bool = false
@@ -69,11 +69,17 @@ var arms_functional: int = 2
 
 # Sprite visual
 var sprite: Sprite2D
+var sprite_manager: MechSpriteManager
 
 func _ready():
-	# Crear sprite visual simple
+	# Inicializar sprite manager
+	sprite_manager = MechSpriteManager.new()
+	
+	# Crear sprite visual
 	sprite = Sprite2D.new()
 	add_child(sprite)
+	
+	# Configurar sprite inicial
 	update_visual()
 
 func initialize(hex_pos: Vector2i, team: String):
@@ -81,13 +87,30 @@ func initialize(hex_pos: Vector2i, team: String):
 	name = mech_name + "_" + team
 
 func update_visual():
-	# Aquí se actualizaría el sprite según el estado
+	# Actualizar sprite según orientación y estado
+	var texture = sprite_manager.get_sprite_for_mech(tonnage, facing)
+	if texture:
+		sprite.texture = texture
+	
+	# Aplicar efectos visuales según estado
 	if is_prone:
+		sprite.rotation_degrees = 90  # Rotar sprite para mostrar que está caído
 		modulate = Color(0.7, 0.7, 0.7)
 	elif is_shutdown:
 		modulate = Color(0.5, 0.5, 0.5)
 	else:
+		sprite.rotation_degrees = 0
 		modulate = Color.WHITE
+		
+	# Actualizar escala según la clase del mech
+	var scale_factor = 1.0
+	match sprite_manager.get_mech_class(tonnage):
+		MechSpriteManager.MechClass.LIGHT: scale_factor = 0.8
+		MechSpriteManager.MechClass.MEDIUM: scale_factor = 1.0
+		MechSpriteManager.MechClass.HEAVY: scale_factor = 1.2
+		MechSpriteManager.MechClass.ASSAULT: scale_factor = 1.4
+	
+	sprite.scale = Vector2(scale_factor, scale_factor)
 
 ## Métodos que delegan a sistemas
 

@@ -1,4 +1,3 @@
-class_name HeatSystem
 extends RefCounted
 
 ## Sistema de calor - Maneja acumulación, disipación y efectos del calor

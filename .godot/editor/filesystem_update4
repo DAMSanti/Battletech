@@ -1,15 +1,1 @@
-res://scripts/ui/battle_ui.gd
-res://scripts/ui/custom_armor_panel.gd
-res://scripts/battle_scene.gd
-res://scripts/mech.gd
-res://scripts/managers/turn_manager.gd
-res://scripts/ui/screens/main_menu.gd
-res://scripts/battle_overlay.gd
-res://scripts/ui/screens/initiative_screen.gd
-res://scripts/core/combat/weapon_attack_system.gd
-res://scripts/managers/mech_bay_manager.gd
-res://scripts/ui/screens/mech_bay_screen.gd
-res://scripts/ui/mech_bay_ui.gd
-res://scripts/core/component_database.gd
-res://scripts/core/mech_loadout.gd
-res://scripts/managers/selected_loadout_manager.gd
+res://scripts/hex_grid.gd

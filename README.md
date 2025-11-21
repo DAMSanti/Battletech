@@ -75,7 +75,7 @@ scenes/
 
 ## Cómo Ejecutar
 
-1. Abre el proyecto en Godot 4.3+
+1. Abre el proyecto en Godot 4.5+ (recomendado)
 2. Ejecuta la escena principal (main_menu.tscn)
 3. Click en "New Battle" para empezar
 

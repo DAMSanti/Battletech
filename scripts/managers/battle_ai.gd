@@ -89,6 +89,7 @@ func _ai_physical_attack(unit):
 	else:
 		_complete_activation()
 
+
 ## Encuentra el jugador más cercano
 func _find_closest_player(unit) -> Variant:
 	var closest = null

@@ -1,3 +1,4 @@
+@tool
 extends Node2D
 class_name HexGrid
 
@@ -8,6 +9,12 @@ var grid_height: int = 16
 
 # Seed para generación procedural (cambia cada partida)
 var terrain_seed: int = 0
+
+# Cache de iconos de terreno
+var terrain_icons: Dictionary = {}
+# Enable this in the Inspector to draw debug overlays (surfaces, depths, elevations)
+@export var debug_draw_surfaces: bool = false
+var _prev_debug_draw_surfaces: bool = false
 
 # Direcciones hexagonales (flat-top)
 const HEX_DIRECTIONS = [
@@ -26,31 +33,395 @@ func _ready():
 	z_index = 0  # Grid en el fondo
 	# Generar seed aleatorio para esta partida
 	terrain_seed = randi()
+	_preload_terrain_icons()
 	_initialize_grid()
 	queue_redraw()  # Forzar redibujado con los nuevos terrenos
+	# Ensure we watch for inspector changes in editor / runtime
+	_prev_debug_draw_surfaces = debug_draw_surfaces
+	set_process(true)
+
+func _preload_terrain_icons():
+	# Precargar todos los iconos SVG
+	for terrain_type in TerrainType.Type.values():
+		var icon_path = TerrainType.get_icon(terrain_type)
+		if icon_path != "":
+			var texture = load(icon_path)
+			if texture:
+				terrain_icons[terrain_type] = texture
 
 func _initialize_grid():
-	# Generar terrenos proceduralmente con variedad
+	# Decidir tipo de mapa (50% urbano, 50% natural)
+	var is_urban_map = randf() < 0.5
+	
+	# FASE 1: Generar terreno base con ruido
+	_generate_base_terrain()
+	
+	if is_urban_map:
+		# FASE 2: Generar zona urbana (solo en mapas urbanos)
+		_generate_urban_zone()
+		
+		# FASE 3: Aplanar terreno urbano ANTES de generar elevaciones
+		_flatten_urban_area()
+		
+		# FASE 4: Generar carreteras que conectan edificios
+		_generate_roads()
+	else:
+		# En mapas naturales, generar bosques más abundantes
+		_generate_forest_patches(true)  # Modo abundante
+	
+	# FASE 5: Generar bosques coherentes (si no es urbano o poco si es urbano)
+	if not is_urban_map:
+		_generate_forest_patches(false)
+	
+	# FASE 6: Generar elevación coherente
+	_generate_all_elevations()
+	
+	# FASE 7: Marcar hexágonos transitables
+	_mark_walkable_hexes()
+
+# FASE 1: Terreno base con ruido (solo terrenos naturales)
+func _generate_base_terrain():
 	for q in range(grid_width):
 		for r in range(grid_height):
 			var pos = Vector2i(q, r)
-			var terrain_type = _generate_terrain(q, r)
+			var noise_value = _simple_noise(q, r)
 			
-			# El agua no es transitable para mechs estándar
-			var is_walkable = (terrain_type != TerrainType.Type.WATER)
+			var terrain_type: TerrainType.Type
+			
+			# Solo terrenos naturales en esta fase
+			if noise_value < 0.05:
+				terrain_type = TerrainType.Type.WATER
+			elif noise_value < 0.15:
+				terrain_type = TerrainType.Type.SAND
+			elif noise_value < 0.40:
+				terrain_type = TerrainType.Type.CLEAR
+			elif noise_value < 0.60:
+				terrain_type = TerrainType.Type.ROUGH
+			elif noise_value < 0.80:
+				terrain_type = TerrainType.Type.HILL
+			else:
+				terrain_type = TerrainType.Type.CLEAR  # Placeholder para bosques
 			
 			hex_data[pos] = {
 				"terrain": terrain_type,
-				"elevation": 0,
+				"elevation": 0,  # Se calculará después
 				"unit": null,
-				"walkable": is_walkable
+				"walkable": true
 			}
 
+# FASE 2: Generar zona urbana coherente (máximo 50% del mapa, centrada)
+func _generate_urban_zone():
+	# Calcular centro del mapa
+	var center_q = grid_width / 2
+	var center_r = grid_height / 2
+	var center = Vector2i(center_q, center_r)
+	
+	# Calcular área máxima urbana (50% del mapa)
+	var total_tiles = grid_width * grid_height
+	var max_urban_tiles = total_tiles * 0.5
+	
+	# Número de edificios (15-25% del área urbana)
+	var num_buildings = int(max_urban_tiles * randf_range(0.15, 0.25))
+	
+	# Radio máximo desde el centro
+	var max_radius = min(grid_width, grid_height) / 2
+	
+	# Colocar edificios en el área central
+	var buildings_placed = 0
+	var attempts = 0
+	var max_attempts = num_buildings * 10
+	
+	while buildings_placed < num_buildings and attempts < max_attempts:
+		attempts += 1
+		
+		# Generar posición cerca del centro (distribución gaussiana)
+		var angle = randf() * TAU
+		var distance = randf() * randf() * max_radius  # randf() * randf() sesga hacia el centro
+		
+		var offset_q = int(cos(angle) * distance)
+		var offset_r = int(sin(angle) * distance)
+		var pos = Vector2i(center.x + offset_q, center.y + offset_r)
+		
+		if not is_valid_hex(pos):
+			continue
+		
+		# No colocar edificios en agua
+		if hex_data[pos]["terrain"] == TerrainType.Type.WATER:
+			continue
+		
+		# Verificar que no haya edificio muy cerca (mínimo 2 tiles de distancia)
+		var too_close = false
+		for neighbor in get_neighbors(pos):
+			if hex_data[neighbor]["terrain"] == TerrainType.Type.BUILDING:
+				too_close = true
+				break
+			# Verificar también vecinos de segundo nivel
+			for second_neighbor in get_neighbors(neighbor):
+				if hex_data[second_neighbor]["terrain"] == TerrainType.Type.BUILDING:
+					too_close = true
+					break
+			if too_close:
+				break
+		
+		if too_close:
+			continue
+		
+		# Colocar edificio
+		hex_data[pos]["terrain"] = TerrainType.Type.BUILDING
+		buildings_placed += 1
+
+# FASE 3: Aplanar área urbana (edificios y alrededores)
+func _flatten_urban_area():
+	# Encontrar todos los edificios y marcar área urbana
+	var urban_tiles = []
+	
+	for pos in hex_data.keys():
+		if hex_data[pos]["terrain"] == TerrainType.Type.BUILDING:
+			# El edificio mismo
+			urban_tiles.append(pos)
+			
+			# Aplanar vecinos inmediatos (para carreteras)
+			for neighbor in get_neighbors(pos):
+				if hex_data[neighbor]["terrain"] != TerrainType.Type.WATER:
+					if not urban_tiles.has(neighbor):
+						urban_tiles.append(neighbor)
+	
+	# Calcular elevación base urbana (nivel 0-1)
+	var base_urban_elevation = randi_range(0, 1)
+	
+	# Aplanar todos los tiles urbanos al mismo nivel
+	for tile in urban_tiles:
+		if hex_data[tile]["terrain"] == TerrainType.Type.BUILDING:
+			# Los edificios se elevarán después, por ahora marcarlos
+			hex_data[tile]["elevation"] = base_urban_elevation
+		else:
+			# El resto del área urbana (futuras carreteras) nivel plano
+			hex_data[tile]["elevation"] = base_urban_elevation
+
+# FASE 4: Generar carreteras conectando edificios (sin ensanchar cruces)
+func _generate_roads():
+	# Encontrar todos los edificios
+	var buildings = []
+	for pos in hex_data.keys():
+		if hex_data[pos]["terrain"] == TerrainType.Type.BUILDING:
+			buildings.append(pos)
+	
+	if buildings.size() < 2:
+		return
+	
+	# Crear árbol de expansión mínimo (conectar todos los edificios con caminos mínimos)
+	var connected = [buildings[0]]
+	var unconnected = buildings.slice(1)
+	
+	while unconnected.size() > 0:
+		var best_pair = null
+		var best_distance = INF
+		
+		# Encontrar el par más cercano entre conectados y no conectados
+		for conn in connected:
+			for unconn in unconnected:
+				var dist = hex_distance(conn, unconn)
+				if dist < best_distance and dist <= 8:  # Máximo 8 tiles
+					best_distance = dist
+					best_pair = [conn, unconn]
+		
+		if best_pair == null:
+			# No se puede conectar más edificios, tomar el siguiente sin conectar
+			if unconnected.size() > 0:
+				connected.append(unconnected[0])
+				unconnected.remove_at(0)
+			break
+		
+		# Crear carretera entre el par
+		_create_road_between(best_pair[0], best_pair[1])
+		
+		connected.append(best_pair[1])
+		unconnected.erase(best_pair[1])
+
+# Crear carretera entre dos puntos (1 tile de ancho, sin ensanchar cruces)
+func _create_road_between(start: Vector2i, end: Vector2i):
+	# Pathfinding simple para crear camino
+	var current = start
+	var visited = {}
+	
+	while current != end:
+		visited[current] = true
+		
+		# Encontrar vecino más cercano al objetivo
+		var best_neighbor = null
+		var best_distance = INF
+		
+		for neighbor in get_neighbors(current):
+			if visited.has(neighbor):
+				continue
+			
+			var dist = hex_distance(neighbor, end)
+			if dist < best_distance:
+				best_distance = dist
+				best_neighbor = neighbor
+		
+		if best_neighbor == null:
+			break
+		
+		# Colocar pavimento si no es edificio o agua
+		if best_neighbor != end and best_neighbor != start:
+			if hex_data[best_neighbor]["terrain"] != TerrainType.Type.BUILDING and \
+			   hex_data[best_neighbor]["terrain"] != TerrainType.Type.WATER:
+				hex_data[best_neighbor]["terrain"] = TerrainType.Type.PAVEMENT
+		
+		current = best_neighbor
+		
+		# Evitar bucles infinitos
+		if visited.size() > 20:
+			break
+
+# FASE 4: Generar parches coherentes de bosque
+func _generate_forest_patches(abundant: bool = false):
+	var num_patches = randi_range(6, 10) if abundant else randi_range(2, 4)
+	
+	for i in range(num_patches):
+		# Centro del parche
+		var center_q = randi_range(1, grid_width - 2)
+		var center_r = randi_range(1, grid_height - 2)
+		var center = Vector2i(center_q, center_r)
+		
+		# No colocar bosque sobre urbano o agua
+		if hex_data[center]["terrain"] == TerrainType.Type.BUILDING or \
+		   hex_data[center]["terrain"] == TerrainType.Type.PAVEMENT or \
+		   hex_data[center]["terrain"] == TerrainType.Type.WATER:
+			continue
+		
+		# Tamaño del parche
+		var patch_size = randi_range(4, 10) if abundant else randi_range(3, 6)
+		
+		# Expansión desde el centro
+		var forest_tiles = [center]
+		hex_data[center]["terrain"] = TerrainType.Type.FOREST
+		
+		for j in range(patch_size):
+			if forest_tiles.is_empty():
+				break
+			
+			var random_tile = forest_tiles[randi() % forest_tiles.size()]
+			
+			for neighbor in get_neighbors(random_tile):
+				# 60% probabilidad de expandir a vecino
+				if randf() > 0.6:
+					continue
+				
+				# No expandir sobre urbano o agua
+				if hex_data[neighbor]["terrain"] == TerrainType.Type.BUILDING or \
+				   hex_data[neighbor]["terrain"] == TerrainType.Type.PAVEMENT or \
+				   hex_data[neighbor]["terrain"] == TerrainType.Type.WATER:
+					continue
+				
+				hex_data[neighbor]["terrain"] = TerrainType.Type.FOREST
+				forest_tiles.append(neighbor)
+
+# FASE 5: Generar elevaciones coherentes
+func _generate_all_elevations():
+	# PASO 1: Asignar elevación inicial basada en terreno
+	for pos in hex_data.keys():
+		var terrain = hex_data[pos]["terrain"]
+		
+		# Los edificios y pavimento ya tienen su elevación base de _flatten_urban_area
+		if terrain != TerrainType.Type.BUILDING and terrain != TerrainType.Type.PAVEMENT:
+			var elevation = _generate_elevation(pos.x, pos.y, terrain)
+			hex_data[pos]["elevation"] = elevation
+	
+	# PASO 2: Suavizar elevaciones para evitar cambios bruscos
+	_smooth_elevations(3)  # 3 pasadas de suavizado
+	
+	# PASO 3: Elevar edificios (DESPUÉS del suavizado para que sobresalgan)
+	_elevate_buildings()
+
+# Suavizar elevaciones para coherencia entre vecinos
+func _smooth_elevations(passes: int):
+	for _pass in range(passes):
+		var new_elevations = {}
+		
+		for pos in hex_data.keys():
+			var terrain = hex_data[pos]["terrain"]
+			var current_elevation = hex_data[pos]["elevation"]
+			
+			# Obtener elevaciones de vecinos
+			var neighbor_elevations = []
+			for neighbor in get_neighbors(pos):
+				neighbor_elevations.append(hex_data[neighbor]["elevation"])
+			
+			if neighbor_elevations.is_empty():
+				new_elevations[pos] = current_elevation
+				continue
+			
+			# Calcular promedio de vecinos
+			var avg_elevation = 0.0
+			for elev in neighbor_elevations:
+				avg_elevation += elev
+			avg_elevation /= neighbor_elevations.size()
+			
+			# Determinar cambio máximo permitido según tipo de terreno
+			var max_change = 3  # Por defecto
+			match terrain:
+				TerrainType.Type.HILL:
+					max_change = 2  # Colinas cambian máximo 2 niveles
+				TerrainType.Type.ROUGH:
+					max_change = 3  # Montañas cambian máximo 3 niveles
+				TerrainType.Type.WATER:
+					max_change = 1  # Agua muy plana
+				TerrainType.Type.PAVEMENT, TerrainType.Type.BUILDING:
+					max_change = 1  # Urbano es plano
+				_:
+					max_change = 2  # Resto moderado
+			
+			# Ajustar elevación para que no exceda el cambio máximo con vecinos
+			var max_neighbor = -999
+			var min_neighbor = 999
+			for elev in neighbor_elevations:
+				if elev > max_neighbor:
+					max_neighbor = elev
+				if elev < min_neighbor:
+					min_neighbor = elev
+			
+			# Limitar la elevación actual
+			var adjusted_elevation = current_elevation
+			if current_elevation > max_neighbor + max_change:
+				adjusted_elevation = max_neighbor + max_change
+			elif current_elevation < min_neighbor - max_change:
+				adjusted_elevation = min_neighbor - max_change
+			
+			new_elevations[pos] = adjusted_elevation
+		
+		# Aplicar nuevas elevaciones
+		for pos in new_elevations.keys():
+			hex_data[pos]["elevation"] = new_elevations[pos]
+
+# Elevar edificios sobre el terreno base (mínimo 3 niveles)
+func _elevate_buildings():
+	for pos in hex_data.keys():
+		if hex_data[pos]["terrain"] == TerrainType.Type.BUILDING:
+			# El edificio se eleva entre 3-5 niveles sobre su base
+			var base_elevation = hex_data[pos]["elevation"]
+			var building_height = randi_range(3, 5)
+			hex_data[pos]["elevation"] = base_elevation + building_height
+
+# FASE 6: Marcar hexágonos transitables
+func _mark_walkable_hexes():
+	for pos in hex_data.keys():
+		var terrain = hex_data[pos]["terrain"]
+		var is_walkable = (terrain != TerrainType.Type.WATER)
+		hex_data[pos]["walkable"] = is_walkable
+
 # Convertir coordenadas hexagonales a píxeles (CENTRO del hexágono)
-func hex_to_pixel(hex: Vector2i) -> Vector2:
+func hex_to_pixel(hex: Vector2i, include_elevation: bool = false) -> Vector2:
 	# Fórmula para flat-top hexagons (orientación con lados planos arriba/abajo)
 	var x = hex_size * (3.0/2.0 * hex.x)
 	var y = hex_size * sqrt(3.0) * (hex.y + 0.5 * hex.x)
+	
+	# Aplicar offset de elevación si se solicita
+	if include_elevation and is_valid_hex(hex):
+		var elevation = get_elevation(hex)
+		y -= elevation * 10.0  # Cada nivel = 10 píxeles hacia arriba
+	
 	return Vector2(x, y)
 
 # Convertir píxeles a coordenadas hexagonales
@@ -216,56 +587,7 @@ func get_unit(hex: Vector2i):
 	return null
 
 # Línea de visión
-func has_line_of_sight(from: Vector2i, to: Vector2i) -> bool:
-	var distance = hex_distance(from, to)
-	if distance <= 1:
-		return true
-	
-	# Trazar línea entre hexágonos
-	var from_pixel = hex_to_pixel(from)
-	var to_pixel = hex_to_pixel(to)
-	
-	var steps = distance * 2
-	for i in range(1, steps):
-		var t = float(i) / float(steps)
-		var pixel = from_pixel.lerp(to_pixel, t)
-		var hex = pixel_to_hex(pixel)
-		
-		if hex != from and hex != to:
-			# Chequear obstáculos
-			if hex_data.has(hex):
-				var terrain = hex_data[hex]["terrain"]
-				if TerrainType.blocks_line_of_sight(terrain):
-					return false
-				if hex_data[hex]["unit"] != null:
-					return false
-	
-	return true
-
 # Generar terreno proceduralmente
-func _generate_terrain(q: int, r: int) -> TerrainType.Type:
-	# Usar ruido Perlin simulado con funciones matemáticas
-	var noise_value = _simple_noise(q, r)
-	
-	# Distribuir terrenos basado en el valor de ruido
-	# AGUA MUY REDUCIDA - solo 3% del mapa
-	if noise_value < 0.03:
-		return TerrainType.Type.WATER
-	elif noise_value < 0.10:
-		return TerrainType.Type.SAND
-	elif noise_value < 0.40:
-		return TerrainType.Type.CLEAR
-	elif noise_value < 0.55:
-		return TerrainType.Type.ROUGH
-	elif noise_value < 0.72:
-		return TerrainType.Type.FOREST
-	elif noise_value < 0.85:
-		return TerrainType.Type.HILL
-	elif noise_value < 0.92:
-		return TerrainType.Type.PAVEMENT
-	else:
-		return TerrainType.Type.BUILDING
-
 # Ruido simple basado en funciones matemáticas
 func _simple_noise(x: int, y: int) -> float:
 	var n = x + y * 57 + terrain_seed * 131  # Usar el seed de la partida
@@ -273,6 +595,72 @@ func _simple_noise(x: int, y: int) -> float:
 	var nn = (n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff
 	# Normalizar correctamente entre 0.0 y 1.0
 	return float(nn) / 2147483647.0
+
+# Generar elevación procedural coherente
+func _generate_elevation(q: int, r: int, terrain: TerrainType.Type) -> int:
+	# Usar ruido con escala más grande para elevación (más suave)
+	var elevation_noise = _layered_noise(q, r, 3)
+	
+	# Diferentes terrenos tienen diferentes rangos de elevación
+	match terrain:
+		TerrainType.Type.WATER:
+			return -1  # Agua está por debajo del nivel del mar
+		TerrainType.Type.SAND:
+			return 0   # Playa al nivel del mar
+		TerrainType.Type.CLEAR:
+			# Terreno claro: 0-1 niveles
+			return 1 if elevation_noise > 0.6 else 0
+		TerrainType.Type.ROUGH:
+			# Terreno accidentado: 0-2 niveles
+			if elevation_noise > 0.7:
+				return 2
+			elif elevation_noise > 0.4:
+				return 1
+			else:
+				return 0
+		TerrainType.Type.FOREST:
+			# Bosque: 0-2 niveles (árboles dan cobertura pero no elevan tanto)
+			if elevation_noise > 0.65:
+				return 2
+			elif elevation_noise > 0.35:
+				return 1
+			else:
+				return 0
+		TerrainType.Type.HILL:
+			# Colinas: 2-4 niveles (más altas)
+			if elevation_noise > 0.8:
+				return 4
+			elif elevation_noise > 0.6:
+				return 3
+			else:
+				return 2
+		TerrainType.Type.BUILDING:
+			# Los edificios ya tienen su elevación base establecida en _flatten_urban_area
+			# Aquí NO se modifica, se eleva en post-procesamiento
+			return 0  # Placeholder, se ajustará después
+		TerrainType.Type.PAVEMENT:
+			# Pavimento: mantiene la elevación del área urbana
+			return 0  # Placeholder, se ajustará después
+		_:
+			return 0
+			return 0
+
+# Ruido en capas para mayor coherencia
+func _layered_noise(x: int, y: int, octaves: int = 3) -> float:
+	var value = 0.0
+	var amplitude = 1.0
+	var frequency = 1.0
+	var max_value = 0.0
+	
+	for i in range(octaves):
+		var sample_x = x * frequency
+		var sample_y = y * frequency
+		value += _simple_noise(int(sample_x), int(sample_y)) * amplitude
+		max_value += amplitude
+		amplitude *= 0.5
+		frequency *= 2.0
+	
+	return value / max_value
 
 # Obtener costo de movimiento considerando terreno
 func get_terrain_cost(hex: Vector2i) -> int:
@@ -282,28 +670,134 @@ func get_terrain_cost(hex: Vector2i) -> int:
 	var terrain = hex_data[hex]["terrain"]
 	return TerrainType.get_movement_cost(terrain)
 
-# Método auxiliar para compatibilidad
+# Método auxiliar para calcular costo de movimiento considerando terreno Y elevación
 func _get_movement_cost(from: Vector2i, to: Vector2i) -> int:
-	return get_terrain_cost(to)
+	var base_cost = get_terrain_cost(to)
+	
+	# Añadir costo por cambio de elevación
+	var elevation_diff = abs(get_elevation(to) - get_elevation(from))
+	
+	# Cada nivel de subida cuesta +1 MP adicional (BattleTech rules)
+	var elevation_cost = elevation_diff if get_elevation(to) > get_elevation(from) else 0
+	
+	return base_cost + elevation_cost
 
-# Dibujar el grid con colores de terreno
+# Dibujar el grid con colores de terreno y elevación
 func _draw():
-	for hex_pos in hex_data.keys():
-		var pixel_pos = hex_to_pixel(hex_pos)
+	# Dibujar en orden de elevación (primero los bajos, luego los altos)
+	var sorted_hexes = hex_data.keys()
+	# Use a proper comparator function for sort_custom — Godot expects a method that
+	# returns -1/0/1. The previous inline lambda returned a boolean which can cause
+	# unpredictable behavior or runtime errors.
+	# Godot 4 expects a single Callable argument for sort_custom.
+	# Create a Callable pointing at our comparator method.
+	sorted_hexes.sort_custom(Callable(self, "_compare_hex_elevation"))
+	
+	# Build surface list (each drawable face becomes a surface), compute approximate depth
+	var surfaces: Array = []
+
+	for hex_pos in sorted_hexes:
+		var pixel_pos = hex_to_pixel(hex_pos, false)
 		var terrain = hex_data[hex_pos]["terrain"]
-		var color = TerrainType.get_color(terrain)
-		
-		# Dibujar hexágono relleno
-		_draw_hex_filled(pixel_pos, hex_size, color)
-		
-		# Dibujar borde del hexágono
-		_draw_hex_outline(pixel_pos, hex_size, Color(0.2, 0.2, 0.2, 0.5))
-		
-		# Dibujar símbolo de terreno
-		var symbol = TerrainType.get_symbol(terrain)
-		if symbol != "·":  # No dibujar símbolo para terreno clear
-			draw_string(ThemeDB.fallback_font, pixel_pos + Vector2(-10, 5), symbol, 
-				HORIZONTAL_ALIGNMENT_CENTER, -1, 24, Color(1, 1, 1, 0.7))
+		var elevation = hex_data[hex_pos]["elevation"]
+
+		# Top center for this tile
+		var elevation_offset = Vector2(0, -elevation * 10.0)
+		var top_center = pixel_pos + elevation_offset
+		var colors = _get_terrain_colors(terrain, elevation)
+
+		# Top face polygon (use vertices to compute a depth metric)
+		var top_vertices = PackedVector2Array()
+		var sum_y = 0.0
+		for i in range(6):
+			var angle = deg_to_rad(60 * i)
+			var v = Vector2(top_center.x + hex_size * cos(angle), top_center.y + hex_size * sin(angle))
+			top_vertices.append(v)
+			sum_y += v.y
+		var avg_y_top = sum_y / float(top_vertices.size()) if top_vertices.size() > 0 else top_center.y
+
+		surfaces.append({"depth": avg_y_top, "type": "top", "center": top_center, "colors": colors, "terrain": terrain, "elevation": elevation, "top_vertices": top_vertices})
+
+		# NOTE: side faces removed — tiles will render elevated tops only without
+		# vertical walls/sides. This keeps tiles visually lifted but flat (no volume).
+
+	# Group surfaces by elevation so we can DRAW STRICTLY by height only
+	var groups := {}
+	for surf in surfaces:
+		var elev = 0
+		if typeof(surf) == TYPE_DICTIONARY and surf.has("elevation"):
+			elev = int(surf.get("elevation", 0))
+		if not groups.has(elev):
+			groups[elev] = []
+		groups[elev].append(surf)
+
+	# Get sorted list of elevations (low first)
+	var elev_keys = groups.keys()
+	elev_keys.sort()
+
+	# Debug validation: detect any ordering violation (earlier surface with higher elevation)
+	if debug_draw_surfaces:
+		for k in range(surfaces.size() - 1):
+			var ea = 0
+			var eb = 0
+			if typeof(surfaces[k]) == TYPE_DICTIONARY and surfaces[k].has("elevation"):
+				ea = int(surfaces[k].get("elevation", 0))
+			if typeof(surfaces[k + 1]) == TYPE_DICTIONARY and surfaces[k + 1].has("elevation"):
+				eb = int(surfaces[k + 1].get("elevation", 0))
+			if ea > eb:
+				# mark the earlier surface as problematic
+				var bad = surfaces[k]
+				var pos = bad["center"] if bad.has("center") else (bad["points"][0] if bad.has("points") else Vector2())
+				draw_string(ThemeDB.fallback_font, pos + Vector2(0, 6), "ORDER VIOLATION %d>%d idx=%d" % [ea, eb, k], HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1,0.2,0.2))
+				print_debug("ORDER VIOLATION: index %d elevation %d before index %d elevation %d" % [k, ea, k+1, eb])
+
+	# Draw every surface grouped by elevation (strict height-first ordering)
+	var draw_index = 0
+	for elev in elev_keys:
+		var group = groups[elev]
+		# Optionally we can sort each group by screen depth for deterministic rendering inside same elevation
+		group.sort_custom(Callable(self, "_compare_surfaces_by_screen_depth"))
+		for surf in group:
+			if surf["type"] == "side":
+				draw_colored_polygon(surf["points"], surf["color"])
+				var pl = PackedVector2Array()
+				for p in surf["points"]:
+					pl.append(p)
+				pl.append(surf["points"][0])
+				draw_polyline(pl, surf["outline_color"], 1.0)
+				if debug_draw_surfaces:
+					# Overlay diagnostic info for sides
+					var mid = Vector2()
+					for pt in surf["points"]:
+						mid += pt
+					mid /= float(surf["points"].size())
+					draw_string(ThemeDB.fallback_font, mid + Vector2(0, -6), "side e=%d d=%.1f" % [surf.get("elevation", -999), surf.get("depth", 0.0)], HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1,1,1))
+			elif surf["type"] == "top":
+				_draw_hex_with_gradient(surf["center"], hex_size, surf["colors"]["light"], surf["colors"]["dark"])
+				_draw_hex_beveled_border(surf["center"], hex_size, surf["colors"]["highlight"], surf["colors"]["shadow"])
+
+				if surf["terrain"] and terrain_icons.has(surf["terrain"]):
+					var icon = terrain_icons[surf["terrain"]]
+					var icon_size = Vector2(32, 32)
+					var icon_pos = surf["center"] - icon_size / 2
+					draw_texture_rect(icon, Rect2(icon_pos, icon_size), false, Color(1, 1, 1, 0.85))
+
+				if surf["elevation"] != 0:
+					var elev_text = "%+d" % surf["elevation"]
+					var elev_color = Color.YELLOW if surf["elevation"] > 0 else Color.CYAN
+					draw_string(ThemeDB.fallback_font, surf["center"] + Vector2(-7, 21), elev_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color(0, 0, 0, 0.6))
+					draw_string(ThemeDB.fallback_font, surf["center"] + Vector2(-8, 20), elev_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 14, elev_color)
+				if debug_draw_surfaces:
+					# Draw debug label of center depth/elevation
+					draw_string(ThemeDB.fallback_font, surf["center"] + Vector2(0, -30), "top e=%d d=%.1f" % [surf.get("elevation", -999), surf.get("depth", 0.0)], HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1,1,0))
+				if debug_draw_surfaces:
+					# draw-order index (0 drawn first)
+					draw_string(ThemeDB.fallback_font, surf["center"] + Vector2(0, -14), "#%d" % draw_index, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1,0.8,0))
+				draw_index += 1
+
+# Vertical side rendering removed — tiles draw elevated tops only.
+
+## FUNCIONES DE RENDERIZADO HELPER ##
 
 func _draw_hex_filled(center: Vector2, size: float, color: Color):
 	var points = PackedVector2Array()
@@ -320,6 +814,222 @@ func _draw_hex_outline(center: Vector2, size: float, color: Color):
 	for i in range(6):
 		var angle_deg = 60 * i
 		var angle_rad = deg_to_rad(angle_deg)
+		var x = center.x + size * cos(angle_rad)
+		var y = center.y + size * sin(angle_rad)
+		var next_angle_rad = deg_to_rad((i + 1) * 60)
+		var next_x = center.x + size * cos(next_angle_rad)
+		var next_y = center.y + size * sin(next_angle_rad)
+		draw_line(Vector2(x, y), Vector2(next_x, next_y), color, 2.0)
+
+
+
+func _compare_hex_elevation(a, b) -> int:
+	# Comparator for draw order that sorts tiles primarily by elevation
+	# (low elevation first -> higher tiles drawn last and appear above lower tiles),
+	# then by screen Y and screen X for deterministic ordering.
+	# This produces a painter's algorithm ordering that reduces visible
+	# overlap artifacts where high-elevation tiles appear to incorrectly
+	# occlude tiles that should be in front of them.
+	var ea = 0
+	var eb = 0
+	if hex_data.has(a) and typeof(hex_data[a]) == TYPE_DICTIONARY:
+		ea = hex_data[a].get("elevation", 0)
+	if hex_data.has(b) and typeof(hex_data[b]) == TYPE_DICTIONARY:
+		eb = hex_data[b].get("elevation", 0)
+
+	# Compare by elevation first (so low->high)
+	# We want higher elevation to be drawn later (i.e. come after lower ones).
+	# Invert the comparison so surfaces with larger elevation sort as "greater".
+	if ea < eb:
+		return 1
+	elif ea > eb:
+		return -1
+
+	# Elevation tie: compare screen Y then X for deterministic order
+	var pa = hex_to_pixel(a, false)
+	var pb = hex_to_pixel(b, false)
+
+	if pa.y < pb.y:
+		return -1
+	elif pa.y > pb.y:
+		return 1
+
+	if pa.x < pb.x:
+		return -1
+	elif pa.x > pb.x:
+		return 1
+	if hex_data.has(a) and typeof(hex_data[a]) == TYPE_DICTIONARY:
+		ea = hex_data[a].get("elevation", 0)
+	if hex_data.has(b) and typeof(hex_data[b]) == TYPE_DICTIONARY:
+		eb = hex_data[b].get("elevation", 0)
+
+	if ea < eb:
+		return -1
+	elif ea > eb:
+		return 1
+	return 0
+
+
+func _compare_surfaces_by_depth(a, b) -> int:
+	# Compare surfaces by their 'depth' (average screen Y), ascending
+	var da = 0.0
+	var db = 0.0
+	if typeof(a) == TYPE_DICTIONARY and a.has("depth"):
+		da = float(a.get("depth", 0.0))
+	if typeof(b) == TYPE_DICTIONARY and b.has("depth"):
+		db = float(b.get("depth", 0.0))
+
+	# ONLY use elevation for ordering. Lower elevation => draw first.
+	var ea = 0
+	var eb = 0
+	if typeof(a) == TYPE_DICTIONARY and a.has("elevation"):
+		ea = int(a.get("elevation", 0))
+	if typeof(b) == TYPE_DICTIONARY and b.has("elevation"):
+		eb = int(b.get("elevation", 0))
+
+	# Return numeric difference (negative -> a before b, positive -> a after b)
+	return ea - eb
+	return 0
+
+
+func _compare_surfaces_by_screen_depth(a, b) -> int:
+	var da = 0.0
+	var db = 0.0
+	if typeof(a) == TYPE_DICTIONARY and a.has("depth"):
+		da = float(a.get("depth", 0.0))
+	if typeof(b) == TYPE_DICTIONARY and b.has("depth"):
+		db = float(b.get("depth", 0.0))
+
+	if da < db:
+		return -1
+	elif da > db:
+		return 1
+	return 0
+
+func _process(_delta: float) -> void:
+	# Watch the exported toggle so the overlay updates immediately in-editor
+	if debug_draw_surfaces != _prev_debug_draw_surfaces:
+		_prev_debug_draw_surfaces = debug_draw_surfaces
+		# Force redraw
+		if Engine.is_editor_hint():
+			queue_redraw()
+		else:
+			queue_redraw()
+
+func get_occlusion_edge(hex: Vector2i, observer_hex: Vector2i) -> Array:
+	"""
+	Retorna la geometría exacta del borde de oclusión para pixel-perfect clipping.
+	Retorna un array de puntos que forman el borde superior de las caras laterales visibles.
+	"""
+	var hex_elevation = get_elevation(hex)
+	var observer_elevation = get_elevation(observer_hex)
+	
+	# Solo hay oclusión si el hex está 2+ niveles más alto
+	if hex_elevation < observer_elevation + 2:
+		return []
+	
+	# Calcular la posición del hex oclusor (sin elevación aplicada)
+	var hex_pos = hex_to_pixel(hex, false) + position
+	var height = hex_elevation * 10.0
+	
+	# Obtener vértices del hexágono en la BASE (nivel 0)
+	var base_vertices = []
+	for i in range(6):
+		var angle_deg = 60 * i
+		var angle_rad = deg_to_rad(angle_deg)
+		var x = hex_pos.x + hex_size * cos(angle_rad)
+		var y = hex_pos.y + hex_size * sin(angle_rad)
+		base_vertices.append(Vector2(x, y))
+	
+	# Determinar cuáles caras laterales son visibles (las que miran hacia el sur)
+	# Las caras 2, 3, 4 son las visibles (SE, S, SW)
+	# El borde superior de estas caras forma la línea de oclusión
+	var visible_faces = [2, 3, 4]
+	
+	# Obtener los vértices superiores de las caras visibles
+	var edge_points = []
+	for face_idx in visible_faces:
+		var v_base = base_vertices[face_idx]
+		var v_top = v_base + Vector2(0, -height)
+		edge_points.append(v_top)
+	
+	# Agregar también el siguiente vértice para cerrar el polígono
+	var last_v_base = base_vertices[(visible_faces[-1] + 1) % 6]
+	var last_v_top = last_v_base + Vector2(0, -height)
+	edge_points.append(last_v_top)
+	
+	return edge_points
+
+## FUNCIONES DE RENDERIZADO MEJORADO ##
+
+# Obtener colores de terreno con gradiente según elevación
+func _get_terrain_colors(terrain: TerrainType.Type, elevation: int) -> Dictionary:
+	var base_color = TerrainType.get_color(terrain)
+	
+	# Modificar según elevación (más alto = más claro)
+	var elevation_brightness = 1.0 + (elevation * 0.12)
+	
+	# Color más claro (parte superior del gradiente)
+	var light_color = base_color * elevation_brightness * 1.3
+	light_color.a = base_color.a
+	
+	# Color más oscuro (parte inferior del gradiente)
+	var dark_color = base_color * elevation_brightness * 0.7
+	dark_color.a = base_color.a
+	
+	# Color para highlight (borde superior)
+	var highlight_color = light_color.lightened(0.3)
+	highlight_color.a = 0.8
+	
+	# Color para sombra (borde inferior)
+	var shadow_color = dark_color.darkened(0.4)
+	shadow_color.a = 0.6
+	
+	return {
+		"light": light_color,
+		"dark": dark_color,
+		"highlight": highlight_color,
+		"shadow": shadow_color
+	}
+
+# Dibujar hexágono con gradiente radial
+func _draw_hex_with_gradient(center: Vector2, size: float, color_center: Color, color_edge: Color):
+	var points = PackedVector2Array()
+	var colors = PackedColorArray()
+	
+	# Centro del hexágono
+	points.append(center)
+	colors.append(color_center)
+	
+	# Vértices del hexágono
+	for i in range(7):  # 7 para cerrar el círculo
+		var angle_deg = 60 * i
+		var angle_rad = deg_to_rad(angle_deg)
+		var x = center.x + size * cos(angle_rad)
+		var y = center.y + size * sin(angle_rad)
+		points.append(Vector2(x, y))
+		colors.append(color_edge)
+	
+	# Dibujar triángulos desde el centro
+	for i in range(6):
+		var triangle_points = PackedVector2Array([
+			points[0],      # Centro
+			points[i + 1],  # Vértice actual
+			points[i + 2]   # Siguiente vértice
+		])
+		var triangle_colors = PackedColorArray([
+			colors[0],
+			colors[i + 1],
+			colors[i + 2]
+		])
+		draw_polygon(triangle_points, triangle_colors)
+
+# Dibujar borde biselado del hexágono
+func _draw_hex_beveled_border(center: Vector2, size: float, highlight_color: Color, shadow_color: Color):
+	# Dibujar bordes con efecto de bisel
+	for i in range(6):
+		var angle_deg = 60 * i
+		var angle_rad = deg_to_rad(angle_deg)
 		var x1 = center.x + size * cos(angle_rad)
 		var y1 = center.y + size * sin(angle_rad)
 		
@@ -328,4 +1038,133 @@ func _draw_hex_outline(center: Vector2, size: float, color: Color):
 		var x2 = center.x + size * cos(next_angle_rad)
 		var y2 = center.y + size * sin(next_angle_rad)
 		
-		draw_line(Vector2(x1, y1), Vector2(x2, y2), color, 2.0)
+		var p1 = Vector2(x1, y1)
+		var p2 = Vector2(x2, y2)
+		
+		# Determinar si es borde superior (highlight) o inferior (sombra)
+		# Los bordes 0, 1, 5 son superiores, 2, 3, 4 son inferiores
+		var color = highlight_color if i in [0, 1, 5] else shadow_color
+		
+		# Borde externo
+		draw_line(p1, p2, color, 2.5)
+		
+		# Borde interno más oscuro
+		var inner_size = size * 0.95
+		var x1_inner = center.x + inner_size * cos(angle_rad)
+		var y1_inner = center.y + inner_size * sin(angle_rad)
+		var x2_inner = center.x + inner_size * cos(next_angle_rad)
+		var y2_inner = center.y + inner_size * sin(next_angle_rad)
+		
+		var inner_color = Color(0.1, 0.1, 0.1, 0.3)
+		draw_line(Vector2(x1_inner, y1_inner), Vector2(x2_inner, y2_inner), inner_color, 1.5)
+
+## SISTEMA DE ELEVACIÓN Y LÍNEA DE VISIÓN ##
+
+# Obtener elevación de un hexágono
+func get_elevation(hex: Vector2i) -> int:
+	if not is_valid_hex(hex):
+		return 0
+	return hex_data[hex]["elevation"]
+
+func get_terrain(hex: Vector2i) -> TerrainType.Type:
+	if not is_valid_hex(hex):
+		return TerrainType.Type.CLEAR
+	return hex_data[hex]["terrain"]
+
+# Calcular línea de visión entre dos hexágonos considerando elevación
+func has_line_of_sight(from_hex: Vector2i, to_hex: Vector2i) -> bool:
+	if not is_valid_hex(from_hex) or not is_valid_hex(to_hex):
+		return false
+	
+	# Obtener elevación del atacante y objetivo
+	var from_elevation = get_elevation(from_hex)
+	var to_elevation = get_elevation(to_hex)
+	
+	# Obtener todos los hexágonos entre from y to
+	var line_hexes = _get_line_between(from_hex, to_hex)
+	
+	# Verificar si algún hex intermedio bloquea la visión
+	for i in range(1, line_hexes.size() - 1):  # Excluir inicio y fin
+		var blocking_hex = line_hexes[i]
+		var blocking_elevation = get_elevation(blocking_hex)
+		var blocking_terrain = hex_data[blocking_hex]["terrain"]
+		
+		# Calcular la altura efectiva del hex bloqueador
+		var blocking_height = blocking_elevation
+		
+		# Bosques y edificios añaden altura adicional
+		if blocking_terrain == TerrainType.Type.FOREST:
+			blocking_height += 2  # Árboles añaden 2 niveles
+		elif blocking_terrain == TerrainType.Type.BUILDING:
+			blocking_height += 3  # Edificios añaden 3 niveles
+		
+		# Calcular interpolación de la línea de visión
+		var progress = float(i) / float(line_hexes.size() - 1)
+		var los_height = lerp(float(from_elevation), float(to_elevation), progress)
+		
+		# Si el hex bloqueador es más alto que la línea de visión, bloquea
+		if blocking_height >= los_height + 1:  # +1 para dar margen
+			return false
+	
+	return true
+
+# Obtener hexágonos en línea entre dos puntos (Bresenham adaptado para hexágonos)
+func _get_line_between(from_hex: Vector2i, to_hex: Vector2i) -> Array:
+	var distance = hex_distance(from_hex, to_hex)
+	var results = []
+	
+	if distance == 0:
+		return [from_hex]
+	
+	for i in range(distance + 1):
+		var t = float(i) / float(distance)
+		var lerped = _hex_lerp(from_hex, to_hex, t)
+		results.append(lerped)
+	
+	return results
+
+# Interpolación lineal entre hexágonos
+func _hex_lerp(a: Vector2i, b: Vector2i, t: float) -> Vector2i:
+	var ax = float(a.x)
+	var ay = float(a.y)
+	var bx = float(b.x)
+	var by = float(b.y)
+	
+	var x = lerp(ax, bx, t)
+	var y = lerp(ay, by, t)
+	
+	return axial_round(Vector2(x, y))
+
+# Calcular modificador de ataque basado en diferencia de altura
+# Reglas BattleTech: atacar desde arriba da bonificación, desde abajo penalización
+func get_height_modifier(attacker_hex: Vector2i, target_hex: Vector2i) -> int:
+	if not is_valid_hex(attacker_hex) or not is_valid_hex(target_hex):
+		return 0
+	
+	var attacker_elev = get_elevation(attacker_hex)
+	var target_elev = get_elevation(target_hex)
+	var diff = attacker_elev - target_elev
+	
+	# En BattleTech, cada nivel de diferencia da +/-1 al to-hit
+	# Positivo = más fácil golpear (atacando desde arriba)
+	# Negativo = más difícil golpear (atacando desde abajo)
+	return -diff  # Invertido porque menor número to-hit = mejor
+
+# Verificar si un hex proporciona cobertura parcial por elevación
+func provides_partial_cover(attacker_hex: Vector2i, target_hex: Vector2i) -> bool:
+	if not has_line_of_sight(attacker_hex, target_hex):
+		return false  # Sin LOS no hay disparo
+	
+	var line_hexes = _get_line_between(attacker_hex, target_hex)
+	var target_elev = get_elevation(target_hex)
+	
+	# Verificar hexágonos adyacentes al objetivo
+	for i in range(max(0, line_hexes.size() - 2), line_hexes.size() - 1):
+		var hex = line_hexes[i]
+		var hex_elev = get_elevation(hex)
+		
+		# Si hay un hex cercano más alto, da cobertura parcial
+		if hex_elev > target_elev:
+			return true
+	
+	return false

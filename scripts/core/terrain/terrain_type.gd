@@ -27,6 +27,7 @@ const TERRAIN_DATA = {
 		"blocks_los": false,
 		"color": Color(0.4, 0.7, 0.3),  # Verde claro
 		"symbol": "·",
+		"icon": "",  # Sin icono para terreno despejado
 		"description": "Terreno abierto sin obstáculos"
 	},
 	Type.FOREST: {
@@ -38,6 +39,7 @@ const TERRAIN_DATA = {
 		"blocks_los": false,
 		"color": Color(0.2, 0.5, 0.2),  # Verde oscuro
 		"symbol": "♣",
+		"icon": "res://assets/sprites/terrain/tree.svg",
 		"description": "Bosque denso que dificulta el movimiento y proporciona cobertura"
 	},
 	Type.WATER: {
@@ -49,6 +51,7 @@ const TERRAIN_DATA = {
 		"blocks_los": false,
 		"color": Color(0.2, 0.4, 0.8),  # Azul
 		"symbol": "≈",
+		"icon": "res://assets/sprites/terrain/water.svg",
 		"description": "Agua profunda que ralentiza mucho el movimiento"
 	},
 	Type.ROUGH: {
@@ -59,7 +62,8 @@ const TERRAIN_DATA = {
 		"to_hit_modifier": 0,
 		"blocks_los": false,
 		"color": Color(0.5, 0.4, 0.3),  # Marrón
-		"symbol": "▓",
+		"symbol": "◆",
+		"icon": "res://assets/sprites/terrain/mountain.svg",
 		"description": "Terreno irregular con rocas y escombros"
 	},
 	Type.PAVEMENT: {
@@ -70,7 +74,8 @@ const TERRAIN_DATA = {
 		"to_hit_modifier": 0,
 		"blocks_los": false,
 		"color": Color(0.4, 0.4, 0.4),  # Gris
-		"symbol": "▪",
+		"symbol": "▬",
+		"icon": "res://assets/sprites/terrain/pavement.svg",
 		"description": "Superficie pavimentada, ideal para movimiento"
 	},
 	Type.SAND: {
@@ -81,7 +86,8 @@ const TERRAIN_DATA = {
 		"to_hit_modifier": 0,
 		"blocks_los": false,
 		"color": Color(0.9, 0.8, 0.5),  # Amarillo arena
-		"symbol": "░",
+		"symbol": "∴",
+		"icon": "res://assets/sprites/terrain/cactus.svg",
 		"description": "Arena suelta que dificulta el movimiento"
 	},
 	Type.ICE: {
@@ -93,6 +99,7 @@ const TERRAIN_DATA = {
 		"blocks_los": false,
 		"color": Color(0.7, 0.9, 1.0),  # Azul claro
 		"symbol": "❄",
+		"icon": "res://assets/sprites/terrain/ice.svg",
 		"description": "Hielo resbaladizo - requiere chequeos de pilotaje",
 		"special": "piloting_check_on_move"
 	},
@@ -105,6 +112,7 @@ const TERRAIN_DATA = {
 		"blocks_los": true,
 		"color": Color(0.6, 0.6, 0.6),  # Gris oscuro
 		"symbol": "■",
+		"icon": "res://assets/sprites/terrain/building.svg",
 		"description": "Edificio que proporciona cobertura pesada"
 	},
 	Type.HILL: {
@@ -115,7 +123,8 @@ const TERRAIN_DATA = {
 		"to_hit_modifier": -1,
 		"blocks_los": false,
 		"color": Color(0.6, 0.5, 0.3),  # Marrón claro
-		"symbol": "▲",
+		"symbol": "▴",
+		"icon": "res://assets/sprites/terrain/hill.svg",
 		"description": "Elevación que proporciona ventaja de altura",
 		"special": "height_advantage"
 	}
@@ -154,3 +163,6 @@ static func get_special_rule(terrain_type: Type) -> String:
 	if has_special_rule(terrain_type):
 		return TERRAIN_DATA[terrain_type]["special"]
 	return ""
+
+static func get_icon(terrain_type: Type) -> String:
+	return TERRAIN_DATA[terrain_type]["icon"]
