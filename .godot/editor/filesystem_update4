@@ -1,3 +1,4 @@
-res://scripts/hex_grid.gd
 res://scripts/hex_surface_renderer.gd
-res://scripts/entities/mech_entity.gd
+res://scripts/core/terrain/terrain_type.gd
+res://scripts/battle_scene.gd
+res://scripts/hex_grid.gd

@@ -96,7 +96,6 @@ func _ready():
 	if hex_grid:
 		var map_center = hex_grid.hex_to_pixel(Vector2i(hex_grid.grid_width / 2, hex_grid.grid_height / 2))
 		camera.position = map_center
-		print("[BATTLE] Camera centered at: %s" % map_center)
 	
 	# Crear capa de overlay
 	overlay_layer = Node2D.new()
@@ -112,7 +111,6 @@ func _ready():
 	turn_manager.initiative_rolled.connect(_on_initiative_rolled)
 	
 	# Iniciar la batalla con fase de despliegue
-	print("[BATTLE] Starting setup_battle...")
 	_setup_battle()
 
 func _process(delta):
@@ -217,7 +215,6 @@ func _setup_battle():
 	var player_mech_data: Dictionary = {}
 	
 	if loadout_manager and loadout_manager.has_loadout():
-		print("[BATTLE] Using selected loadout from Mech Bay")
 		var loadout = loadout_manager.get_selected_loadout()
 		player_mech_data = _convert_loadout_to_mech_data(loadout)
 	else:
@@ -305,7 +302,6 @@ func _create_mech_for_deployment(mech_data: Dictionary, team: String) -> Mech:
 func _start_deployment_phase():
 	"""Inicia la fase de despliegue"""
 	deployment_phase = true
-	print("[DEPLOYMENT] Starting deployment phase - mechs to deploy: %d" % mechs_to_deploy.size())
 	
 	if ui:
 		ui.add_combat_message("=== DEPLOYMENT PHASE ===", Color.GOLD)
@@ -316,7 +312,6 @@ func _start_deployment_phase():
 
 func _deploy_next_mech():
 	"""Selecciona el siguiente mech para desplegar"""
-	print("[DEPLOYMENT] _deploy_next_mech called - remaining: %d" % mechs_to_deploy.size())
 	
 	if mechs_to_deploy.is_empty():
 		_end_deployment_phase()
@@ -325,18 +320,15 @@ func _deploy_next_mech():
 	current_deploying_mech = mechs_to_deploy.pop_front()
 	var team = current_deploying_mech.get_meta("team")
 	
-	print("[DEPLOYMENT] Deploying %s mech: %s" % [team, current_deploying_mech.mech_name])
 	
 	if team == "player":
 		# Jugador despliega manualmente
 		valid_deployment_hexes = deployment_zones["player"].duplicate()
-		print("[DEPLOYMENT] Player deployment - valid hexes: %d" % valid_deployment_hexes.size())
 		if ui:
 			ui.add_combat_message("Deploy %s - Click on a hex in the deployment zone" % current_deploying_mech.mech_name, Color.CYAN)
 		update_overlays()
 	else:
 		# IA despliega automáticamente
-		print("[DEPLOYMENT] AI deploying...")
 		_deploy_ai_mech()
 
 func _deploy_ai_mech():
@@ -379,10 +371,8 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 	# Añadir a la lista correcta
 	if team == "player":
 		player_mechs.append(mech)
-		print("[DEPLOYMENT] Placed player mech: %s at [%d,%d] facing %d" % [mech.mech_name, hex.x, hex.y, facing])
 	else:
 		enemy_mechs.append(mech)
-		print("[DEPLOYMENT] Placed enemy mech: %s at [%d,%d] facing %d" % [mech.mech_name, hex.x, hex.y, facing])
 
 func _end_deployment_phase():
 	"""Finaliza la fase de despliegue e inicia la batalla"""
@@ -390,7 +380,6 @@ func _end_deployment_phase():
 	valid_deployment_hexes.clear()
 	current_deploying_mech = null
 	
-	print("[DEPLOYMENT] Deployment phase complete")
 	
 	if ui:
 		ui.add_combat_message("=== DEPLOYMENT COMPLETE ===", Color.GOLD)
@@ -445,7 +434,6 @@ func _create_player_mech_from_data(mech_data: Dictionary, position: Vector2i) ->
 	hex_grid.set_unit(mech.hex_position, mech)
 	mech.update_visual_position(hex_grid)
 	
-	print("[BATTLE] Created player mech: ", mech.mech_name, " (", mech.tonnage, " tons)")
 	return mech
 
 ## Crea un mech enemigo desde datos del MechBayManager
@@ -486,7 +474,6 @@ func _create_enemy_mech_from_data(mech_data: Dictionary, position: Vector2i) -> 
 	hex_grid.set_unit(mech.hex_position, mech)
 	mech.update_visual_position(hex_grid)
 	
-	print("[BATTLE] Created enemy mech: ", mech.mech_name, " (", mech.tonnage, " tons)")
 	return mech
 
 ## Convierte un loadout del Mech Bay al formato de mech_data para batalla
@@ -531,7 +518,6 @@ func _convert_loadout_to_mech_data(loadout: Dictionary) -> Dictionary:
 				weapons.append(weapon)
 	
 	mech_data["weapons"] = weapons
-	print("[BATTLE] Converted loadout with %d weapons" % weapons.size())
 	
 	# Calcular heat capacity basado en heat sinks
 	var heat_sink_count = 10  # Engine incluye 10 por defecto
@@ -547,12 +533,6 @@ func _convert_loadout_to_mech_data(loadout: Dictionary) -> Dictionary:
 	# Heat dissipation = número total de heat sinks
 	# Cada heat sink disipa 1 punto de calor por turno
 	mech_data["heat_dissipation"] = heat_sink_count
-	
-	print("[BATTLE] Loadout heat sinks: %d (Dissipation: %d/turn, Capacity: %d)" % [
-		heat_sink_count,
-		heat_sink_count,
-		mech_data["heat_capacity"]
-	])
 	
 	# Gunnery skill por defecto
 	mech_data["gunnery_skill"] = 4
@@ -864,7 +844,6 @@ func _handle_deployment_click(hex: Vector2i):
 
 func on_facing_selected(facing: int):
 	"""Llamado cuando el jugador selecciona una orientación"""
-	print("[BATTLE] Facing selected: %d" % facing)
 	
 	if deployment_phase and current_deploying_mech and selected_hex != Vector2i(-1, -1):
 		# Estamos en fase de despliegue
@@ -878,7 +857,6 @@ func on_facing_selected(facing: int):
 		var current_facing = selected_unit.facing
 		var rotations_needed = _calculate_rotations(current_facing, facing)
 		
-		print("[BATTLE] Current facing: %d, Target facing: %d, Rotations: %d" % [current_facing, facing, rotations_needed])
 		
 		if rotations_needed <= selected_unit.current_movement:
 			# Aplicar rotación
