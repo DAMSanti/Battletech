@@ -14,16 +14,20 @@ var terrain_seed: int = 0
 var terrain_icons: Dictionary = {}
 # Enable this in the Inspector to draw debug overlays (surfaces, depths, elevations)
 @export var debug_draw_surfaces: bool = false
+@export var base_elevation: int = -2  # All tiles start at this base elevation (levels)
 var _prev_debug_draw_surfaces: bool = false
+@export var use_depth_renderer: bool = true
+
+var _surface_renderer = null  # HexSurfaceRenderer instance created dynamically
 
 # Direcciones hexagonales (flat-top)
 const HEX_DIRECTIONS = [
-	Vector2i(1, 0),   # E
+	Vector2i(0, -1),   # N
 	Vector2i(1, -1),  # NE
-	Vector2i(0, -1),  # NW
-	Vector2i(-1, 0),  # W
+	Vector2i(-1, 0),  # NW
+	Vector2i(0, 1),  # S
 	Vector2i(-1, 1),  # SW
-	Vector2i(0, 1)    # SE
+	Vector2i(1, 0)    # SE
 ]
 
 # Almacenamiento del estado del grid
@@ -39,6 +43,17 @@ func _ready():
 	# Ensure we watch for inspector changes in editor / runtime
 	_prev_debug_draw_surfaces = debug_draw_surfaces
 	set_process(true)
+	# Create the surface renderer node (manages depth-pass + per-surface draw)
+	if use_depth_renderer:
+		# Instantiate the renderer by directly loading the script (avoids parser cache issues)
+		var _hs_script = load("res://scripts/hex_surface_renderer.gd")
+		_surface_renderer = _hs_script.new()
+		_surface_renderer.name = "__hex_surface_renderer"
+		add_child(_surface_renderer)
+		# Set a reasonable depth resolution to start
+		_surface_renderer.set_depth_viewport_scale(0.75)
+		# Enable elevation labels by default
+		_surface_renderer.show_elevation_labels = true
 
 func _preload_terrain_icons():
 	# Precargar todos los iconos SVG
@@ -716,12 +731,100 @@ func _draw():
 			sum_y += v.y
 		var avg_y_top = sum_y / float(top_vertices.size()) if top_vertices.size() > 0 else top_center.y
 
-		surfaces.append({"depth": avg_y_top, "type": "top", "center": top_center, "colors": colors, "terrain": terrain, "elevation": elevation, "top_vertices": top_vertices})
+		surfaces.append({"depth": avg_y_top, "type": "top", "center": top_center, "colors": colors, "terrain": terrain, "elevation": elevation, "top_vertices": top_vertices, "hex": hex_pos})
 
-		# NOTE: side faces removed — tiles will render elevated tops only without
-		# vertical walls/sides. This keeps tiles visually lifted but flat (no volume).
+		# Add vertical side faces for each tile to give volume from base_elevation up to tile elevation
+		if elevation > base_elevation:
+			var face_base_color = colors["dark"].darkened(0.2)
+
+			# Flat-top hexagons: render visible sides in isometric view
+			# Vertices are generated at angles: 0°, 60°, 120°, 180°, 240°, 300°
+			# For flat-top hexagons:
+			# - Vertex 0 (0°): East
+			# - Vertex 1 (60°): Southeast 
+			# - Vertex 2 (120°): Southwest
+			# - Vertex 3 (180°): West
+			# - Vertex 4 (240°): Northwest
+			# - Vertex 5 (300°): Northeast
+			#
+			# Edges perpendicular to neighbor directions:
+			# - Edge 0→1: neighbor is SE (HEX_DIRECTIONS[5])
+			# - Edge 1→2: neighbor is S (HEX_DIRECTIONS[3])
+			# - Edge 2→3: neighbor is SW (HEX_DIRECTIONS[4])
+			
+			var edge_to_neighbor = {
+				0: 5,  # Edge 0→1 faces SE
+				1: 3,  # Edge 1→2 faces S
+				2: 4   # Edge 2→3 faces SW
+			}
+
+			for vertex_idx in edge_to_neighbor.keys():
+				# Get the correct neighbor direction for this edge
+				var neighbor_dir_idx = edge_to_neighbor[vertex_idx]
+				var neighbor = hex_pos + HEX_DIRECTIONS[neighbor_dir_idx]
+				var neigh_elev = base_elevation
+				if is_valid_hex(neighbor) and hex_data.has(neighbor):
+					neigh_elev = hex_data[neighbor]["elevation"]
+
+				# If neighbor's elevation is >= our top elevation, the side is hidden (shared or higher)
+				if neigh_elev >= elevation:
+					continue
+
+				# Get the two vertices of this edge (in top face of THIS tile)
+				var v1t = top_vertices[vertex_idx]
+				var v2t = top_vertices[(vertex_idx + 1) % 6]
+
+				# ✅ Calculate bottom vertices at the neighbor's elevation
+				var elevation_diff = (elevation - neigh_elev) * 10.0
+				var v1b = Vector2(v1t.x, v1t.y + elevation_diff)
+				var v2b = Vector2(v2t.x, v2t.y + elevation_diff)
+
+				# Create quad face: v1b, v2b, v2t, v1t (counter-clockwise from bottom)
+				var face_points = PackedVector2Array([v1b, v2b, v2t, v1t])
+				var avg_y_face = (v1b.y + v2b.y + v2t.y + v1t.y) / 4.0
+				surfaces.append({"depth": avg_y_face, "type": "side", "points": face_points, "color": face_base_color, "outline_color": face_base_color.darkened(0.3), "elevation": elevation, "hex": hex_pos, "neighbor_elev": neigh_elev})
 
 	# Group surfaces by elevation so we can DRAW STRICTLY by height only
+
+	# --- MECH SHADOWS: find MechEntity nodes and add projected blob shadows ---
+	# We'll add simple blob shadows centered on the mech's hex (pixel-perfect occluded
+	# by the depth map created earlier). This keeps mechs as 2D sprites and projects
+	# shadows into the world with pixel-accurate occlusion.
+	for mech_node in get_tree().get_nodes_in_group("mechs"):
+		if not mech_node or not mech_node.is_inside_tree():
+			continue
+		# Find mech world position and map to the grid
+		var mech_pos = mech_node.global_position
+		var mech_hex = pixel_to_hex(mech_pos)
+		if not is_valid_hex(mech_hex):
+			continue
+		# Ground center and elevation
+		var ground_center = hex_to_pixel(mech_hex, true)
+		var ground_elev = get_elevation(mech_hex)
+		# Simple radius based on mech tonnage or default
+		var radius = hex_size * 0.6
+		if mech_node.has_method("get_mech_class"):
+			# If mech provides size via sprite_manager, approximate scale
+			radius *= 1.0
+		# Build an ellipse/circle polygon approximated by 12 points
+		var shadow_points = PackedVector2Array()
+		var segments = 12
+		for i in range(segments):
+			var a = deg_to_rad(360.0 * float(i) / float(segments))
+			shadow_points.append(Vector2(ground_center.x + cos(a) * radius, ground_center.y + sin(a) * radius - max(0, (ground_elev - base_elevation) * 10.0)))
+		# Add shadow surface (top_vertices style so elevation is uniform)
+		surfaces.append({"depth": ground_center.y, "type": "shadow", "top_vertices": shadow_points, "color": Color(0, 0, 0, 0.55), "elevation": ground_elev, "hex": mech_hex})
+
+	# If we're using the depth renderer, hand all surfaces off to it and skip
+	# the canvas immediate-mode drawing path (Polygon2D nodes will render instead).
+	if use_depth_renderer and _surface_renderer:
+		_surface_renderer.update_surfaces(surfaces, base_elevation)
+		# Keep debug overlays & validations below, but skip the immediate-mode draw
+		# so we don't double-draw polygons that are now handled by the renderer.
+		# NOTE: This ends the draw pass early; we still proceed to some debug logic
+		# below that does string overlays and ordering checks.
+		# return early to avoid the draw loop
+		return
 	var groups := {}
 	for surf in surfaces:
 		var elev = 0
@@ -774,7 +877,11 @@ func _draw():
 					draw_string(ThemeDB.fallback_font, mid + Vector2(0, -6), "side e=%d d=%.1f" % [surf.get("elevation", -999), surf.get("depth", 0.0)], HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1,1,1))
 			elif surf["type"] == "top":
 				_draw_hex_with_gradient(surf["center"], hex_size, surf["colors"]["light"], surf["colors"]["dark"])
-				_draw_hex_beveled_border(surf["center"], hex_size, surf["colors"]["highlight"], surf["colors"]["shadow"])
+				# Draw beveled border only on edges where neighbor elevation is lower
+				if surf.has("hex"):
+					_draw_hex_beveled_border_segmented(surf["center"], hex_size, surf["colors"]["highlight"], surf["colors"]["shadow"], surf["hex"], surf["elevation"])
+				else:
+					_draw_hex_beveled_border(surf["center"], hex_size, surf["colors"]["highlight"], surf["colors"]["shadow"])
 
 				if surf["terrain"] and terrain_icons.has(surf["terrain"]):
 					var icon = terrain_icons[surf["terrain"]]
@@ -795,7 +902,7 @@ func _draw():
 					draw_string(ThemeDB.fallback_font, surf["center"] + Vector2(0, -14), "#%d" % draw_index, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(1,0.8,0))
 				draw_index += 1
 
-# Vertical side rendering removed — tiles draw elevated tops only.
+# Vertical side rendering added — tiles have volume from base_elevation up to their elevation.
 
 ## FUNCIONES DE RENDERIZADO HELPER ##
 
@@ -899,6 +1006,14 @@ func _compare_surfaces_by_screen_depth(a, b) -> int:
 		da = float(a.get("depth", 0.0))
 	if typeof(b) == TYPE_DICTIONARY and b.has("depth"):
 		db = float(b.get("depth", 0.0))
+	# Prefer side faces before top faces when depth is similar — that keeps sides behind tops
+	var a_type = a.get("type", "") if (typeof(a) == TYPE_DICTIONARY and a.has("type")) else ""
+	var b_type = b.get("type", "") if (typeof(b) == TYPE_DICTIONARY and b.has("type")) else ""
+	if a_type != b_type:
+		if a_type == "side":
+			return -1
+		elif b_type == "side":
+			return 1
 
 	if da < db:
 		return -1
@@ -1055,6 +1170,44 @@ func _draw_hex_beveled_border(center: Vector2, size: float, highlight_color: Col
 		var x2_inner = center.x + inner_size * cos(next_angle_rad)
 		var y2_inner = center.y + inner_size * sin(next_angle_rad)
 		
+		var inner_color = Color(0.1, 0.1, 0.1, 0.3)
+		draw_line(Vector2(x1_inner, y1_inner), Vector2(x2_inner, y2_inner), inner_color, 1.5)
+
+
+func _draw_hex_beveled_border_segmented(center: Vector2, size: float, highlight_color: Color, shadow_color: Color, hex_coord: Vector2i, elevation: int):
+		# Draw beveled border per-edge, skipping edges where the neighbor has >= elevation
+	for i in range(6):
+		var angle_deg = 60 * i
+		var angle_rad = deg_to_rad(angle_deg)
+		var x1 = center.x + size * cos(angle_rad)
+		var y1 = center.y + size * sin(angle_rad)
+
+		var next_angle_deg = 60 * ((i + 1) % 6)
+		var next_angle_rad = deg_to_rad(next_angle_deg)
+		var x2 = center.x + size * cos(next_angle_rad)
+		var y2 = center.y + size * sin(next_angle_rad)
+
+		var neighbor = hex_coord + HEX_DIRECTIONS[i]
+		var neigh_elev = base_elevation
+		if is_valid_hex(neighbor) and hex_data.has(neighbor):
+			neigh_elev = int(hex_data[neighbor]["elevation"])
+
+		# Skip border if neighbor elevation is >= this tile's elevation (shared or taller)
+		if neigh_elev >= elevation:
+			continue
+
+		var p1 = Vector2(x1, y1)
+		var p2 = Vector2(x2, y2)
+
+		var color = highlight_color if i in [0, 1, 5] else shadow_color
+		draw_line(p1, p2, color, 2.5)
+
+		# Inner border
+		var inner_size = size * 0.95
+		var x1_inner = center.x + inner_size * cos(angle_rad)
+		var y1_inner = center.y + inner_size * sin(angle_rad)
+		var x2_inner = center.x + inner_size * cos(next_angle_rad)
+		var y2_inner = center.y + inner_size * sin(next_angle_rad)
 		var inner_color = Color(0.1, 0.1, 0.1, 0.3)
 		draw_line(Vector2(x1_inner, y1_inner), Vector2(x2_inner, y2_inner), inner_color, 1.5)
 

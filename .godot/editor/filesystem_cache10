@@ -1,11 +1,12 @@
 72322a848ab928aa5c89f0cb78209805
-::res://::1763734082
+::res://::1763824412
 COMO_INSTALAR_TEMPLATES.md::TextFile::-1::1762096669::0::1::::<><><>0<>0<><>::
 EXPORTAR_UI_RESPONSIVA.md::TextFile::-1::1762096669::0::1::::<><><>0<>0<><>::
 export_presets.cfg::TextFile::-1::1762126926::0::1::::<><><>0<>0<><>::
+godot_output.log::TextFile::-1::1763754978::0::1::::<><><>0<>0<><>::
 icon.svg::CompressedTexture2D::6741177958189595462::1762009794::1762011840::1::::<><><>0<>0<>3f5073a81f351b7ac81baba897aafa04<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
 PASOS_REEXPORTAR.md::TextFile::-1::1762096669::0::1::::<><><>0<>0<><>::
-README.md::TextFile::-1::1763732779::0::1::::<><><>0<>0<><>::
+README.md::TextFile::-1::1763734543::0::1::::<><><>0<>0<><>::
 ::res://assets/::1762096773
 ::res://assets/sprites/::1762803860
 mech_enemy.svg::CompressedTexture2D::9171424491711095594::1762096907::1762096877::1::::<><><>0<>0<>af0aa7dfa8c9e0dfbc0e59657a480d4b<>res://.godot/imported/mech_enemy.svg-8ae1ad4f093dd9cb2130c5cb23da20bd.ctex::
@@ -70,10 +71,11 @@ mech_bay.tscn::PackedScene::3889256802960314172::1762121294::0::1::::<><><>0<>0<
 mech_bay_advanced.tscn::PackedScene::8737234759767131139::1762422277::0::1::::<><><>0<>0<><>::res://scripts/ui/mech_bay_ui.gd
 mech_bay_screen.tscn::PackedScene::6127055725960172043::1762107832::0::1::::<><><>0<>0<><>::res://scripts/ui/screens/mech_bay_screen.gd
 test_mechs.tscn::PackedScene::-1::1762512107::0::1::::<><><>0<>0<><>::res://scripts/test_mechs.gd
-::res://scripts/::1762807142
+::res://scripts/::1763754912
 battle_overlay.gd::GDScript::3688687541075302013::1762809244::0::1::::<>Node2D<><>0<>0<><>::
 battle_scene.gd::GDScript::4244020987069628878::1762809234::0::1::::<>Node2D<><>0<>0<><>::
-hex_grid.gd::GDScript::2857722634034084924::1763733857::0::1::::HexGrid<>Node2D<><>0<>0<><>::
+hex_grid.gd::GDScript::2857722634034084924::1763750498::0::1::::HexGrid<>Node2D<><>0<>1<><>::
+hex_surface_renderer.gd::GDScript::3918837244147530489::1763755574::0::1::::HexSurfaceRenderer<>Node2D<><>0<>0<><>::
 mech.gd::GDScript::2540652510487443154::1762807428::0::1::::Mech<>Node2D<><>0<>0<><>::
 test_mechs.gd::GDScript::3199800061969589514::1762512314::0::1::::<>Node2D<><>0<>0<><>::
 ::res://scripts/core/::1762510467
@@ -94,7 +96,7 @@ movement_system.gd::GDScript::3512848330814713364::1762014530::0::1::::MovementS
 ::res://scripts/core/terrain/::1762014383
 terrain_type.gd::GDScript::5401294685282115285::1762804456::0::1::::TerrainType<>RefCounted<><>0<>0<><>::
 ::res://scripts/entities/::1762013653
-mech_entity.gd::GDScript::2592172751269626792::1762515064::0::1::::MechEntity<>Node2D<><>0<>0<><>::
+mech_entity.gd::GDScript::2592172751269626792::1763737684::0::1::::MechEntity<>Node2D<><>0<>0<><>::
 ::res://scripts/managers/::1762123059
 battle_ai.gd::GDScript::3188419543374111573::1762802702::0::1::::BattleAI<>Node<><>0<>0<><>::
 battle_input_handler.gd::GDScript::431030767162751671::1762024310::0::1::::BattleInputHandler<>Node<><>0<>0<><>::
@@ -115,3 +117,4 @@ main_menu.gd::GDScript::6287310187516928481::1762121294::0::1::::<>Control<><>0<
 mech_bay_screen.gd::GDScript::7717639292842952875::1762125522::0::1::::<>CanvasLayer<><>0<>0<><>::
 ::res://scripts/utils/::1762513854
 mech_sprite_manager.gd::GDScript::2476575075212232084::1762515065::0::1::::<>RefCounted<><>0<>0<><>::
+::res://shaders/::1763737569

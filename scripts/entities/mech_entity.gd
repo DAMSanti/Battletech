@@ -78,6 +78,9 @@ func _ready():
 	# Crear sprite visual
 	sprite = Sprite2D.new()
 	add_child(sprite)
+
+	# Register this mech so external systems can find it for shadows / game logic
+	add_to_group("mechs")
 	
 	# Configurar sprite inicial
 	update_visual()

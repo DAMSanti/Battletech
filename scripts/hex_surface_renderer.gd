@@ -1,0 +1,694 @@
+extends Node2D
+class_name HexSurfaceRenderer
+
+@export var depth_viewport_scale: float = 0.5 # default: half-res depth texture for mobile
+@export var max_depth_size: Vector2i = Vector2i(2048, 2048) # clamp the depth texture
+@export var debug_show_depth: bool = false
+@export var occlusion_eps: float = 0.001  # Threshold for occlusion detection
+@export var occlusion_hardness: float = 2.0  # Controls occlusion falloff sharpness
+
+var depth_viewport: SubViewport
+var depth_root: Node2D
+var label_root: Node2D  # Root for elevation labels
+@export var culling_margin: int = 128
+@export var enable_culling: bool = true
+@export var max_polygons_per_frame: int = 4096
+var depth_bg: ColorRect
+var main_root: Node2D
+
+var depth_pool: Array = []
+var main_pool: Array = []
+var depth_shader: Shader = null
+var occlusion_shader: Shader = null
+var depth_shader_color = ShaderMaterial.new() # not used; color via modulate
+var _debug_depth_container: Node2D = null
+var _debug_main_container: Node2D = null
+var _debug_preview: TextureRect = null
+var _debug_test_created: bool = false  # Track if debug test has been created
+var _debug_quads: Array = []  # Store references to debug quads for cleanup
+
+@export var show_elevation_labels: bool = true
+@export var debug_depth_test: bool = false # When true, draw two overlapping test polygons to validate occlusion
+
+func _ready():
+	# Load shaders once
+	depth_shader = load("res://shaders/depth_write.shader")
+	occlusion_shader = load("res://shaders/surface_occlusion.shader")
+	
+	# Create depth viewport and roots
+	depth_viewport = SubViewport.new()
+	depth_viewport.name = "DepthViewport"
+	depth_viewport.disable_3d = true
+	# IMPORTANT: Set the rendering mode
+	depth_viewport.render_target_clear_mode = SubViewport.CLEAR_MODE_ALWAYS
+	# Set to UPDATE_ALWAYS so it continuously renders the depth pass
+	depth_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+
+	var main_vp = get_viewport()
+	var main_size = main_vp.get_size()
+	var vp_size = main_size * depth_viewport_scale
+	# Clamp
+	vp_size.x = min(vp_size.x, max_depth_size.x)
+	vp_size.y = min(vp_size.y, max_depth_size.y)
+	# Convert to integer size for the SubViewport (size property is Vector2i)
+	depth_viewport.size = Vector2i(int(vp_size.x), int(vp_size.y))
+	
+	print_debug("SubViewport size: %s" % depth_viewport.size)
+	# Input is not used by the offscreen SubViewport in this renderer; avoid
+	# assigning `disable_input` which does not exist on SubViewport in this
+	# engine/exposure. We'll keep the SubViewport non-interactive by design.
+
+	depth_root = Node2D.new()
+	depth_root.name = "DepthRoot"
+	depth_viewport.add_child(depth_root)
+
+	# Quick debug test: add a test polygon inside the depth viewport so we can
+	# confirm the SubViewport is actually drawing CanvasItems. Only create this
+	# when the debug view is enabled so it doesn't affect normal runs.
+	if debug_show_depth and depth_shader != null:
+		var debug_test = Polygon2D.new()
+		debug_test.polygon = PackedVector2Array([Vector2(8,8), Vector2(96,8), Vector2(96,96)])
+		# Give it a mid-elevation so depth shader writes red ~0.5
+		debug_test.uv = PackedVector2Array([Vector2(0.5,0), Vector2(0.5,0), Vector2(0.5,0)])
+		var dmat_dbg = ShaderMaterial.new()
+		dmat_dbg.shader = depth_shader
+		debug_test.material = dmat_dbg
+		debug_test.z_index = 1000
+		depth_root.add_child(debug_test)
+
+	# Add a background fill so the depth texture starts at zero (black) and
+	# doesn't contain accidental white values that would make occlusion discard everything.
+	depth_bg = ColorRect.new()
+	depth_bg.color = Color(0, 0, 0, 1)
+	# depth_viewport.size is Vector2i; ColorRect.rect_size expects Vector2
+	# Control/ColorRect prefers `size` as Vector2 (floats) — set size instead
+	depth_bg.size = Vector2(float(depth_viewport.size.x), float(depth_viewport.size.y))
+	depth_bg.z_index = -100
+	depth_root.add_child(depth_bg)
+
+	main_root = Node2D.new()
+	main_root.name = "SurfaceRoot"
+	main_root.z_index = 0
+	add_child(main_root)
+
+	label_root = Node2D.new()
+	label_root.name = "LabelRoot"
+	label_root.z_index = 1000000  # Muy por encima de todas las superficies
+	add_child(label_root)
+
+	add_child(depth_viewport)
+
+	# Optional debug view to visualize depth buffer
+	if debug_show_depth:
+		var tr = TextureRect.new()
+		tr.name = "DepthDebug"
+		tr.texture = depth_viewport.get_texture()
+		# depth_viewport.size is Vector2i so convert to Vector2
+		var debug_size = Vector2(float(depth_viewport.size.x) / 4.0, float(depth_viewport.size.y) / 4.0)
+		tr.size = debug_size
+		tr.anchor_left = 1.0
+		tr.anchor_top = 0.0
+		tr.anchor_right = 1.0
+		tr.anchor_bottom = 0.0
+		tr.offset_right = -10
+		tr.offset_top = 10
+		tr.offset_left = tr.offset_right - int(debug_size.x)
+		tr.offset_bottom = tr.offset_top + int(debug_size.y)
+		add_child(tr)
+
+	# prepare debug containers (created but empty) so test doesn't delete real nodes
+	_debug_depth_container = Node2D.new()
+	_debug_depth_container.name = "DebugDepthContainer"
+	depth_root.add_child(_debug_depth_container)
+
+	_debug_main_container = Node2D.new()
+	_debug_main_container.name = "DebugMainContainer"
+	# Parent debug main container to the main_root (local space, not screen-space)
+	main_root.add_child(_debug_main_container)
+
+	# Accept input so F12 can toggle the debug test at runtime
+	set_process_input(true)
+	# Also enable _process() for the debug test rendering
+	set_process(true)
+
+
+func _ensure_pool_count(pool: Array, count: int, parent: Node, z_index: int = 0):
+	while pool.size() < count:
+		var p = Polygon2D.new()
+		p.z_index = z_index
+		parent.add_child(p)
+		pool.append(p)
+	# Hide extras
+	for i in range(pool.size() - 1, count - 1, -1):
+		var node = pool[i]
+		node.visible = false
+
+func update_surfaces(surfaces: Array, base_elevation: int = -2):
+	# Guard
+	if not is_inside_tree():
+		return
+
+	var main_vp = get_viewport()
+	var main_size = main_vp.get_size()
+	# CULLING: determine visible rect in global/viewport coordinates
+	var view_rect = main_vp.get_visible_rect()
+
+	# compute max elevation seen
+	var max_elev = base_elevation
+	for s in surfaces:
+		if typeof(s) == TYPE_DICTIONARY and s.has("elevation"):
+			max_elev = max(max_elev, int(s["elevation"]))
+
+	print_debug("[ELEV] base_elevation=%d, max_elev=%d, range=%d" % [base_elevation, max_elev, max_elev - base_elevation])
+
+	# Cull surfaces and collect visible list
+	var visible_surfaces: Array = []
+	# Debug counters
+	var debug_total_candidates = 0
+	for s in surfaces:
+		# Extract polygon points
+		var poly_points = null
+		if s.has("top_vertices"):
+			poly_points = s["top_vertices"]
+		elif s.has("points"):
+			poly_points = s["points"]
+		else:
+			continue
+
+		# Compute global AABB by transforming local points to global coordinates
+		var min_x = 1e9; var min_y = 1e9; var max_x = -1e9; var max_y = -1e9
+		for p in poly_points:
+			var gp = to_global(p)
+			min_x = min(min_x, gp.x)
+			min_y = min(min_y, gp.y)
+			max_x = max(max_x, gp.x)
+			max_y = max(max_y, gp.y)
+		var bounds = Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+
+		debug_total_candidates += 1
+		# TEMPORARY: Disable culling to see all tiles
+		visible_surfaces.append(s)
+		# if enable_culling:
+		#	if bounds.grow(culling_margin).intersects(view_rect):
+		#		visible_surfaces.append(s)
+		# else:
+		#	visible_surfaces.append(s)
+
+	var total = visible_surfaces.size()
+
+	_ensure_pool_count(depth_pool, total, depth_root)
+	_ensure_pool_count(main_pool, total, main_root)
+	
+	print_debug("HexSurfaceRenderer: total=%d depth_pool_size=%d" % [total, depth_pool.size()])
+
+	var idx = 0
+	var stats_processed = 0
+	
+	# Calculate bounding box of all visible surfaces for proper viewport mapping
+	var bounds_min = Vector2(1e9, 1e9)
+	var bounds_max = Vector2(-1e9, -1e9)
+	# Sort visible surfaces by painter z-order so depth pass draws in the same
+	# order as main polygons and higher elevations get drawn last (so they
+	# overwrite lower elevations in the depth texture).
+	var surf_entries = []
+	for s in visible_surfaces:
+		var pp = null
+		if s.has("top_vertices"):
+			pp = s["top_vertices"]
+		else:
+			pp = s["points"]
+		var avg_y = 0.0
+		for p in pp:
+			avg_y += p.y
+		avg_y /= max(1, pp.size())
+
+		var elev_val = float(s.get("elevation", base_elevation))
+		
+		# ✅ Calcular altura real del tile (height)
+		var height = 0.0
+		if s.has("type"):
+			var surf_type = s["type"]
+			if surf_type == "top":
+				# Superficie superior: altura = diferencia de elevación respecto a base
+				height = (elev_val - base_elevation) * 10.0
+			elif surf_type == "side":
+				# Cara lateral: altura desde vecino hasta top del tile
+				var neighbor_elev = float(s.get("neighbor_elev", base_elevation))
+				height = (elev_val - neighbor_elev) * 10.0
+			elif surf_type == "shadow":
+				# Sombra: altura = 0 (está en el suelo)
+				height = 0.0
+		
+		# ✅ Z-Order: depth = y + height (objetos altos más adelante)
+		var depth = avg_y + height
+		var zkey = depth
+		surf_entries.append({"surf": s, "zkey": zkey, "avg_y": avg_y, "poly_points": pp, "height": height, "depth": depth})
+
+	# Use a helper comparator method (avoids inline ternary and keeps code readable)
+	surf_entries.sort_custom(Callable(self, "_surf_cmp"))
+
+	for s_entry in surf_entries:
+		var s = s_entry["surf"]
+		var poly_points = null
+		if s.has("top_vertices"):
+			poly_points = s["top_vertices"]
+		elif s.has("points"):
+			poly_points = s["points"]
+		else:
+			continue
+		for p in poly_points:
+			bounds_min.x = min(bounds_min.x, p.x)
+			bounds_min.y = min(bounds_min.y, p.y)
+			bounds_max.x = max(bounds_max.x, p.x)
+			bounds_max.y = max(bounds_max.y, p.y)
+	
+	# Calculate scale to fit bounds into depth viewport
+	var bounds_size = bounds_max - bounds_min
+	var viewport_size = Vector2(float(depth_viewport.size.x), float(depth_viewport.size.y))
+	var map_scale_x = viewport_size.x / bounds_size.x if bounds_size.x > 0 else 1.0
+	var map_scale_y = viewport_size.y / bounds_size.y if bounds_size.y > 0 else 1.0
+	var fit_scale = min(map_scale_x, map_scale_y) * 0.95  # 0.95 to add some margin
+	
+	print_debug("Bounds: %s to %s, scale: %f" % [bounds_min, bounds_max, fit_scale])
+	print_debug("Depth viewport: %s, depth_root children: %d, pools: depth=%d main=%d" % [depth_viewport.size, depth_root.get_child_count(), depth_pool.size(), main_pool.size()])
+	
+	for s_entry in surf_entries:
+		var s = s_entry["surf"]
+		# limit worst-case per-frame work
+		if idx >= max_polygons_per_frame:
+			break
+
+		var poly_points: PackedVector2Array = s_entry["poly_points"]
+
+		# Normalize elevation to 0..1
+		var elev = base_elevation
+		if s.has("elevation"):
+			elev = float(s["elevation"])
+		var elev_norm = 0.0
+		if max_elev > base_elevation:
+			elev_norm = clamp((elev - base_elevation) / float(max_elev - base_elevation), 0.0, 1.0)
+		
+		# ✅ Obtener altura real de la superficie
+		var height = s_entry.get("height", 0.0)
+		var depth = s_entry.get("depth", poly_points[0].y if poly_points.size() > 0 else 0.0)
+		
+		# ✅ Calcular depth normalizado para ambos passes (depth y main)
+		var max_depth = float(max_elev - base_elevation) * 10.0 + bounds_size.y
+		var depth_norm = clamp(depth / max(1.0, max_depth), 0.0, 1.0)
+
+		# Depth polygon (draw into depth_viewport) - support per-vertex elevation via UV.x
+		var depth_poly: Polygon2D = depth_pool[idx]
+		
+		# Transform poly_points to viewport coordinates
+		# Map from world space to depth viewport space
+		var viewport_poly_points = PackedVector2Array()
+		for p in poly_points:
+			# Translate to origin and scale to fit viewport
+			var scaled_p = (p - bounds_min) * fit_scale
+			viewport_poly_points.append(scaled_p)
+		
+		depth_poly.polygon = viewport_poly_points
+		depth_poly.position = Vector2.ZERO
+		depth_poly.visible = true
+		depth_poly.z_index = 0
+		depth_poly.texture = null
+
+		# No need for UVs anymore - pass depth as shader parameter
+		
+		# Assign depth shader material so each fragment writes depth into R channel
+		var dmat = ShaderMaterial.new()
+		dmat.shader = depth_shader
+		depth_poly.material = dmat
+		# ✅ Pass DEPTH (not elevation) via modulate color (guaranteed to reach shader)
+		depth_poly.modulate = Color(depth_norm, depth_norm, depth_norm, 1.0)
+
+		# Main polygon (draw on main_root) with shader that samples the depth texture
+		var main_poly: Polygon2D = main_pool[idx]
+		main_poly.polygon = poly_points
+		main_poly.position = Vector2.ZERO
+		main_poly.visible = true
+		main_poly.modulate = Color.WHITE  # Ensure no color tint is hiding the shader color
+
+		# ✅ Calculate Z-index using real depth (y + height)
+		# This ensures proper occlusion: tall objects at the same Y position
+		# are drawn later and occlude shorter objects correctly
+		var zidx = int(depth)
+		main_poly.z_index = zidx
+		# Make the depth-pass follow the same painter order so the depth texture
+		# contains the top-most depth per pixel (last drawn wins).
+		depth_poly.z_index = zidx
+
+		# Extract color directly from surface
+		var surface_color = Color(0.2, 1.0, 0.2, 1.0)  # Bright green default
+		if s.has("color"):
+			surface_color = s["color"]
+		elif s.has("colors") and typeof(s["colors"]) == TYPE_DICTIONARY and s["colors"].has("light"):
+			surface_color = s["colors"]["light"]
+		
+		# Apply color directly to polygon
+		main_poly.color = surface_color
+		
+		# ✅ Encode DEPTH (not elevation) in UV.y so shader can read it
+		# depth_norm already calculated above
+		var uv_array = PackedVector2Array()
+		for p in poly_points:
+			uv_array.append(Vector2(0.0, depth_norm))
+		main_poly.uv = uv_array
+
+		# Setup shader material with occlusion
+		var mat = ShaderMaterial.new()
+		mat.shader = occlusion_shader
+		mat.set_shader_parameter("depth_tex", depth_viewport.get_texture())
+		
+		# Compute depth_uv mapping so SCREEN_UV -> depth texture coordinates
+		var depth_uv_scale_x = (main_size.x * fit_scale) / float(depth_viewport.size.x)
+		var depth_uv_scale_y = (main_size.y * fit_scale) / float(depth_viewport.size.y)
+		mat.set_shader_parameter("depth_uv_scale", Vector2(depth_uv_scale_x, depth_uv_scale_y))
+
+		# Calculate offset: renderer global position + bounds_min (both in global coords)
+		var renderer_global_pos = global_position
+		var main_vp_rect = main_vp.get_visible_rect()
+		var renderer_vp_pos = renderer_global_pos - main_vp_rect.position
+		# bounds_min is in local coordinates; the pixel offset in depth texture space is (renderer_vp_pos + bounds_min) * fit_scale
+		var offset_pixels = (renderer_vp_pos + bounds_min) * fit_scale
+		var depth_uv_offset_x = offset_pixels.x / float(depth_viewport.size.x)
+		var depth_uv_offset_y = offset_pixels.y / float(depth_viewport.size.y)
+		mat.set_shader_parameter("depth_uv_offset", Vector2(depth_uv_offset_x, depth_uv_offset_y))
+		
+		# Also pass the albedo color to shader (in case we blend)
+		mat.set_shader_parameter("albedo", surface_color)
+		# Pass occlusion parameters
+		mat.set_shader_parameter("eps", occlusion_eps)
+		mat.set_shader_parameter("occlusion_hardness", occlusion_hardness)
+		# ✅ Pass max_depth for proper normalization in shader
+		var max_depth_param = float(max_elev - base_elevation) * 10.0 + bounds_size.y
+		mat.set_shader_parameter("max_depth", max_depth_param)
+		# Turn on shader debug visualization when our global debug flag is set
+		mat.set_shader_parameter("debug_visualize", debug_show_depth)
+
+		# For the first few surfaces, print helpful diagnostics so we can map UVs->pixels
+		if idx < 3:
+			#print_debug("[DUMP] idx=%d elev=%f elev_norm=%f uv0=%s uvs=%s" % [idx, elev, elev_norm, poly_points[0], uvs])
+			print_debug("[DUMP] depth_uv_scale=%s depth_uv_offset=%s fit_scale=%f bounds_min=%s viewport_size=%s" % [Vector2(depth_uv_scale_x, depth_uv_scale_y), Vector2(depth_uv_offset_x, depth_uv_offset_y), fit_scale, bounds_min, depth_viewport.size])
+			# Also print the zkey so we can confirm sorting
+			print_debug("[DUMP] zkey=%f avg_y=%f" % [s_entry["zkey"], s_entry["avg_y"]])
+			# Try sampling the render target at the polygon center (best-effort). This
+			# may be stale in the same frame depending on SubViewport rendering timing.
+			if debug_show_depth and depth_viewport.get_texture() != null:
+				var center = Vector2.ZERO
+				for v in viewport_poly_points:
+					center += v
+				center /= max(1, viewport_poly_points.size())
+				var sx = int(center.x)
+				var sy = int(center.y)
+				# Safe-guard pixel coords
+				sx = clamp(sx, 0, int(depth_viewport.size.x) - 1)
+				sy = clamp(sy, 0, int(depth_viewport.size.y) - 1)
+				var tex = depth_viewport.get_texture()
+				# ViewportTexture / ImageTexture may not expose get_data() on all runtimes.
+				if tex.has_method("get_data"):
+					var img = tex.get_data()
+					if img:
+						img.lock()
+						var px_col = img.get_pixel(sx, sy)
+						img.unlock()
+						print_debug("[DUMP] sampled depth_tex at (%d,%d) = %s" % [sx, sy, px_col])
+					else:
+						print_debug("[DUMP] depth_tex.get_data() returned null")
+				else:
+					# Fallback: texture doesn't support runtime readback in this environment
+					var cls = "(null)"
+					if tex:
+						cls = str(tex.get_class())
+					print_debug("[DUMP] cannot sample depth_tex - get_data() not available on texture type: %s" % cls)
+		main_poly.material = mat
+
+		idx += 1
+		stats_processed += 1
+	
+	# Hide any unused pool nodes
+	for i in range(idx, depth_pool.size()):
+		depth_pool[i].visible = false
+	for i in range(idx, main_pool.size()):
+		main_pool[i].visible = false
+	
+	# NUEVA LÓGICA DE LABELS: Crear labels SOLO para tiles "top" después de procesar todo
+	if show_elevation_labels:
+		# Limpiar todas las labels anteriores
+		for child in label_root.get_children():
+			child.queue_free()
+		
+		# Crear nuevas labels solo para superficies "top" QUE FUERON PROCESADAS
+		# Solo procesar hasta idx (las que realmente se renderizaron)
+		for i in range(min(idx, surf_entries.size())):
+			var s_entry = surf_entries[i]
+			var s = s_entry["surf"]
+			# Solo procesar superficies tipo "top"
+			if not (s.has("type") and s["type"] == "top"):
+				continue
+			
+			var poly_points: PackedVector2Array = s_entry["poly_points"]
+			
+			# Calcular centro del polígono
+			var center = Vector2.ZERO
+			for p in poly_points:
+				center += p
+			center /= poly_points.size()
+			
+			# Obtener elevación
+			var elev = base_elevation
+			if s.has("elevation"):
+				elev = float(s["elevation"])
+			var elev_offset = int(elev) - base_elevation
+			
+			# Crear label
+			var lbl = Label.new()
+			lbl.add_theme_font_size_override("font_size", 16)
+			lbl.add_theme_constant_override("outline_size", 4)
+			lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+			lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			lbl.size = Vector2(40, 30)
+			lbl.position = center - Vector2(20, 15)
+			lbl.z_index = 0  # El z_index del label_root ya es suficiente
+			
+			# Formatear texto
+			var elev_str = ""
+			if elev_offset > 0:
+				elev_str = "+%d" % elev_offset
+				lbl.add_theme_color_override("font_color", Color.YELLOW)
+			elif elev_offset < 0:
+				elev_str = "%d" % elev_offset
+				lbl.add_theme_color_override("font_color", Color.CYAN)
+			else:
+				elev_str = "0"
+				lbl.add_theme_color_override("font_color", Color.WHITE)
+			
+			lbl.text = elev_str
+			label_root.add_child(lbl)
+
+	# Debug: print small stats so we can tune
+	if Engine.is_editor_hint() or debug_show_depth:
+		print_debug("HexSurfaceRenderer: candidates=%d visible=%d processed=%d" % [debug_total_candidates, visible_surfaces.size(), stats_processed])
+
+func set_depth_viewport_scale(scale: float):
+	depth_viewport_scale = clamp(scale, 0.1, 2.0)
+	var main_vp = get_viewport()
+	var vp_size = main_vp.get_size() * depth_viewport_scale
+	vp_size.x = min(vp_size.x, max_depth_size.x)
+	vp_size.y = min(vp_size.y, max_depth_size.y)
+	depth_viewport.size = Vector2i(int(vp_size.x), int(vp_size.y))
+	if depth_bg:
+		# depth_bg.rect_size expects Vector2
+		depth_bg.size = Vector2(float(depth_viewport.size.x), float(depth_viewport.size.y))
+
+
+# Comparator used by sort_custom to sort surfaces by zkey
+func _surf_cmp(a, b):
+	var av = float(a["zkey"])
+	var bv = float(b["zkey"])
+	if av < bv:
+		return -1
+	elif av > bv:
+		return 1
+	return 0
+
+func _input(event):
+	# Toggle debug test with F12 at runtime
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F12:
+			debug_depth_test = not debug_depth_test
+			print_debug("HexSurfaceRenderer: debug_depth_test toggled -> %s" % str(debug_depth_test))
+			get_tree().root.set_input_as_handled()  # Consume the input
+			
+			if not debug_depth_test:
+				# Clear debug nodes when disabled
+				for c in _debug_depth_container.get_children():
+					c.queue_free()
+				for c in _debug_main_container.get_children():
+					c.queue_free()
+				print_debug("[TEST] Debug test disabled and cleared")
+
+func _process(_delta):
+	# Debug test: simple polygons without containers
+	if debug_depth_test:
+		if not _debug_test_created:
+			print_debug("[TEST] Creating debug quads WITH OCCLUSION SHADER...")
+			_debug_quads.clear()
+			
+			# First, create LOW quad in DEPTH PASS
+			var low_depth = Polygon2D.new()
+			low_depth.polygon = PackedVector2Array([Vector2(100,100), Vector2(200,100), Vector2(200,200), Vector2(100,200)])
+			var dmat_l = ShaderMaterial.new()
+			dmat_l.shader = depth_shader
+			low_depth.material = dmat_l
+			low_depth.modulate = Color(0.2, 0.2, 0.2, 1.0)  # LOW elevation via modulate
+			low_depth.z_index = 100
+			depth_root.add_child(low_depth)
+			_debug_quads.append(low_depth)
+			print_debug("[TEST] Added LOW depth quad (elev=0.2)")
+			
+			# Draw LOW quad in MAIN PASS with occlusion shader
+			var low = Polygon2D.new()
+			low.polygon = PackedVector2Array([Vector2(100,100), Vector2(200,100), Vector2(200,200), Vector2(100,200)])
+			low.color = Color.BLUE
+			low.uv = PackedVector2Array([Vector2(0,0.2), Vector2(0,0.2), Vector2(0,0.2), Vector2(0,0.2)])
+			low.z_index = 2147483647
+			
+			var mat_low = ShaderMaterial.new()
+			mat_low.shader = occlusion_shader
+			mat_low.set_shader_parameter("depth_tex", depth_viewport.get_texture())
+			mat_low.set_shader_parameter("albedo", Color.BLUE)
+			mat_low.set_shader_parameter("debug_visualize", false)
+			mat_low.set_shader_parameter("depth_uv_scale", Vector2(1.0, 1.0))
+			mat_low.set_shader_parameter("depth_uv_offset", Vector2(0.0, 0.0))
+			low.material = mat_low
+			
+			main_root.add_child(low)
+			_debug_quads.append(low)
+			print_debug("[TEST] Added LOW main quad (blue) with occlusion shader")
+			
+			# Create HIGH quad in DEPTH PASS
+			var high_depth = Polygon2D.new()
+			high_depth.polygon = PackedVector2Array([Vector2(150,150), Vector2(250,150), Vector2(250,250), Vector2(150,250)])
+			var dmat_h = ShaderMaterial.new()
+			dmat_h.shader = depth_shader
+			high_depth.material = dmat_h
+			high_depth.modulate = Color(0.8, 0.8, 0.8, 1.0)  # HIGH elevation via modulate
+			high_depth.z_index = 200  # Drawn after LOW in depth pass
+			depth_root.add_child(high_depth)
+			_debug_quads.append(high_depth)
+			print_debug("[TEST] Added HIGH depth quad (elev=0.8)")
+			
+			# Draw HIGH quad in MAIN PASS with occlusion shader
+			var high = Polygon2D.new()
+			high.polygon = PackedVector2Array([Vector2(150,150), Vector2(250,150), Vector2(250,250), Vector2(150,250)])
+			high.color = Color.RED
+			high.uv = PackedVector2Array([Vector2(0,0.8), Vector2(0,0.8), Vector2(0,0.8), Vector2(0,0.8)])
+			high.z_index = 2147483646
+			
+			var mat_high = ShaderMaterial.new()
+			mat_high.shader = occlusion_shader
+			mat_high.set_shader_parameter("depth_tex", depth_viewport.get_texture())
+			mat_high.set_shader_parameter("albedo", Color.RED)
+			mat_high.set_shader_parameter("debug_visualize", false)
+			mat_high.set_shader_parameter("depth_uv_scale", Vector2(1.0, 1.0))
+			mat_high.set_shader_parameter("depth_uv_offset", Vector2(0.0, 0.0))
+			high.material = mat_high
+			
+			main_root.add_child(high)
+			_debug_quads.append(high)
+			print_debug("[TEST] Added HIGH main quad (red) with occlusion shader")
+			
+			_debug_test_created = true
+			print_debug("[TEST] Debug test with occlusion shader created!")
+	else:
+		if _debug_test_created:
+			print_debug("[TEST] Cleaning up debug quads...")
+			_debug_test_created = false
+			for quad in _debug_quads:
+				if is_instance_valid(quad):
+					quad.queue_free()
+			_debug_quads.clear()
+			print_debug("[TEST] Debug quads cleaned up")
+
+func _update_debug_test():
+	# Ensure containers exist
+	if not _debug_depth_container or not _debug_main_container:
+		print_debug("[TEST] ERROR: Debug containers not initialized!")
+		return
+	
+	print_debug("[TEST] Creating debug quads WITH occlusion shader...")
+
+	# Draw a low elevation quad in DEPTH PASS first
+	var low_depth = Polygon2D.new()
+	low_depth.polygon = PackedVector2Array([Vector2(100,100), Vector2(200,100), Vector2(200,200), Vector2(100,200)])
+	low_depth.uv = PackedVector2Array([Vector2(0.2,0), Vector2(0.2,0), Vector2(0.2,0), Vector2(0.2,0)])
+	var dmat_l = ShaderMaterial.new()
+	dmat_l.shader = depth_shader
+	low_depth.material = dmat_l
+	low_depth.z_index = 100000
+	_debug_depth_container.add_child(low_depth)
+	print_debug("[TEST] Added LOW depth quad (elev=0.2)")
+
+	# Draw LOW in MAIN PASS with occlusion shader
+	var low_main = Polygon2D.new()
+	low_main.polygon = PackedVector2Array([Vector2(100,100), Vector2(200,100), Vector2(200,200), Vector2(100,200)])
+	low_main.uv = PackedVector2Array([Vector2(0.2,0), Vector2(0.2,0), Vector2(0.2,0), Vector2(0.2,0)])
+	low_main.color = Color(0.0, 0.5, 1.0)  # Blue
+	low_main.z_index = 100000
+	
+	var mat_low = ShaderMaterial.new()
+	mat_low.shader = occlusion_shader
+	mat_low.set_shader_parameter("depth_tex", depth_viewport.get_texture())
+	mat_low.set_shader_parameter("albedo", Color(0.0, 0.5, 1.0))
+	mat_low.set_shader_parameter("debug_visualize", false)
+	mat_low.set_shader_parameter("depth_uv_scale", Vector2(1.0, 1.0))
+	mat_low.set_shader_parameter("depth_uv_offset", Vector2(0.0, 0.0))
+	low_main.material = mat_low
+	_debug_main_container.add_child(low_main)
+	print_debug("[TEST] Added LOW main quad (blue)")
+
+	# Draw a high elevation quad in DEPTH PASS
+	var high_depth = Polygon2D.new()
+	high_depth.polygon = PackedVector2Array([Vector2(150,150), Vector2(250,150), Vector2(250,250), Vector2(150,250)])
+	high_depth.uv = PackedVector2Array([Vector2(0.8,0), Vector2(0.8,0), Vector2(0.8,0), Vector2(0.8,0)])
+	var dmat_h = ShaderMaterial.new()
+	dmat_h.shader = depth_shader
+	high_depth.material = dmat_h
+	high_depth.z_index = 100001  # Higher z_index so drawn last in depth pass
+	_debug_depth_container.add_child(high_depth)
+	print_debug("[TEST] Added HIGH depth quad (elev=0.8)")
+
+	# Draw HIGH in MAIN PASS with occlusion shader
+	var high_main = Polygon2D.new()
+	high_main.polygon = PackedVector2Array([Vector2(150,150), Vector2(250,150), Vector2(250,250), Vector2(150,250)])
+	high_main.uv = PackedVector2Array([Vector2(0.8,0), Vector2(0.8,0), Vector2(0.8,0), Vector2(0.8,0)])
+	high_main.color = Color(1.0, 0.2, 0.2)  # Red
+	high_main.z_index = 100001  # Higher z_index so drawn last (on top)
+	
+	var mat_high = ShaderMaterial.new()
+	mat_high.shader = occlusion_shader
+	mat_high.set_shader_parameter("depth_tex", depth_viewport.get_texture())
+	mat_high.set_shader_parameter("albedo", Color(1.0, 0.2, 0.2))
+	mat_high.set_shader_parameter("debug_visualize", false)
+	mat_high.set_shader_parameter("depth_uv_scale", Vector2(1.0, 1.0))
+	mat_high.set_shader_parameter("depth_uv_offset", Vector2(0.0, 0.0))
+	high_main.material = mat_high
+	_debug_main_container.add_child(high_main)
+	print_debug("[TEST] Added HIGH main quad (red)")
+
+	# Add labels for clarity
+	var lbl_low = Label.new()
+	lbl_low.text = "LOW (0.2)"
+	lbl_low.position = Vector2(105, 105)
+	lbl_low.add_theme_color_override("font_color", Color.WHITE)
+	_debug_main_container.add_child(lbl_low)
+
+	var lbl_high = Label.new()
+	lbl_high.text = "HIGH (0.8)"
+	lbl_high.position = Vector2(155, 155)
+	lbl_high.add_theme_color_override("font_color", Color.WHITE)
+	_debug_main_container.add_child(lbl_high)
+
+	print_debug("[TEST] Debug test created - should see blue (LOW) and red (HIGH) with occlusion")
