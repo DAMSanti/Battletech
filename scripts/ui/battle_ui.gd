@@ -373,7 +373,7 @@ func _setup_ui():
 	cancel_physical_button.pressed.connect(_on_cancel_physical_pressed)
 	physical_attack_panel.add_child(cancel_physical_button)
 
-func _on_turn_changed(turn_number: int):
+func _on_turn_changed(_team: String, turn_number: int):
 	if turn_label:
 		turn_label.text = "Turn: " + str(turn_number)
 

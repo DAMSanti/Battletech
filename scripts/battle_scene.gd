@@ -65,9 +65,58 @@ const MAX_ZOOM = 2.0
 const CAMERA_SMOOTH_SPEED = 10.0
 
 func update_overlays():
-	# Actualizar el redibujado de los overlays
-	if overlay_layer:
-		overlay_layer.queue_redraw()
+	# Preparar datos de overlays para renderizado con oclusión
+	if not hex_grid or not hex_grid._surface_renderer:
+		return
+	
+	var overlays = []
+	
+	# Deployment phase overlays
+	if deployment_phase and valid_deployment_hexes.size() > 0:
+		for hex in valid_deployment_hexes:
+			var color = Color(0.2, 1.0, 0.2, 0.4)  # Green
+			if hex_grid.get_unit(hex):
+				color = Color(0.5, 0.5, 0.5, 0.3)  # Gray for occupied
+			
+			# Get terrain elevation for this hex
+			var terrain_elev = hex_grid.get_elevation(hex)
+			var overlay_elev = terrain_elev + 0.5  # Slightly above terrain
+			
+			overlays.append({
+				"hex": hex,
+				"color": color,
+				"elevation": overlay_elev
+			})
+	else:
+		# Movement overlays (cyan)
+		for hex in reachable_hexes:
+			var terrain_elev = hex_grid.get_elevation(hex)
+			overlays.append({
+				"hex": hex,
+				"color": Color(0.2, 0.5, 1.0, 0.4),
+				"elevation": terrain_elev + 0.5
+			})
+		
+		# Attack target overlays (red)
+		for hex in target_hexes:
+			var terrain_elev = hex_grid.get_elevation(hex)
+			overlays.append({
+				"hex": hex,
+				"color": Color(1.0, 0.2, 0.2, 0.4),
+				"elevation": terrain_elev + 0.5
+			})
+		
+		# Physical attack overlays (magenta)
+		for hex in physical_target_hexes:
+			var terrain_elev = hex_grid.get_elevation(hex)
+			overlays.append({
+				"hex": hex,
+				"color": Color(1.0, 0.0, 1.0, 0.4),
+				"elevation": terrain_elev + 0.5
+			})
+	
+	# Render overlays using hex_surface_renderer
+	hex_grid._surface_renderer.render_overlays(overlays, hex_grid)
 
 func _ready():
 	print("[BATTLE] _ready() called")
@@ -97,11 +146,16 @@ func _ready():
 		var map_center = hex_grid.hex_to_pixel(Vector2i(hex_grid.grid_width / 2, hex_grid.grid_height / 2))
 		camera.position = map_center
 	
-	# Crear capa de overlay
+	# Crear CanvasLayer para overlays que se dibuja ENCIMA de todo
+	var overlay_canvas = CanvasLayer.new()
+	overlay_canvas.layer = 100
+	overlay_canvas.follow_viewport_enabled = true
+	add_child(overlay_canvas)
+	
+	# Crear overlay layer que dibuja con _draw()
 	overlay_layer = Node2D.new()
-	overlay_layer.z_index = 5
 	overlay_layer.set_script(preload("res://scripts/battle_overlay.gd"))
-	add_child(overlay_layer)
+	overlay_canvas.add_child(overlay_layer)
 	overlay_layer.battle_scene = self
 	
 	# Conectar señales

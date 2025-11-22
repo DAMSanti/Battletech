@@ -8,3 +8,4 @@ res://scripts/managers/mech_bay_manager.gd
 res://scripts/managers/turn_manager.gd
 res://scripts/ui/battle_ui.gd
 res://scripts/ui/custom_armor_panel.gd
+res://scripts/battle_overlay.gd

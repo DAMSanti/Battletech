@@ -1244,6 +1244,21 @@ func get_elevation(hex: Vector2i) -> int:
 		return 0
 	return hex_data[hex]["elevation"]
 
+# Get the top vertices of a hex tile (for overlay alignment)
+func get_hex_top_vertices(hex: Vector2i) -> PackedVector2Array:
+	var vertices = PackedVector2Array()
+	var pixel_pos = hex_to_pixel(hex, false)
+	var elevation = get_elevation(hex)
+	var elevation_offset = Vector2(0, -elevation * 10.0)
+	var top_center = pixel_pos + elevation_offset
+	
+	for i in range(6):
+		var angle = deg_to_rad(60 * i)
+		var v = Vector2(top_center.x + hex_size * cos(angle), top_center.y + hex_size * sin(angle))
+		vertices.append(v)
+	
+	return vertices
+
 func get_terrain(hex: Vector2i) -> TerrainType.Type:
 	if not is_valid_hex(hex):
 		return TerrainType.Type.CLEAR

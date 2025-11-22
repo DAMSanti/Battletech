@@ -19,6 +19,9 @@ var main_root: Node2D
 var depth_pool: Array = []
 var main_pool: Array = []
 var border_pool: Array = []  # Pool of Line2D for hexagon borders
+var overlay_depth_pool: Array = []  # Pool for overlay depth pass
+var overlay_main_pool: Array = []  # Pool for overlay main pass
+var overlay_border_pool: Array = []  # Pool for overlay borders
 var depth_shader: Shader = null
 var occlusion_shader: Shader = null
 var depth_shader_color = ShaderMaterial.new() # not used; color via modulate
@@ -26,6 +29,15 @@ var _debug_depth_container: Node2D = null
 var _debug_main_container: Node2D = null
 var _debug_test_created: bool = false  # Track if debug test has been created
 var _debug_quads: Array = []  # Store references to debug quads for cleanup
+
+# Global map bounds for consistent depth UV mapping
+var global_bounds_min: Vector2 = Vector2(1e9, 1e9)
+var global_bounds_max: Vector2 = Vector2(-1e9, -1e9)
+var global_bounds_valid: bool = false
+
+# Pending overlays to merge with tiles
+var pending_overlays: Array = []
+var pending_overlays_hex_grid = null
 
 @export var show_elevation_labels: bool = true
 @export var debug_depth_test: bool = false # When true, draw two overlapping test polygons to validate occlusion
@@ -159,6 +171,15 @@ func _ensure_border_pool_count(count: int):
 	for i in range(border_pool.size() - 1, count - 1, -1):
 		border_pool[i].visible = false
 
+func _ensure_border_pool_count_overlay(count: int):
+	while overlay_border_pool.size() < count:
+		var line = Line2D.new()
+		line.width = 3.0
+		line.default_color = Color.WHITE
+		line.z_index = 1001  # Por encima de overlays
+		main_root.add_child(line)
+		overlay_border_pool.append(line)
+
 func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	# Guard
 	if not is_inside_tree():
@@ -263,16 +284,91 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 
 	# Use a helper comparator method (avoids inline ternary and keeps code readable)
 	surf_entries.sort_custom(Callable(self, "_surf_cmp"))
+	
+	# FUSIONAR OVERLAYS con tiles para renderizar intercalados
+	var overlay_count = 0
+	if pending_overlays.size() > 0 and pending_overlays_hex_grid:
+		overlay_count = pending_overlays.size()
+		for overlay_data in pending_overlays:
+			var hex = overlay_data.get("hex", Vector2i(0, 0))
+			var color = overlay_data.get("color", Color(1.0, 0.0, 0.0, 0.5))
 
+			# Buscar el tile correspondiente para usar su elevación
+			var tile_elevation = base_elevation
+			var tile_depth = null
+			for entry in surf_entries:
+				if !entry.has("is_overlay") and entry.has("surf") and entry["surf"].has("hex") and entry["surf"].hex == hex:
+					if entry["surf"].has("elevation"):
+						tile_elevation = entry["surf"]["elevation"]
+					tile_depth = entry["depth"]
+					break
+
+			# Get base pixel position WITHOUT elevation
+			var pixel_pos = pending_overlays_hex_grid.hex_to_pixel(hex, false)
+
+			# Calculate vertices at TILE elevation (same as the tile)
+			var elevation_offset = Vector2(0, -tile_elevation * 10.0)
+			var top_center = pixel_pos + elevation_offset
+
+			var points = PackedVector2Array()
+			for i in range(6):
+				var angle = deg_to_rad(60 * i)
+				var v = Vector2(
+					top_center.x + pending_overlays_hex_grid.hex_size * cos(angle),
+					top_center.y + pending_overlays_hex_grid.hex_size * sin(angle)
+				)
+				points.append(v)
+
+			var avg_y = top_center.y
+			var height = tile_elevation * 10.0
+			var depth = avg_y + height + 0.1 # valor por defecto
+			if tile_depth != null:
+				depth = tile_depth + 0.1 # overlay se pinta después del tile
+
+			surf_entries.append({
+				"is_overlay": true,
+				"hex": hex,
+				"color": color,
+				"elevation": tile_elevation,
+				"poly_points": points,
+				"height": height,
+				"depth": depth,
+				"zkey": depth,
+				"avg_y": avg_y
+			})
+		
+		# Re-sort to intercalar overlays with tiles
+		surf_entries.sort_custom(Callable(self, "_surf_cmp"))
+		
+		# Clear pending overlays
+		pending_overlays.clear()
+	
+	# Ensure overlay pools have enough items
+	if overlay_count > 0:
+		_ensure_pool_count(overlay_depth_pool, overlay_count, depth_root)
+		_ensure_pool_count(overlay_main_pool, overlay_count, main_root)
+		_ensure_border_pool_count_overlay(overlay_count)
+
+	# Calculate bounds including both tiles and overlays
 	for s_entry in surf_entries:
-		var s = s_entry["surf"]
 		var poly_points = null
-		if s.has("top_vertices"):
-			poly_points = s["top_vertices"]
-		elif s.has("points"):
-			poly_points = s["points"]
+		
+		# Check if this is an overlay
+		if s_entry.get("is_overlay", false):
+			poly_points = s_entry.get("poly_points", null)
 		else:
+			# Regular tile
+			var s = s_entry.get("surf", null)
+			if s == null:
+				continue
+			if s.has("top_vertices"):
+				poly_points = s["top_vertices"]
+			elif s.has("points"):
+				poly_points = s["points"]
+		
+		if poly_points == null:
 			continue
+			
 		for p in poly_points:
 			bounds_min.x = min(bounds_min.x, p.x)
 			bounds_min.y = min(bounds_min.y, p.y)
@@ -286,10 +382,28 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	var map_scale_y = viewport_size.y / bounds_size.y if bounds_size.y > 0 else 1.0
 	var fit_scale = min(map_scale_x, map_scale_y) * 0.95  # 0.95 to add some margin
 	
+	# Calculate depth UV transform parameters
+	var depth_uv_scale = Vector2(fit_scale / viewport_size.x, fit_scale / viewport_size.y)
+	var depth_uv_offset = Vector2(-bounds_min.x * depth_uv_scale.x, -bounds_min.y * depth_uv_scale.y)
+	
 	print_debug("Bounds: %s to %s, scale: %f" % [bounds_min, bounds_max, fit_scale])
 	print_debug("Depth viewport: %s, depth_root children: %d, pools: depth=%d main=%d" % [depth_viewport.size, depth_root.get_child_count(), depth_pool.size(), main_pool.size()])
+	print_debug("[RENDER ORDER] Total entries: %d" % surf_entries.size())
 	
+	var overlay_idx = 0  # Separate counter for overlay pools
+	var render_order = 0  # Debug counter
 	for s_entry in surf_entries:
+		# Check if this is an overlay (not a tile)
+		if s_entry.get("is_overlay", false):
+			# Render overlay
+			var o_depth = s_entry.get("depth", 0.0)
+			var o_hex = s_entry.get("hex", Vector2i(0, 0))
+			print_debug("  [%d] OVERLAY hex=%s depth=%.2f z_index=%d" % [render_order, o_hex, o_depth, int(o_depth)])
+			_render_single_overlay(s_entry, overlay_idx, bounds_min, bounds_max, bounds_size, fit_scale, depth_uv_scale, depth_uv_offset)
+			overlay_idx += 1
+			render_order += 1
+			continue
+		
 		var s = s_entry["surf"]
 		# limit worst-case per-frame work
 		if idx >= max_polygons_per_frame:
@@ -354,6 +468,13 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		# Make the depth-pass follow the same painter order so the depth texture
 		# contains the top-most depth per pixel (last drawn wins).
 		depth_poly.z_index = zidx
+		
+		# DEBUG: Print tile info
+		var tile_type = s.get("type", "unknown")
+		var tile_hex = s.get("hex", Vector2i(-1, -1))
+		if tile_type == "top":
+			print_debug("  [%d] TILE hex=%s type=%s depth=%.2f z_index=%d" % [render_order, tile_hex, tile_type, depth, zidx])
+		render_order += 1
 
 		# Extract color directly from surface
 		var surface_color = Color(0.2, 1.0, 0.2, 1.0)  # Bright green default
@@ -426,7 +547,9 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		mat.set_shader_parameter("depth_tex", depth_viewport.get_texture())
 		mat.set_shader_parameter("albedo_color", surface_color)
 		mat.set_shader_parameter("surface_depth", depth_norm)
-		mat.set_shader_parameter("occlusion_eps", occlusion_eps)
+		# DISABLE occlusion for main map tiles - they use z-index sorting
+		# Occlusion should only apply to overlays
+		mat.set_shader_parameter("occlusion_eps", 999.0)
 		mat.set_shader_parameter("occlusion_hardness", occlusion_hardness)
 		mat.set_shader_parameter("depth_uv_scale", Vector2(1.0, 1.0))
 		mat.set_shader_parameter("depth_uv_offset", Vector2(0.0, 0.0))
@@ -505,6 +628,14 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	for i in range(idx, main_pool.size()):
 		main_pool[i].visible = false
 	
+	# Hide any unused overlay pool nodes
+	for i in range(overlay_idx, overlay_depth_pool.size()):
+		overlay_depth_pool[i].visible = false
+	for i in range(overlay_idx, overlay_main_pool.size()):
+		overlay_main_pool[i].visible = false
+	for i in range(overlay_idx, overlay_border_pool.size()):
+		overlay_border_pool[i].visible = false
+	
 	# NUEVA LÓGICA DE LABELS: Crear labels SOLO para tiles "top" después de procesar todo
 	if show_elevation_labels:
 		# Limpiar todas las labels anteriores
@@ -515,7 +646,15 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		# Solo procesar hasta idx (las que realmente se renderizaron)
 		for i in range(min(idx, surf_entries.size())):
 			var s_entry = surf_entries[i]
-			var s = s_entry["surf"]
+			
+			# Skip overlays - they don't have labels
+			if s_entry.get("is_overlay", false):
+				continue
+			
+			var s = s_entry.get("surf", null)
+			if s == null:
+				continue
+			
 			# Solo procesar superficies tipo "top"
 			if not (s.has("type") and s["type"] == "top"):
 				continue
@@ -678,6 +817,78 @@ func _process(_delta):
 					quad.queue_free()
 			_debug_quads.clear()
 			print_debug("[TEST] Debug quads cleaned up")
+
+# Renderizar overlays con oclusión correcta
+# overlays: Array de {hex: Vector2i, color: Color, elevation: float}
+func render_overlays(overlays: Array, hex_grid):
+	if not hex_grid:
+		return
+	
+	# Almacenar overlays para fusionarlos con tiles en update_surfaces
+	pending_overlays = overlays
+	pending_overlays_hex_grid = hex_grid
+	
+	# Forzar actualización del terreno para que se procesen juntos
+	if hex_grid:
+		hex_grid.queue_redraw()
+
+# Render a single overlay intercalado con tiles
+func _render_single_overlay(s_entry: Dictionary, idx: int, _bounds_min: Vector2, _bounds_max: Vector2, bounds_size: Vector2, _fit_scale: float, _depth_uv_scale: Vector2, _depth_uv_offset: Vector2):
+	var points = s_entry.get("poly_points", PackedVector2Array())
+	if points.size() == 0:
+		# No points to render, hide the overlay
+		if idx < overlay_depth_pool.size():
+			overlay_depth_pool[idx].visible = false
+		if idx < overlay_main_pool.size():
+			overlay_main_pool[idx].visible = false
+		if idx < overlay_border_pool.size():
+			overlay_border_pool[idx].visible = false
+		return
+	
+	var color = s_entry.get("color", Color(1.0, 0.0, 0.0, 0.5))
+	var depth = s_entry.get("depth", 0.0)
+	var max_depth = bounds_size.y + 100.0 * 10.0
+	var depth_norm = clamp(depth / max(1.0, max_depth), 0.0, 1.0)
+	
+	# IMPORTANTE: Añadir un pequeño offset positivo al depth_norm del overlay
+	# para que siempre esté "ligeramente por delante" y no se auto-oculte
+	var overlay_depth_offset = 0.002  # Pequeño offset para evitar auto-oclusión
+	depth_norm = clamp(depth_norm + overlay_depth_offset, 0.0, 1.0)
+	
+	# DEPTH PASS: Los overlays NO escriben en depth buffer, solo leen
+	# Si escriben, ocultarían los tiles que vienen después
+	var depth_poly: Polygon2D = overlay_depth_pool[idx]
+	depth_poly.visible = false  # NO escribir en depth buffer
+	
+	# MAIN PASS: Render with occlusion
+	var main_poly: Polygon2D = overlay_main_pool[idx]
+	main_poly.polygon = points
+	main_poly.position = Vector2.ZERO
+	main_poly.visible = true
+	main_poly.color = color
+	# Z-index basado en depth (que ya tiene +0.1 offset del sorting)
+	main_poly.z_index = int(depth)
+	main_poly.texture = null
+	
+	# SIN SHADER - usar solo el color directo para ver el overlay
+	main_poly.material = null
+	
+	# Dibujar borde del overlay
+	var border_line: Line2D = overlay_border_pool[idx]
+	border_line.visible = true
+	border_line.z_index = int(depth) + 1  # Por encima del overlay
+	border_line.width = 3.0
+	var border_color = Color(color.r, color.g, color.b, min(1.0, color.a * 2.0))
+	border_line.default_color = border_color
+	
+	if points.size() > 0:
+		var border_points = PackedVector2Array()
+		for p in points:
+			border_points.append(p)
+		border_points.append(points[0])  # Cerrar hexágono
+		border_line.points = border_points
+	else:
+		border_line.visible = false
 
 func _update_debug_test():
 	# Ensure containers exist

@@ -33,6 +33,14 @@ uniform vec2 depth_uv_offset = vec2(0.0, 0.0);
 uniform float occlusion_eps = 0.001;
 uniform float occlusion_hardness = 2.0;
 
+// Variable para pasar coordenadas de vértice al fragment shader
+varying vec2 world_pos;
+
+void vertex() {
+    // Guardar la posición del vértice en coordenadas del mundo
+    world_pos = VERTEX;
+}
+
 void fragment() {
     // Sample the albedo texture using UV coordinates
     // TEXTURE is the built-in texture sampler for Polygon2D.texture
@@ -45,9 +53,9 @@ void fragment() {
         albedo = albedo_color;
     }
     
-    // Calculate depth UV (map from screen space to depth texture space)
-    vec2 depth_uv = FRAGCOORD.xy / vec2(textureSize(depth_tex, 0));
-    depth_uv = depth_uv * depth_uv_scale + depth_uv_offset;
+    // Calculate depth UV using world_pos (coordenadas del mundo del vértice)
+    // Aplicar la transformación que se usó en el depth viewport
+    vec2 depth_uv = world_pos * depth_uv_scale + depth_uv_offset;
     
     // Sample depth texture (red channel contains normalized depth)
     float stored_depth = texture(depth_tex, depth_uv).r;
@@ -55,17 +63,19 @@ void fragment() {
     // Use the uniform surface_depth instead of reading from UV
     float current_depth = surface_depth;
     
-    // TEMPORARILY DISABLE occlusion to debug textures
     // Occlusion test: discard if current fragment is behind stored depth
-    // float depth_diff = current_depth - stored_depth;
-    // if (depth_diff < -occlusion_eps) {
-    //     discard;
-    // }
+    // PERO: solo si stored_depth > 0.0 (tiene datos válidos)
+    float depth_diff = current_depth - stored_depth;
+    if (stored_depth > 0.001 && depth_diff < -occlusion_eps) {
+        discard;
+    }
     
     // Apply soft falloff at occlusion boundaries
-    // float occlusion_factor = smoothstep(-occlusion_eps, occlusion_eps, depth_diff);
-    // occlusion_factor = pow(occlusion_factor, occlusion_hardness);
-    float occlusion_factor = 1.0;  // No occlusion for now
+    float occlusion_factor = 1.0;
+    if (stored_depth > 0.001) {
+        occlusion_factor = smoothstep(-occlusion_eps, occlusion_eps, depth_diff);
+        occlusion_factor = pow(occlusion_factor, occlusion_hardness);
+    }
     
     // === NORMAL MAPPING AND LIGHTING ===
     vec3 normal = surface_normal;  // Use the uniform surface normal
