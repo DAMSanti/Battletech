@@ -734,14 +734,16 @@ func _update_surface_renderer():
 			sum_y += v.y
 		var avg_y_top = sum_y / float(top_vertices.size()) if top_vertices.size() > 0 else top_center.y
 
-		# Get texture path for this terrain type
+		# Get texture paths for this terrain type
 		var texture_path = _get_terrain_texture_path(terrain)
+		var normal_map_path = _get_terrain_normal_map_path(terrain)
 		
-		surfaces.append({"depth": avg_y_top, "type": "top", "center": top_center, "colors": colors, "terrain": terrain, "elevation": elevation, "top_vertices": top_vertices, "hex": hex_pos, "albedo_texture": texture_path})
+		surfaces.append({"depth": avg_y_top, "type": "top", "center": top_center, "colors": colors, "terrain": terrain, "elevation": elevation, "top_vertices": top_vertices, "hex": hex_pos, "albedo_texture": texture_path, "normal_map": normal_map_path})
 
 		# Add vertical side faces for each tile to give volume from base_elevation up to tile elevation
 		if elevation > base_elevation:
-			var face_base_color = colors["dark"].darkened(0.2)
+			# Use a consistent brown color for all vertical faces (lighting will be applied by shader)
+			var face_base_color = Color(0.4, 0.25, 0.15)  # Brown/earth tone
 
 			# Flat-top hexagons: render visible sides in isometric view
 			# Vertices are generated at angles: 0°, 60°, 120°, 180°, 240°, 300°
@@ -1106,6 +1108,29 @@ func _get_terrain_texture_path(terrain: TerrainType.Type) -> String:
 			return "res://assets/textures/terrain/clear_albedo.jpeg"  # Similar to rough
 		_:
 			return ""  # No texture
+
+func _get_terrain_normal_map_path(terrain: TerrainType.Type) -> String:
+	match terrain:
+		TerrainType.Type.CLEAR:
+			return "res://assets/textures/terrain/clear_normal.png"
+		TerrainType.Type.FOREST:
+			return "res://assets/textures/terrain/forest_normal.png"
+		TerrainType.Type.WATER:
+			return "res://assets/textures/terrain/water_normal.png"
+		TerrainType.Type.ROUGH:
+			return "res://assets/textures/terrain/rough_normal.png"
+		TerrainType.Type.PAVEMENT:
+			return "res://assets/textures/terrain/pavement_normal.png"
+		TerrainType.Type.SAND:
+			return "res://assets/textures/terrain/sand_normal.png"
+		TerrainType.Type.ICE:
+			return "res://assets/textures/terrain/ice_normal.png"
+		TerrainType.Type.BUILDING:
+			return ""  # No normal map for buildings
+		TerrainType.Type.HILL:
+			return "res://assets/textures/terrain/clear_normal.png"
+		_:
+			return ""  # No normal map
 
 # Dibujar hexágono con gradiente radial
 func _draw_hex_with_gradient(center: Vector2, size: float, color_center: Color, color_edge: Color):

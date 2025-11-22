@@ -362,25 +362,8 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		elif s.has("colors") and typeof(s["colors"]) == TYPE_DICTIONARY and s["colors"].has("light"):
 			surface_color = s["colors"]["light"]
 		
-		# ✅ Apply directional lighting to vertical side faces
-		if s.has("type") and s["type"] == "side" and s.has("face_direction"):
-			# Simulate light coming from the west (left)
-			# HEX_DIRECTIONS indices: 0=N, 1=NE, 2=NW, 3=S, 4=SW, 5=SE
-			var face_dir = s["face_direction"]
-			var light_intensity = 1.0
-			
-			match face_dir:
-				5:  # SE face (facing southeast) - opposite to light, very dark
-					light_intensity = 0.5
-				3:  # S face (facing south) - perpendicular to light, medium
-					light_intensity = 0.7
-				4:  # SW face (facing southwest) - towards light, brighter
-					light_intensity = 0.9
-				_:  # Other faces (shouldn't appear in visible sides)
-					light_intensity = 0.7
-			
-			# Apply lighting by darkening the surface color
-			surface_color = surface_color.darkened(1.0 - light_intensity)
+		# NOTE: Directional lighting for vertical faces is now handled entirely by the shader
+		# The shader will apply proper diffuse lighting based on the surface normal direction
 		
 		# Check if this surface will have a texture
 		var will_use_texture = s.has("albedo_texture") and s["albedo_texture"] != ""
@@ -437,9 +420,60 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 			main_poly.color = surface_color
 			main_poly.uv = PackedVector2Array()  # Clear UVs
 		
-		# DISABLE occlusion shader for now - it's causing issues
-		# We'll re-enable it once textures are working correctly
-		main_poly.material = null
+		# ✅ ENABLE shader with normal mapping support
+		var mat = ShaderMaterial.new()
+		mat.shader = occlusion_shader
+		mat.set_shader_parameter("depth_tex", depth_viewport.get_texture())
+		mat.set_shader_parameter("albedo_color", surface_color)
+		mat.set_shader_parameter("surface_depth", depth_norm)
+		mat.set_shader_parameter("occlusion_eps", occlusion_eps)
+		mat.set_shader_parameter("occlusion_hardness", occlusion_hardness)
+		mat.set_shader_parameter("depth_uv_scale", Vector2(1.0, 1.0))
+		mat.set_shader_parameter("depth_uv_offset", Vector2(0.0, 0.0))
+		
+		# Light from west: negative X, positive Z (pointing right-up in isometric)
+		mat.set_shader_parameter("light_direction", Vector3(-0.707, 0.0, 0.707))
+		mat.set_shader_parameter("ambient_intensity", 0.4)
+		mat.set_shader_parameter("diffuse_intensity", 0.6)
+		
+		# Set surface normal based on face direction (for vertical faces)
+		var surface_normal = Vector3(0.0, 0.0, 1.0)  # Default: horizontal surface (top face)
+		if s.has("face_direction"):
+			var face_dir = s["face_direction"]
+			# Convert hex direction to 3D normal vector
+			# HEX_DIRECTIONS: 0=N, 1=NE, 2=NW, 3=S, 4=SW, 5=SE
+			match face_dir:
+				0:  # N - north face
+					surface_normal = Vector3(0.0, -1.0, 0.0)
+				1:  # NE - northeast face
+					surface_normal = Vector3(0.866, -0.5, 0.0)  # sqrt(3)/2 ≈ 0.866
+				2:  # NW - northwest face
+					surface_normal = Vector3(-0.866, -0.5, 0.0)
+				3:  # S - south face
+					surface_normal = Vector3(0.0, 1.0, 0.0)
+				4:  # SW - southwest face
+					surface_normal = Vector3(-0.866, 0.5, 0.0)
+				5:  # SE - southeast face
+					surface_normal = Vector3(0.866, 0.5, 0.0)
+		mat.set_shader_parameter("surface_normal", surface_normal)
+		
+		# Check if surface has a normal map
+		if s.has("normal_map") and s["normal_map"] != "":
+			var normal_map_path = s["normal_map"]
+			var normal_tex = load(normal_map_path)
+			if normal_tex:
+				mat.set_shader_parameter("normal_map", normal_tex)
+				mat.set_shader_parameter("use_normal_map", true)
+				if idx < 3:
+					print_debug("[NORMAL MAP] Loaded: %s" % normal_map_path)
+			else:
+				mat.set_shader_parameter("use_normal_map", false)
+				if idx < 3:
+					print_debug("[NORMAL MAP] FAILED to load: %s" % normal_map_path)
+		else:
+			mat.set_shader_parameter("use_normal_map", false)
+		
+		main_poly.material = mat
 		
 		# ✅ Draw hexagon border for "top" surfaces only
 		if s.has("type") and s["type"] == "top":
