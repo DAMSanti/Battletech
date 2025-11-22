@@ -1,4 +1,10 @@
 res://scripts/hex_surface_renderer.gd
-res://scripts/core/terrain/terrain_type.gd
 res://scripts/battle_scene.gd
 res://scripts/hex_grid.gd
+res://scripts/mech.gd
+res://scripts/core/combat/physical_attack_system.gd
+res://scripts/core/combat/weapon_attack_system.gd
+res://scripts/managers/mech_bay_manager.gd
+res://scripts/managers/turn_manager.gd
+res://scripts/ui/battle_ui.gd
+res://scripts/ui/custom_armor_panel.gd

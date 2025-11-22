@@ -1,10 +1,10 @@
 extends Node2D
 
 # Precargar sistemas de combate
-const WeaponAttackSystem = preload("res://scripts/core/combat/weapon_attack_system.gd")
-const HeatSystem = preload("res://scripts/core/combat/heat_system.gd")
-const PhysicalAttackSystem = preload("res://scripts/core/combat/physical_attack_system.gd")
-const ComponentDatabase = preload("res://scripts/core/component_database.gd")
+const weapon_attack_sys = preload("res://scripts/core/combat/weapon_attack_system.gd")
+const heat_sys = preload("res://scripts/core/combat/heat_system.gd")
+const physical_attack_sys = preload("res://scripts/core/combat/physical_attack_system.gd")
+const component_db = preload("res://scripts/core/component_database.gd")
 
 # Referencias (sin @onready porque necesitamos esperar)
 var hex_grid
@@ -394,10 +394,10 @@ func _end_deployment_phase():
 	show_initiative_screen()
 
 ## Crea un mech desde datos del MechBayManager
-func _create_player_mech_from_data(mech_data: Dictionary, position: Vector2i) -> Mech:
+func _create_player_mech_from_data(mech_data: Dictionary, hex_position: Vector2i) -> Mech:
 	var mech = Mech.new()
 	mech.mech_name = mech_data.get("name", "Unknown")
-	mech.hex_position = position
+	mech.hex_position = hex_position
 	mech.pilot_name = "Player"
 	mech.tonnage = mech_data.get("tonnage", 50)
 	mech.walk_mp = mech_data.get("walk_mp", 4)
@@ -437,10 +437,10 @@ func _create_player_mech_from_data(mech_data: Dictionary, position: Vector2i) ->
 	return mech
 
 ## Crea un mech enemigo desde datos del MechBayManager
-func _create_enemy_mech_from_data(mech_data: Dictionary, position: Vector2i) -> Mech:
+func _create_enemy_mech_from_data(mech_data: Dictionary, hex_position: Vector2i) -> Mech:
 	var mech = Mech.new()
 	mech.mech_name = mech_data.get("name", "Unknown")
-	mech.hex_position = position
+	mech.hex_position = hex_position
 	mech.pilot_name = "Enemy"
 	mech.tonnage = mech_data.get("tonnage", 50)
 	mech.walk_mp = mech_data.get("walk_mp", 4)
@@ -588,10 +588,10 @@ func _convert_location_to_string(location) -> String:
 			return "center_torso"
 
 ## Crea un mech para el equipo del jugador (legacy - para compatibilidad)
-func _create_player_mech(name: String, position: Vector2i, tonnage: int, walk: int, run: int, jump: int) -> Mech:
+func _create_player_mech(mech_name: String, mech_position: Vector2i, tonnage: int, walk: int, run: int, jump: int) -> Mech:
 	var mech = Mech.new()
-	mech.mech_name = name
-	mech.hex_position = position
+	mech.mech_name = mech_name
+	mech.hex_position = mech_position
 	mech.pilot_name = "Player"
 	mech.tonnage = tonnage
 	mech.walk_mp = walk
@@ -605,10 +605,10 @@ func _create_player_mech(name: String, position: Vector2i, tonnage: int, walk: i
 	return mech
 
 ## Crea un mech para el equipo enemigo
-func _create_enemy_mech(name: String, position: Vector2i, tonnage: int, walk: int, run: int, jump: int) -> Mech:
+func _create_enemy_mech(mech_name: String, mech_position: Vector2i, tonnage: int, walk: int, run: int, jump: int) -> Mech:
 	var mech = Mech.new()
-	mech.mech_name = name
-	mech.hex_position = position
+	mech.mech_name = mech_name
+	mech.hex_position = mech_position
 	mech.pilot_name = "Enemy"
 	mech.tonnage = tonnage
 	mech.walk_mp = walk
@@ -1505,18 +1505,15 @@ func execute_physical_attack(attacker, target, attack_type: String):
 	
 	var attack_type_enum
 	var attack_name = ""
-	var arm_used = ""
 	
 	# Determinar tipo de ataque
 	match attack_type:
 		"punch_left":
 			attack_type_enum = PhysicalAttackSystem.AttackType.PUNCH
 			attack_name = "Punch (Left Arm)"
-			arm_used = "left"
 		"punch_right":
 			attack_type_enum = PhysicalAttackSystem.AttackType.PUNCH
 			attack_name = "Punch (Right Arm)"
-			arm_used = "right"
 		"kick":
 			attack_type_enum = PhysicalAttackSystem.AttackType.KICK
 			attack_name = "Kick"
@@ -1689,7 +1686,7 @@ func _process_mech_heat(mech):
 				# CASE ventila la explosión - daño reducido solo a esa localización
 				if ui:
 					ui.add_combat_message("    ✓ CASE activated! Explosion vented safely.", Color.YELLOW)
-				var damage_result = mech.take_damage(explosion_location, 10)  # Daño reducido
+				var _damage_result = mech.take_damage(explosion_location, 10)  # Daño reducido
 				# Destruir la munición en esa localización
 				_destroy_ammo_in_location(mech, explosion_location)
 			else:
@@ -1861,7 +1858,6 @@ func _draw_long_press_indicator():
 	
 	# Dibujar icono de inspección en el centro (opcional)
 	if progress > 0.8:  # Mostrar el icono cuando está casi completo
-		var icon_text = "👁"  # Emoji de ojo
 		# Nota: Para un texto centrado necesitarías usar draw_string con una fuente
 		# Por simplicidad, solo dibujamos un punto central
 		long_press_indicator.draw_circle(Vector2.ZERO, 5.0, Color.CYAN)

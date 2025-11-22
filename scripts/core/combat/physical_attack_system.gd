@@ -56,7 +56,7 @@ static func calculate_charge_damage(attacker_tonnage: int, hexes_moved: int) -> 
 	var base_damage = int(ceil(float(attacker_tonnage) / 10.0))
 	return base_damage * hexes_moved
 
-static func calculate_to_hit(attacker, target, attack_type: AttackType, modifiers: Dictionary = {}) -> Dictionary:
+static func calculate_to_hit(attacker, target, attack_type: AttackType, _modifiers: Dictionary = {}) -> Dictionary:
 	# Calcula el número objetivo para impactar con ataque físico
 	var target_number = 4  # Base para ataques físicos
 	var mod_list = {}
@@ -134,7 +134,7 @@ static func check_fall_after_kick(attacker) -> bool:
 		return not attacker.check_piloting_skill_roll(1)
 	return false
 
-static func apply_charge_self_damage(attacker, damage_to_target: int) -> int:
+static func apply_charge_self_damage(_attacker, damage_to_target: int) -> int:
 	# El atacante recibe daño por embestir = 1/10 del daño causado (redondeado)
 	return int(ceil(float(damage_to_target) / 10.0))
 

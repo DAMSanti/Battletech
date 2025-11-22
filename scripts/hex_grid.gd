@@ -127,8 +127,8 @@ func _generate_base_terrain():
 # FASE 2: Generar zona urbana coherente (máximo 50% del mapa, centrada)
 func _generate_urban_zone():
 	# Calcular centro del mapa
-	var center_q = grid_width / 2
-	var center_r = grid_height / 2
+	var center_q = int(grid_width / 2.0)
+	var center_r = int(grid_height / 2.0)
 	var center = Vector2i(center_q, center_r)
 	
 	# Calcular área máxima urbana (50% del mapa)
@@ -356,7 +356,7 @@ func _smooth_elevations(passes: int):
 		var new_elevations = {}
 		
 		for pos in hex_data.keys():
-			var terrain = hex_data[pos]["terrain"]
+			var _terrain = hex_data[pos]["terrain"]
 			var current_elevation = hex_data[pos]["elevation"]
 			
 			# Obtener elevaciones de vecinos
@@ -369,14 +369,14 @@ func _smooth_elevations(passes: int):
 				continue
 			
 			# Calcular promedio de vecinos
-			var avg_elevation = 0.0
+			var _avg_elevation = 0.0
 			for elev in neighbor_elevations:
-				avg_elevation += elev
-			avg_elevation /= neighbor_elevations.size()
+				_avg_elevation += elev
+			_avg_elevation /= neighbor_elevations.size()
 			
 			# Determinar cambio máximo permitido según tipo de terreno
 			var max_change = 3  # Por defecto
-			match terrain:
+			match _terrain:
 				TerrainType.Type.HILL:
 					max_change = 2  # Colinas cambian máximo 2 niveles
 				TerrainType.Type.ROUGH:
@@ -415,9 +415,9 @@ func _elevate_buildings():
 	for pos in hex_data.keys():
 		if hex_data[pos]["terrain"] == TerrainType.Type.BUILDING:
 			# El edificio se eleva entre 3-5 niveles sobre su base
-			var base_elevation = hex_data[pos]["elevation"]
+			var building_base_elevation = hex_data[pos]["elevation"]
 			var building_height = randi_range(3, 5)
-			hex_data[pos]["elevation"] = base_elevation + building_height
+			hex_data[pos]["elevation"] = building_base_elevation + building_height
 
 # FASE 6: Marcar hexágonos transitables
 func _mark_walkable_hexes():
@@ -502,24 +502,24 @@ func find_path(start: Vector2i, goal: Vector2i, max_distance: int = -1) -> Array
 	var cost_so_far = {start: 0}
 	
 	while frontier.size() > 0:
-		var current = _get_lowest_cost(frontier, cost_so_far)
-		frontier.erase(current)
+		var current_hex = _get_lowest_cost(frontier, cost_so_far)
+		frontier.erase(current_hex)
 		
-		if current == goal:
+		if current_hex == goal:
 			break
 		
-		for next_hex in get_neighbors(current):
+		for next_hex in get_neighbors(current_hex):
 			if not hex_data[next_hex]["walkable"]:
 				continue
 			
-			var new_cost = cost_so_far[current] + _get_movement_cost(current, next_hex)
+			var new_cost = cost_so_far[current_hex] + _get_movement_cost(current_hex, next_hex)
 			
 			if max_distance > 0 and new_cost > max_distance:
 				continue
 			
 			if not cost_so_far.has(next_hex) or new_cost < cost_so_far[next_hex]:
 				cost_so_far[next_hex] = new_cost
-				came_from[next_hex] = current
+				came_from[next_hex] = current_hex
 				if not frontier.has(next_hex):
 					frontier.append(next_hex)
 	
@@ -658,7 +658,6 @@ func _generate_elevation(q: int, r: int, terrain: TerrainType.Type) -> int:
 			return 0  # Placeholder, se ajustará después
 		_:
 			return 0
-			return 0
 
 # Ruido en capas para mayor coherencia
 func _layered_noise(x: int, y: int, octaves: int = 3) -> float:
@@ -699,6 +698,10 @@ func _get_movement_cost(from: Vector2i, to: Vector2i) -> int:
 
 # Dibujar el grid con colores de terreno y elevación
 func _draw():
+	# Generate surfaces and pass to renderer
+	_update_surface_renderer()
+
+func _update_surface_renderer():
 	# Dibujar en orden de elevación (primero los bajos, luego los altos)
 	var sorted_hexes = hex_data.keys()
 	# Use a proper comparator function for sort_custom — Godot expects a method that
@@ -731,7 +734,10 @@ func _draw():
 			sum_y += v.y
 		var avg_y_top = sum_y / float(top_vertices.size()) if top_vertices.size() > 0 else top_center.y
 
-		surfaces.append({"depth": avg_y_top, "type": "top", "center": top_center, "colors": colors, "terrain": terrain, "elevation": elevation, "top_vertices": top_vertices, "hex": hex_pos})
+		# Get texture path for this terrain type
+		var texture_path = _get_terrain_texture_path(terrain)
+		
+		surfaces.append({"depth": avg_y_top, "type": "top", "center": top_center, "colors": colors, "terrain": terrain, "elevation": elevation, "top_vertices": top_vertices, "hex": hex_pos, "albedo_texture": texture_path})
 
 		# Add vertical side faces for each tile to give volume from base_elevation up to tile elevation
 		if elevation > base_elevation:
@@ -782,7 +788,7 @@ func _draw():
 				# Create quad face: v1b, v2b, v2t, v1t (counter-clockwise from bottom)
 				var face_points = PackedVector2Array([v1b, v2b, v2t, v1t])
 				var avg_y_face = (v1b.y + v2b.y + v2t.y + v1t.y) / 4.0
-				surfaces.append({"depth": avg_y_face, "type": "side", "points": face_points, "color": face_base_color, "outline_color": face_base_color.darkened(0.3), "elevation": elevation, "hex": hex_pos, "neighbor_elev": neigh_elev})
+				surfaces.append({"depth": avg_y_face, "type": "side", "points": face_points, "color": face_base_color, "outline_color": face_base_color.darkened(0.3), "elevation": elevation, "hex": hex_pos, "neighbor_elev": neigh_elev, "face_direction": neighbor_dir_idx})
 
 	# Group surfaces by elevation so we can DRAW STRICTLY by height only
 
@@ -930,13 +936,10 @@ func _draw_hex_outline(center: Vector2, size: float, color: Color):
 
 
 
-func _compare_hex_elevation(a, b) -> int:
+func _compare_hex_elevation(a, b) -> bool:
 	# Comparator for draw order that sorts tiles primarily by elevation
 	# (low elevation first -> higher tiles drawn last and appear above lower tiles),
 	# then by screen Y and screen X for deterministic ordering.
-	# This produces a painter's algorithm ordering that reduces visible
-	# overlap artifacts where high-elevation tiles appear to incorrectly
-	# occlude tiles that should be in front of them.
 	var ea = 0
 	var eb = 0
 	if hex_data.has(a) and typeof(hex_data[a]) == TYPE_DICTIONARY:
@@ -944,48 +947,23 @@ func _compare_hex_elevation(a, b) -> int:
 	if hex_data.has(b) and typeof(hex_data[b]) == TYPE_DICTIONARY:
 		eb = hex_data[b].get("elevation", 0)
 
-	# Compare by elevation first (so low->high)
-	# We want higher elevation to be drawn later (i.e. come after lower ones).
-	# Invert the comparison so surfaces with larger elevation sort as "greater".
-	if ea < eb:
-		return 1
-	elif ea > eb:
-		return -1
+	# We want higher elevation to be drawn later (appear on top)
+	# So return true if a should come before b (a has lower elevation)
+	if ea != eb:
+		return ea < eb
 
 	# Elevation tie: compare screen Y then X for deterministic order
 	var pa = hex_to_pixel(a, false)
 	var pb = hex_to_pixel(b, false)
 
-	if pa.y < pb.y:
-		return -1
-	elif pa.y > pb.y:
-		return 1
+	if pa.y != pb.y:
+		return pa.y < pb.y
 
-	if pa.x < pb.x:
-		return -1
-	elif pa.x > pb.x:
-		return 1
-	if hex_data.has(a) and typeof(hex_data[a]) == TYPE_DICTIONARY:
-		ea = hex_data[a].get("elevation", 0)
-	if hex_data.has(b) and typeof(hex_data[b]) == TYPE_DICTIONARY:
-		eb = hex_data[b].get("elevation", 0)
-
-	if ea < eb:
-		return -1
-	elif ea > eb:
-		return 1
-	return 0
+	return pa.x < pb.x
 
 
-func _compare_surfaces_by_depth(a, b) -> int:
+func _compare_surfaces_by_depth(a, b) -> bool:
 	# Compare surfaces by their 'depth' (average screen Y), ascending
-	var da = 0.0
-	var db = 0.0
-	if typeof(a) == TYPE_DICTIONARY and a.has("depth"):
-		da = float(a.get("depth", 0.0))
-	if typeof(b) == TYPE_DICTIONARY and b.has("depth"):
-		db = float(b.get("depth", 0.0))
-
 	# ONLY use elevation for ordering. Lower elevation => draw first.
 	var ea = 0
 	var eb = 0
@@ -994,9 +972,7 @@ func _compare_surfaces_by_depth(a, b) -> int:
 	if typeof(b) == TYPE_DICTIONARY and b.has("elevation"):
 		eb = int(b.get("elevation", 0))
 
-	# Return numeric difference (negative -> a before b, positive -> a after b)
-	return ea - eb
-	return 0
+	return ea < eb
 
 
 func _compare_surfaces_by_screen_depth(a, b) -> int:
@@ -1106,6 +1082,30 @@ func _get_terrain_colors(terrain: TerrainType.Type, elevation: int) -> Dictionar
 		"highlight": highlight_color,
 		"shadow": shadow_color
 	}
+
+# Map terrain types to texture paths
+func _get_terrain_texture_path(terrain: TerrainType.Type) -> String:
+	match terrain:
+		TerrainType.Type.CLEAR:
+			return "res://assets/textures/terrain/clear_albedo.jpeg"
+		TerrainType.Type.FOREST:
+			return "res://assets/textures/terrain/forest_albedo.png"
+		TerrainType.Type.WATER:
+			return "res://assets/textures/terrain/water_albedo.jpeg"
+		TerrainType.Type.ROUGH:
+			return "res://assets/textures/terrain/rough_albedo.png"
+		TerrainType.Type.PAVEMENT:
+			return "res://assets/textures/terrain/pavement_albedo.png"
+		TerrainType.Type.SAND:
+			return "res://assets/textures/terrain/sand_albedo.png"  # Placeholder
+		TerrainType.Type.ICE:
+			return "res://assets/textures/terrain/ice_albedo.png"  # Placeholder
+		TerrainType.Type.BUILDING:
+			return "res://assets/textures/terrain/clear_albedo.png"  # Placeholder
+		TerrainType.Type.HILL:
+			return "res://assets/textures/terrain/clear_albedo.jpeg"  # Similar to rough
+		_:
+			return ""  # No texture
 
 # Dibujar hexágono con gradiente radial
 func _draw_hex_with_gradient(center: Vector2, size: float, color_center: Color, color_edge: Color):

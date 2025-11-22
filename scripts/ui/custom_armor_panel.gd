@@ -7,9 +7,9 @@ func set_armor(armor: Dictionary):
 	queue_redraw()
 
 
-func get_health_color(current, max):
+func get_health_color(current, max_value):
 	# Color basado en el ratio de salud (para estructura y armadura)
-	var ratio = float(current) / float(max) if max > 0 else 0.0
+	var ratio = float(current) / float(max_value) if max_value > 0 else 0.0
 	if ratio > 0.66:
 		return Color(0.2, 1.0, 0.2) # Verde
 	elif ratio > 0.33:
@@ -28,41 +28,41 @@ func _draw():
 	var h = size.y
 	var cx = w / 2
 	var y = h * 0.08
-	var scale = min(w, h) / 120.0
+	var armor_scale = min(w, h) / 120.0
 	
 	# Ancho del borde de armadura
-	var armor_border = 4 * scale
+	var armor_border = 4 * armor_scale
 	
 	# === CABEZA ===
-	var head_rect = Rect2(cx - 10 * scale, y - 45 * scale, 20 * scale, 15 * scale)
+	var head_rect = Rect2(cx - 10 * armor_scale, y - 45 * armor_scale, 20 * armor_scale, 15 * armor_scale)
 	draw_mech_part(head_rect, "head", armor_border)
 	
 	# === TORSO CENTRAL ===
-	var ct_rect = Rect2(cx - 15 * scale, y - 25 * scale, 30 * scale, 45 * scale)
+	var ct_rect = Rect2(cx - 15 * armor_scale, y - 25 * armor_scale, 30 * armor_scale, 45 * armor_scale)
 	draw_mech_part(ct_rect, "center_torso", armor_border)
 	
 	# === TORSO IZQUIERDO ===
-	var lt_rect = Rect2(cx - 30 * scale, y - 20 * scale, 14 * scale, 35 * scale)
+	var lt_rect = Rect2(cx - 30 * armor_scale, y - 20 * armor_scale, 14 * armor_scale, 35 * armor_scale)
 	draw_mech_part(lt_rect, "left_torso", armor_border)
 	
 	# === TORSO DERECHO ===
-	var rt_rect = Rect2(cx + 16 * scale, y - 20 * scale, 14 * scale, 35 * scale)
+	var rt_rect = Rect2(cx + 16 * armor_scale, y - 20 * armor_scale, 14 * armor_scale, 35 * armor_scale)
 	draw_mech_part(rt_rect, "right_torso", armor_border)
 	
 	# === BRAZO IZQUIERDO ===
-	var la_rect = Rect2(cx - 48 * scale, y - 18 * scale, 14 * scale, 35 * scale)
+	var la_rect = Rect2(cx - 48 * armor_scale, y - 18 * armor_scale, 14 * armor_scale, 35 * armor_scale)
 	draw_mech_part(la_rect, "left_arm", armor_border)
 	
 	# === BRAZO DERECHO ===
-	var ra_rect = Rect2(cx + 34 * scale, y - 18 * scale, 14 * scale, 35 * scale)
+	var ra_rect = Rect2(cx + 34 * armor_scale, y - 18 * armor_scale, 14 * armor_scale, 35 * armor_scale)
 	draw_mech_part(ra_rect, "right_arm", armor_border)
 	
 	# === PIERNA IZQUIERDA ===
-	var ll_rect = Rect2(cx - 18 * scale, y + 20 * scale, 13 * scale, 40 * scale)
+	var ll_rect = Rect2(cx - 18 * armor_scale, y + 20 * armor_scale, 13 * armor_scale, 40 * armor_scale)
 	draw_mech_part(ll_rect, "left_leg", armor_border)
 	
 	# === PIERNA DERECHA ===
-	var rl_rect = Rect2(cx + 5 * scale, y + 20 * scale, 13 * scale, 40 * scale)
+	var rl_rect = Rect2(cx + 5 * armor_scale, y + 20 * armor_scale, 13 * armor_scale, 40 * armor_scale)
 	draw_mech_part(rl_rect, "right_leg", armor_border)
 
 func draw_mech_part(rect: Rect2, part_name: String, border_width: float):

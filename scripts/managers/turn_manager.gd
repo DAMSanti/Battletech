@@ -328,5 +328,5 @@ func is_player_turn() -> bool:
 	var current_unit = units_to_activate[current_unit_index]
 	return current_unit in player_units
 
-func _log(message: String):
+func _log(_message: String):
 	pass  # Debug logs disabled

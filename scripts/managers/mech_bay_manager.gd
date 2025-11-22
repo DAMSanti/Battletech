@@ -2,8 +2,8 @@ extends Node
 
 # Manager para la Mech Bay - gestiona el inventario de mechs y sus configuraciones
 
-signal mech_selected(mech_data: Dictionary)
-signal loadout_changed(mech_data: Dictionary)
+# signal mech_selected(mech_data: Dictionary)  # Reserved for future use
+# signal loadout_changed(mech_data: Dictionary)  # Reserved for future use
 
 # Biblioteca de mechs disponibles con sus variantes
 var mech_library := {

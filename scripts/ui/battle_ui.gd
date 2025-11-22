@@ -413,32 +413,19 @@ func _on_unit_activated(unit):
 		# SOLO actualizar info superior si es unidad del jugador
 		if is_player_unit:
 			# Obtener nombre del mech correctamente
-			var name = ""
+			var unit_name = ""
 			if "mech_name" in unit:
-				name = unit.mech_name
+				unit_name = unit.mech_name
 			elif "pilot_name" in unit:
-				name = unit.pilot_name
+				unit_name = unit.pilot_name
 			else:
-				name = "Mech"
+				unit_name = "Mech"
 
 			var mp = unit.current_movement if "current_movement" in unit else 0
 			var heat = unit.heat if "heat" in unit else 0
 			var heat_cap = unit.heat_capacity if "heat_capacity" in unit else 0
 
-			# Resumir armadura: suma de valores actuales y máximos
-			var armor_str = "?"
-			if "armor" in unit and typeof(unit.armor) == TYPE_DICTIONARY:
-				var armor_dict = unit.armor
-				var armor_current = 0
-				var armor_max = 0
-				for k in armor_dict.keys():
-					armor_current += armor_dict[k]["current"]
-					armor_max += armor_dict[k]["max"]
-				armor_str = "%d/%d" % [armor_current, armor_max]
-			else:
-				armor_str = str(unit.armor) if "armor" in unit else "?"
-
-			var info = "%s - MP: %s | Heat: %s/%s" % [name, mp, heat, heat_cap]
+			var info = "%s - MP: %s | Heat: %s/%s" % [unit_name, mp, heat, heat_cap]
 			unit_info_label.text = info
 
 		# Mostrar valores individuales de armadura en el panel gráfico
@@ -652,7 +639,7 @@ func update_end_turn_button(enabled: bool, text: String = "End Activation"):
 func show_movement_type_selector(unit):
 	var stack = get_stack()
 	for i in range(min(5, stack.size())):  # Mostrar las primeras 5 líneas del stack
-		var frame = stack[i]
+		var _frame = stack[i]
 	
 	# Muestra el selector con información del mech
 	if movement_selector_panel:
@@ -740,34 +727,34 @@ func show_physical_attack_options(attacker, target):
 	physical_attack_panel.set_meta("target", target)
 	
 	# Precargar PhysicalAttackSystem
-	const PhysicalAttackSystem = preload("res://scripts/core/combat/physical_attack_system.gd")
+	const physical_attack_sys = preload("res://scripts/core/combat/physical_attack_system.gd")
 	
 	# Verificar qué ataques están disponibles
-	var can_punch_left = PhysicalAttackSystem.can_punch(attacker, "left")
-	var can_punch_right = PhysicalAttackSystem.can_punch(attacker, "right")
-	var can_kick = PhysicalAttackSystem.can_kick(attacker)
-	var can_charge = PhysicalAttackSystem.can_charge(attacker)
+	var can_punch_left = physical_attack_sys.can_punch(attacker, "left")
+	var can_punch_right = physical_attack_sys.can_punch(attacker, "right")
+	var can_kick = physical_attack_sys.can_kick(attacker)
+	var can_charge = physical_attack_sys.can_charge(attacker)
 	
 	# Habilitar/deshabilitar botones según disponibilidad
 	punch_left_button.disabled = not can_punch_left["can_punch"]
 	if not can_punch_left["can_punch"]:
 		punch_left_button.text = "PUNCH (Left) - %s" % can_punch_left["reason"]
 	else:
-		var damage = PhysicalAttackSystem.calculate_punch_damage(attacker.tonnage)
+		var damage = physical_attack_sys.calculate_punch_damage(attacker.tonnage)
 		punch_left_button.text = "PUNCH (Left Arm) - Dmg: %d" % damage
 	
 	punch_right_button.disabled = not can_punch_right["can_punch"]
 	if not can_punch_right["can_punch"]:
 		punch_right_button.text = "PUNCH (Right) - %s" % can_punch_right["reason"]
 	else:
-		var damage = PhysicalAttackSystem.calculate_punch_damage(attacker.tonnage)
+		var damage = physical_attack_sys.calculate_punch_damage(attacker.tonnage)
 		punch_right_button.text = "PUNCH (Right Arm) - Dmg: %d" % damage
 	
 	kick_button.disabled = not can_kick["can_kick"]
 	if not can_kick["can_kick"]:
 		kick_button.text = "KICK - %s" % can_kick["reason"]
 	else:
-		var damage = PhysicalAttackSystem.calculate_kick_damage(attacker.tonnage)
+		var damage = physical_attack_sys.calculate_kick_damage(attacker.tonnage)
 		kick_button.text = "KICK - Dmg: %d (Risk: Fall)" % damage
 	
 	charge_button.disabled = not can_charge["can_charge"]
@@ -775,8 +762,8 @@ func show_physical_attack_options(attacker, target):
 		charge_button.text = "CHARGE - %s" % can_charge["reason"]
 	else:
 		var hexes = attacker.hexes_moved_this_turn if "hexes_moved_this_turn" in attacker else 0
-		var damage = PhysicalAttackSystem.calculate_charge_damage(attacker.tonnage, hexes)
-		charge_button.text = "CHARGE - Dmg: %d (Self: %d)" % [damage, damage / 10]
+		var damage = physical_attack_sys.calculate_charge_damage(attacker.tonnage, hexes)
+		charge_button.text = "CHARGE - Dmg: %d (Self: %d)" % [damage, int(damage / 10.0)]
 	
 	# Mostrar panel
 	physical_attack_panel.visible = true
@@ -869,8 +856,8 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 	for weapon in attacker.weapons:
 		print("[DEBUG] Processing weapon: %s" % weapon.get("name", "Unknown"))
 		# Calcular modificadores de impacto para esta arma
-		var WeaponAttackSystem = preload("res://scripts/core/combat/weapon_attack_system.gd")
-		var to_hit_data = WeaponAttackSystem.calculate_to_hit(attacker, target, weapon, range_hexes)
+		var weapon_attack_sys = preload("res://scripts/core/combat/weapon_attack_system.gd")
+		var to_hit_data = weapon_attack_sys.calculate_to_hit(attacker, target, weapon, range_hexes)
 		var target_number = to_hit_data["target_number"]
 		var breakdown = to_hit_data.get("breakdown", "")
 		
@@ -943,7 +930,7 @@ func _on_weapon_label_clicked(event: InputEvent, weapon_index: int, weapon: Dict
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		_on_weapon_clicked(weapon_index, weapon, breakdown, to_hit_data)
 
-func _on_weapon_clicked(weapon_index: int, weapon: Dictionary, breakdown: String, to_hit_data: Dictionary):
+func _on_weapon_clicked(_weapon_index: int, weapon: Dictionary, breakdown: String, to_hit_data: Dictionary):
 	# Mostrar información detallada del arma en el panel de información
 	if not weapon_info_panel or not weapon_info_label:
 		return
@@ -1174,7 +1161,6 @@ func show_mech_inspector(mech):
 	
 	# Información básica en una línea
 	var info_label = Label.new()
-	var team = "PLAYER" if mech in battle_scene.player_mechs else "ENEMY"
 	var status = "DESTROYED" if mech.is_destroyed else "OPERATIONAL"
 	var status_color = Color.RED if mech.is_destroyed else Color.GREEN
 	

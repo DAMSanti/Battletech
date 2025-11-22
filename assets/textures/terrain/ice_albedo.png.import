@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://48bo10xkxtwu"
-path="res://.godot/imported/pavement_albedo.png-dceb5a114048ec5501b68b8dce4dfdf4.ctex"
+uid="uid://g2c83n7f41cb"
+path="res://.godot/imported/ice_albedo.png-afe0ddcc51b3321e546d52eebe83ef13.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/terrain/pavement_albedo.png"
-dest_files=["res://.godot/imported/pavement_albedo.png-dceb5a114048ec5501b68b8dce4dfdf4.ctex"]
+source_file="res://assets/textures/terrain/ice_albedo.png"
+dest_files=["res://.godot/imported/ice_albedo.png-afe0ddcc51b3321e546d52eebe83ef13.ctex"]
 
 [params]
 

@@ -18,12 +18,12 @@ var main_root: Node2D
 
 var depth_pool: Array = []
 var main_pool: Array = []
+var border_pool: Array = []  # Pool of Line2D for hexagon borders
 var depth_shader: Shader = null
 var occlusion_shader: Shader = null
 var depth_shader_color = ShaderMaterial.new() # not used; color via modulate
 var _debug_depth_container: Node2D = null
 var _debug_main_container: Node2D = null
-var _debug_preview: TextureRect = null
 var _debug_test_created: bool = false  # Track if debug test has been created
 var _debug_quads: Array = []  # Store references to debug quads for cleanup
 
@@ -32,8 +32,14 @@ var _debug_quads: Array = []  # Store references to debug quads for cleanup
 
 func _ready():
 	# Load shaders once
-	depth_shader = load("res://shaders/depth_write.shader")
-	occlusion_shader = load("res://shaders/surface_occlusion.shader")
+	depth_shader = load("res://shaders/depth_write.gdshader")
+	occlusion_shader = load("res://shaders/surface_occlusion.gdshader")
+	
+	# Simple debug to verify shader loaded
+	if occlusion_shader == null:
+		print("[ERROR] occlusion_shader failed to load!")
+	else:
+		print("[OK] occlusion_shader loaded successfully")
 	
 	# Create depth viewport and roots
 	depth_viewport = SubViewport.new()
@@ -93,28 +99,28 @@ func _ready():
 
 	label_root = Node2D.new()
 	label_root.name = "LabelRoot"
-	label_root.z_index = 1000000  # Muy por encima de todas las superficies
+	label_root.z_index = 4096  # Por encima de todas las superficies (max es 4096)
 	add_child(label_root)
 
 	add_child(depth_viewport)
 
 	# Optional debug view to visualize depth buffer
 	if debug_show_depth:
-		var tr = TextureRect.new()
-		tr.name = "DepthDebug"
-		tr.texture = depth_viewport.get_texture()
+		var tex_rect = TextureRect.new()
+		tex_rect.name = "DepthDebug"
+		tex_rect.texture = depth_viewport.get_texture()
 		# depth_viewport.size is Vector2i so convert to Vector2
 		var debug_size = Vector2(float(depth_viewport.size.x) / 4.0, float(depth_viewport.size.y) / 4.0)
-		tr.size = debug_size
-		tr.anchor_left = 1.0
-		tr.anchor_top = 0.0
-		tr.anchor_right = 1.0
-		tr.anchor_bottom = 0.0
-		tr.offset_right = -10
-		tr.offset_top = 10
-		tr.offset_left = tr.offset_right - int(debug_size.x)
-		tr.offset_bottom = tr.offset_top + int(debug_size.y)
-		add_child(tr)
+		tex_rect.size = debug_size
+		tex_rect.anchor_left = 1.0
+		tex_rect.anchor_top = 0.0
+		tex_rect.anchor_right = 1.0
+		tex_rect.anchor_bottom = 0.0
+		tex_rect.offset_right = -10
+		tex_rect.offset_top = 10
+		tex_rect.offset_left = tex_rect.offset_right - int(debug_size.x)
+		tex_rect.offset_bottom = tex_rect.offset_top + int(debug_size.y)
+		add_child(tex_rect)
 
 	# prepare debug containers (created but empty) so test doesn't delete real nodes
 	_debug_depth_container = Node2D.new()
@@ -132,10 +138,10 @@ func _ready():
 	set_process(true)
 
 
-func _ensure_pool_count(pool: Array, count: int, parent: Node, z_index: int = 0):
+func _ensure_pool_count(pool: Array, count: int, parent: Node, node_z_index: int = 0):
 	while pool.size() < count:
 		var p = Polygon2D.new()
-		p.z_index = z_index
+		p.z_index = node_z_index
 		parent.add_child(p)
 		pool.append(p)
 	# Hide extras
@@ -143,15 +149,25 @@ func _ensure_pool_count(pool: Array, count: int, parent: Node, z_index: int = 0)
 		var node = pool[i]
 		node.visible = false
 
+func _ensure_border_pool_count(count: int):
+	while border_pool.size() < count:
+		var line = Line2D.new()
+		line.z_index = 100  # High z-index to draw on top
+		main_root.add_child(line)
+		border_pool.append(line)
+	# Hide extras
+	for i in range(border_pool.size() - 1, count - 1, -1):
+		border_pool[i].visible = false
+
 func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	# Guard
 	if not is_inside_tree():
 		return
 
 	var main_vp = get_viewport()
-	var main_size = main_vp.get_size()
+	var _main_size = main_vp.get_size()
 	# CULLING: determine visible rect in global/viewport coordinates
-	var view_rect = main_vp.get_visible_rect()
+	var _view_rect = main_vp.get_visible_rect()
 
 	# compute max elevation seen
 	var max_elev = base_elevation
@@ -183,7 +199,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 			min_y = min(min_y, gp.y)
 			max_x = max(max_x, gp.x)
 			max_y = max(max_y, gp.y)
-		var bounds = Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+		var _bounds = Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
 
 		debug_total_candidates += 1
 		# TEMPORARY: Disable culling to see all tiles
@@ -198,6 +214,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 
 	_ensure_pool_count(depth_pool, total, depth_root)
 	_ensure_pool_count(main_pool, total, main_root)
+	_ensure_border_pool_count(total)
 	
 	print_debug("HexSurfaceRenderer: total=%d depth_pool_size=%d" % [total, depth_pool.size()])
 
@@ -284,12 +301,12 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		var elev = base_elevation
 		if s.has("elevation"):
 			elev = float(s["elevation"])
-		var elev_norm = 0.0
+		var _elev_norm = 0.0
 		if max_elev > base_elevation:
-			elev_norm = clamp((elev - base_elevation) / float(max_elev - base_elevation), 0.0, 1.0)
+			_elev_norm = clamp((elev - base_elevation) / float(max_elev - base_elevation), 0.0, 1.0)
 		
 		# ✅ Obtener altura real de la superficie
-		var height = s_entry.get("height", 0.0)
+		var _height = s_entry.get("height", 0.0)
 		var depth = s_entry.get("depth", poly_points[0].y if poly_points.size() > 0 else 0.0)
 		
 		# ✅ Calcular depth normalizado para ambos passes (depth y main)
@@ -345,83 +362,105 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		elif s.has("colors") and typeof(s["colors"]) == TYPE_DICTIONARY and s["colors"].has("light"):
 			surface_color = s["colors"]["light"]
 		
-		# Apply color directly to polygon
-		main_poly.color = surface_color
+		# ✅ Apply directional lighting to vertical side faces
+		if s.has("type") and s["type"] == "side" and s.has("face_direction"):
+			# Simulate light coming from the west (left)
+			# HEX_DIRECTIONS indices: 0=N, 1=NE, 2=NW, 3=S, 4=SW, 5=SE
+			var face_dir = s["face_direction"]
+			var light_intensity = 1.0
+			
+			match face_dir:
+				5:  # SE face (facing southeast) - opposite to light, very dark
+					light_intensity = 0.5
+				3:  # S face (facing south) - perpendicular to light, medium
+					light_intensity = 0.7
+				4:  # SW face (facing southwest) - towards light, brighter
+					light_intensity = 0.9
+				_:  # Other faces (shouldn't appear in visible sides)
+					light_intensity = 0.7
+			
+			# Apply lighting by darkening the surface color
+			surface_color = surface_color.darkened(1.0 - light_intensity)
 		
-		# ✅ Encode DEPTH (not elevation) in UV.y so shader can read it
-		# depth_norm already calculated above
-		var uv_array = PackedVector2Array()
-		for p in poly_points:
-			uv_array.append(Vector2(0.0, depth_norm))
-		main_poly.uv = uv_array
-
-		# Setup shader material with occlusion
-		var mat = ShaderMaterial.new()
-		mat.shader = occlusion_shader
-		mat.set_shader_parameter("depth_tex", depth_viewport.get_texture())
+		# Check if this surface will have a texture
+		var will_use_texture = s.has("albedo_texture") and s["albedo_texture"] != ""
 		
-		# Compute depth_uv mapping so SCREEN_UV -> depth texture coordinates
-		var depth_uv_scale_x = (main_size.x * fit_scale) / float(depth_viewport.size.x)
-		var depth_uv_scale_y = (main_size.y * fit_scale) / float(depth_viewport.size.y)
-		mat.set_shader_parameter("depth_uv_scale", Vector2(depth_uv_scale_x, depth_uv_scale_y))
-
-		# Calculate offset: renderer global position + bounds_min (both in global coords)
-		var renderer_global_pos = global_position
-		var main_vp_rect = main_vp.get_visible_rect()
-		var renderer_vp_pos = renderer_global_pos - main_vp_rect.position
-		# bounds_min is in local coordinates; the pixel offset in depth texture space is (renderer_vp_pos + bounds_min) * fit_scale
-		var offset_pixels = (renderer_vp_pos + bounds_min) * fit_scale
-		var depth_uv_offset_x = offset_pixels.x / float(depth_viewport.size.x)
-		var depth_uv_offset_y = offset_pixels.y / float(depth_viewport.size.y)
-		mat.set_shader_parameter("depth_uv_offset", Vector2(depth_uv_offset_x, depth_uv_offset_y))
+		# If using texture, set it directly on the Polygon2D
+		if will_use_texture:
+			var texture_path = s["albedo_texture"]
+			var tex = load(texture_path)
+			if tex:
+				main_poly.texture = tex
+				main_poly.color = Color.WHITE  # White = no tint, show texture as-is
+				
+				# ✅ Generate UVs: Each tile gets full texture (0-1), scaled by texture_scale
+				# Calculate bounding box of this specific hexagon
+				var min_point = poly_points[0]
+				var max_point = poly_points[0]
+				for p in poly_points:
+					min_point.x = min(min_point.x, p.x)
+					min_point.y = min(min_point.y, p.y)
+					max_point.x = max(max_point.x, p.x)
+					max_point.y = max(max_point.y, p.y)
+				
+				var bbox_size = max_point - min_point
+				
+				# texture_scale: how many times the texture repeats across the hexagon
+				# 1.0 = texture shown once, 2.0 = texture repeats 2 times, 0.5 = only half texture visible
+				var texture_scale = 200.0
+				
+				var uv_array = PackedVector2Array()
+				for p in poly_points:
+					# Normalize to 0-1 across the bounding box
+					var norm_x = (p.x - min_point.x) / bbox_size.x if bbox_size.x > 0 else 0.5
+					var norm_y = (p.y - min_point.y) / bbox_size.y if bbox_size.y > 0 else 0.5
+					
+					# Scale by texture_scale (higher = more repeats)
+					var uv_x = norm_x * texture_scale
+					var uv_y = norm_y * texture_scale
+					uv_array.append(Vector2(uv_x, uv_y))
+				
+				main_poly.uv = uv_array
+				
+				if idx < 3:
+					print_debug("[TEXTURE] Loaded: %s (tex_size: %s, scale: %.2f)" % [texture_path, tex.get_size(), texture_scale])
+					print_debug("  BBox: %s to %s (size: %s)" % [min_point, max_point, bbox_size])
+					print_debug("  UV[0]: %s (normalized from %s)" % [uv_array[0], poly_points[0]])
+			else:
+				main_poly.texture = null
+				main_poly.color = surface_color
+				if idx < 3:
+					print_debug("[TEXTURE] FAILED to load: %s" % texture_path)
+		else:
+			# No texture - use solid color
+			main_poly.texture = null
+			main_poly.color = surface_color
+			main_poly.uv = PackedVector2Array()  # Clear UVs
 		
-		# Also pass the albedo color to shader (in case we blend)
-		mat.set_shader_parameter("albedo", surface_color)
-		# Pass occlusion parameters
-		mat.set_shader_parameter("eps", occlusion_eps)
-		mat.set_shader_parameter("occlusion_hardness", occlusion_hardness)
-		# ✅ Pass max_depth for proper normalization in shader
-		var max_depth_param = float(max_elev - base_elevation) * 10.0 + bounds_size.y
-		mat.set_shader_parameter("max_depth", max_depth_param)
-		# Turn on shader debug visualization when our global debug flag is set
-		mat.set_shader_parameter("debug_visualize", debug_show_depth)
-
-		# For the first few surfaces, print helpful diagnostics so we can map UVs->pixels
-		if idx < 3:
-			#print_debug("[DUMP] idx=%d elev=%f elev_norm=%f uv0=%s uvs=%s" % [idx, elev, elev_norm, poly_points[0], uvs])
-			print_debug("[DUMP] depth_uv_scale=%s depth_uv_offset=%s fit_scale=%f bounds_min=%s viewport_size=%s" % [Vector2(depth_uv_scale_x, depth_uv_scale_y), Vector2(depth_uv_offset_x, depth_uv_offset_y), fit_scale, bounds_min, depth_viewport.size])
-			# Also print the zkey so we can confirm sorting
-			print_debug("[DUMP] zkey=%f avg_y=%f" % [s_entry["zkey"], s_entry["avg_y"]])
-			# Try sampling the render target at the polygon center (best-effort). This
-			# may be stale in the same frame depending on SubViewport rendering timing.
-			if debug_show_depth and depth_viewport.get_texture() != null:
-				var center = Vector2.ZERO
-				for v in viewport_poly_points:
-					center += v
-				center /= max(1, viewport_poly_points.size())
-				var sx = int(center.x)
-				var sy = int(center.y)
-				# Safe-guard pixel coords
-				sx = clamp(sx, 0, int(depth_viewport.size.x) - 1)
-				sy = clamp(sy, 0, int(depth_viewport.size.y) - 1)
-				var tex = depth_viewport.get_texture()
-				# ViewportTexture / ImageTexture may not expose get_data() on all runtimes.
-				if tex.has_method("get_data"):
-					var img = tex.get_data()
-					if img:
-						img.lock()
-						var px_col = img.get_pixel(sx, sy)
-						img.unlock()
-						print_debug("[DUMP] sampled depth_tex at (%d,%d) = %s" % [sx, sy, px_col])
-					else:
-						print_debug("[DUMP] depth_tex.get_data() returned null")
-				else:
-					# Fallback: texture doesn't support runtime readback in this environment
-					var cls = "(null)"
-					if tex:
-						cls = str(tex.get_class())
-					print_debug("[DUMP] cannot sample depth_tex - get_data() not available on texture type: %s" % cls)
-		main_poly.material = mat
+		# DISABLE occlusion shader for now - it's causing issues
+		# We'll re-enable it once textures are working correctly
+		main_poly.material = null
+		
+		# ✅ Draw hexagon border for "top" surfaces only
+		if s.has("type") and s["type"] == "top":
+			var border_line: Line2D = border_pool[idx]
+			border_line.visible = true
+			border_line.z_index = zidx + 1  # Draw border above the tile
+			
+			# Create closed polygon path (add first point at end to close)
+			var border_points = PackedVector2Array()
+			for p in poly_points:
+				border_points.append(p)
+			border_points.append(poly_points[0])  # Close the hexagon
+			
+			border_line.points = border_points
+			border_line.width = 2.0
+			border_line.default_color = Color(0.2, 0.2, 0.2, 0.5)  # Dark semi-transparent
+			border_line.antialiased = true
+		else:
+			# Hide border for non-top surfaces (sides, shadows)
+			if idx < border_pool.size():
+				border_pool[idx].visible = false
 
 		idx += 1
 		stats_processed += 1
@@ -491,8 +530,8 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	if Engine.is_editor_hint() or debug_show_depth:
 		print_debug("HexSurfaceRenderer: candidates=%d visible=%d processed=%d" % [debug_total_candidates, visible_surfaces.size(), stats_processed])
 
-func set_depth_viewport_scale(scale: float):
-	depth_viewport_scale = clamp(scale, 0.1, 2.0)
+func set_depth_viewport_scale(vp_scale: float):
+	depth_viewport_scale = clamp(vp_scale, 0.1, 2.0)
 	var main_vp = get_viewport()
 	var vp_size = main_vp.get_size() * depth_viewport_scale
 	vp_size.x = min(vp_size.x, max_depth_size.x)
@@ -505,13 +544,7 @@ func set_depth_viewport_scale(scale: float):
 
 # Comparator used by sort_custom to sort surfaces by zkey
 func _surf_cmp(a, b):
-	var av = float(a["zkey"])
-	var bv = float(b["zkey"])
-	if av < bv:
-		return -1
-	elif av > bv:
-		return 1
-	return 0
+	return a["zkey"] < b["zkey"]
 
 func _input(event):
 	# Toggle debug test with F12 at runtime

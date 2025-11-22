@@ -5,7 +5,7 @@ extends RefCounted
 ## Responsabilidad: Calcular to-hit, aplicar daño, generar calor
 
 # Referencia a ComponentDatabase para verificar ECM/BAP
-const ComponentDatabase = preload("res://scripts/core/component_database.gd")
+const component_db = preload("res://scripts/core/component_database.gd")
 
 # Modificadores base para to-hit
 const BASE_TO_HIT = 4  # Target number base en Battletech

@@ -215,13 +215,11 @@ func get_attacker_movement_modifier() -> int:
 		_:
 			movement_mod = 0  # No se movió
 	
-	return movement_mod
-	
 	# Sumar penalización por calor
 	var heat_mod = get_heat_to_hit_penalty()
 	return movement_mod + heat_mod
 
-func can_change_facing(direction: int) -> bool:
+func can_change_facing(_direction: int) -> bool:
 	# Verifica si puede girar en una dirección (cuesta 1 MP por hex)
 	return current_movement >= 1
 
