@@ -15,3 +15,5 @@ res://scripts/core/movement/movement_system.gd
 res://scripts/core/terrain/procedural_map_generator.gd
 res://scripts/test_procedural_generator.gd
 res://scripts/ui/facing_selector.gd
+res://scripts/managers/turn_manager.gd
+res://scripts/ui/screens/initiative_screen.gd

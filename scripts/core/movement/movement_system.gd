@@ -41,7 +41,8 @@ static func calculate_run_distance(mech) -> int:
 
 ## Calcular distancia de salto
 static func calculate_jump_distance(mech) -> int:
-	if not mech.has("jump_mp"):
+	# Verificar si el mech tiene la propiedad jump_mp
+	if not "jump_mp" in mech:
 		return 0
 	
 	var base_jump = mech.jump_mp

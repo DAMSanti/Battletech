@@ -9,6 +9,9 @@ var run_mp: int = 5   # Velocidad de carrera (walk_mp * 1.5 redondeado)
 var jump_mp: int = 0  # Puntos de salto (0 si no tiene jump jets)
 var current_movement: int = 3
 
+# Iniciativa individual del mech (2D6)
+var initiative: int = 7  # Default, será sobreescrito por la tirada
+
 # Tipo de movimiento usado este turno
 enum MovementType { NONE, WALK, RUN, JUMP }
 var movement_type_used: int = GameEnums.MovementType.NONE

@@ -76,6 +76,10 @@ const MIN_ZOOM = 0.3
 const MAX_ZOOM = 2.0
 const CAMERA_SMOOTH_SPEED = 10.0
 
+# Sistema de indicador de mech activo
+var active_mech_indicator: Control = null
+var active_mech_indicator_tween: Tween = null
+
 func update_mech_visibility():
 	"""Actualiza la visibilidad de mechs enemigos según LoS desde mechs aliados"""
 	if not hex_grid:
@@ -246,7 +250,6 @@ func _ready():
 	turn_manager.turn_changed.connect(_on_turn_changed)
 	turn_manager.phase_changed.connect(_on_phase_changed)
 	turn_manager.unit_activated.connect(_on_unit_activated)
-	turn_manager.initiative_rolled.connect(_on_initiative_rolled)
 	
 	# Inicializar sistema de IA mejorado
 	battle_ai = BattleAI.new()
@@ -299,12 +302,45 @@ func show_initiative_screen():
 	
 	add_child(initiative_screen)
 	
+	# Pasar los nombres de los mechs a la pantalla de iniciativa
+	initiative_screen.player_mech_names = []
+	for mech in player_mechs:
+		initiative_screen.player_mech_names.append(mech.mech_name)
+	
+	initiative_screen.enemy_mech_names = []
+	for mech in enemy_mechs:
+		initiative_screen.enemy_mech_names.append(mech.mech_name)
+	
 	# Conectar señal (usar CONNECT_ONE_SHOT para que se desconecte automáticamente)
 	initiative_screen.initiative_complete.connect(_on_initiative_screen_complete, CONNECT_ONE_SHOT)
 
 func _on_initiative_screen_complete(data: Dictionary):
 	# Guardar datos de iniciativa
 	initiative_data_stored = data
+	
+	# Asignar iniciativas individuales a cada mech
+	if data.has("player_initiatives") and data.has("enemy_initiatives"):
+		for i in range(min(player_mechs.size(), data["player_initiatives"].size())):
+			player_mechs[i].initiative = data["player_initiatives"][i]
+		
+		for i in range(min(enemy_mechs.size(), data["enemy_initiatives"].size())):
+			enemy_mechs[i].initiative = data["enemy_initiatives"][i]
+		
+		# Mostrar resultados en el log
+		if ui:
+			ui.add_combat_message("", Color.WHITE)
+			ui.add_combat_message("╔═══════════════════════════════╗", Color.GOLD)
+			ui.add_combat_message("║     INITIATIVE RESULTS        ║", Color.GOLD)
+			ui.add_combat_message("╚═══════════════════════════════╝", Color.GOLD)
+			ui.add_combat_message("", Color.WHITE)
+			ui.add_combat_message("PLAYER LANCE:", Color.CYAN)
+			for i in range(player_mechs.size()):
+				ui.add_combat_message("  • %s: %d" % [player_mechs[i].mech_name, player_mechs[i].initiative], Color.WHITE)
+			ui.add_combat_message("", Color.WHITE)
+			ui.add_combat_message("ENEMY FORCE:", Color.RED)
+			for i in range(enemy_mechs.size()):
+				ui.add_combat_message("  • %s: %d" % [enemy_mechs[i].mech_name, enemy_mechs[i].initiative], Color.ORANGE_RED)
+			ui.add_combat_message("", Color.WHITE)
 	
 	# Si es la primera vez, iniciar la batalla
 	if not battle_started:
@@ -358,65 +394,78 @@ func _setup_battle():
 			elif y < 4:
 				deployment_zones["enemy"].append(hex_pos)
 	
-	# TODO: ESCALABILIDAD 4v4 - Obtener lista de mechs del jugador
-	# En el futuro, esto debería venir de una pantalla de selección de lance
-	# Por ahora, solo obtenemos 1 mech para mantener compatibilidad
+	# Crear 4 mechs para el jugador
 	var loadout_manager = get_node_or_null("/root/SelectedLoadoutManager")
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
 	
-	# Array para almacenar todos los mechs del jugador (1-4)
+	# Array para almacenar todos los mechs del jugador (4 mechs)
 	var player_mechs_data: Array = []
 	
+	# Lance del jugador - 4 mechs diferentes
+	var player_lance_configs = [
+		{"name": "Atlas", "tonnage": 100, "walk_mp": 3, "run_mp": 5, "jump_mp": 0},
+		{"name": "Timber Wolf", "tonnage": 75, "walk_mp": 5, "run_mp": 8, "jump_mp": 0},
+		{"name": "Hunchback", "tonnage": 50, "walk_mp": 4, "run_mp": 6, "jump_mp": 0},
+		{"name": "Jenner", "tonnage": 35, "walk_mp": 7, "run_mp": 11, "jump_mp": 5}
+	]
+	
 	if loadout_manager and loadout_manager.has_loadout():
+		# Si hay loadout personalizado, usar ese para el primer mech
 		var loadout = loadout_manager.get_selected_loadout()
 		var player_mech_data = _convert_loadout_to_mech_data(loadout)
 		player_mechs_data.append(player_mech_data)
+		
+		# Añadir los 3 mechs restantes del lance predefinido
+		for i in range(1, 4):
+			if mech_bay_manager:
+				var mech_data = mech_bay_manager.get_mech_data(player_lance_configs[i]["name"], "")
+				if mech_data:
+					player_mechs_data.append(mech_data)
+				else:
+					player_mechs_data.append(player_lance_configs[i])
+			else:
+				player_mechs_data.append(player_lance_configs[i])
 	else:
-		# Fallback: usar MechBayManager
+		# Usar todo el lance predefinido
 		if mech_bay_manager:
-			var player_mech_data = mech_bay_manager.get_first_player_mech()
-			player_mechs_data.append(player_mech_data)
+			for config in player_lance_configs:
+				var mech_data = mech_bay_manager.get_mech_data(config["name"], "")
+				if mech_data:
+					player_mechs_data.append(mech_data)
+				else:
+					player_mechs_data.append(config)
 		else:
-			# Fallback si no existe el manager
-			print("[WARNING] MechBayManager not found, using default Atlas")
-			player_mechs_data.append({
-				"name": "Atlas",
-				"tonnage": 100,
-				"walk_mp": 3,
-				"run_mp": 5,
-				"jump_mp": 0
-			})
+			# Fallback: usar configuración básica
+			print("[INFO] Using default player lance (4 mechs)")
+			player_mechs_data = player_lance_configs.duplicate()
 	
 	# Crear todos los mechs del jugador para despliegue
 	for mech_data in player_mechs_data:
 		var player_mech = _create_mech_for_deployment(mech_data, "player")
 		mechs_to_deploy.append(player_mech)
 	
-	# TODO: ESCALABILIDAD 4v4 - Obtener lista de mechs enemigos
-	# En el futuro, esto debería venir de una configuración de misión
-	# Por ahora, solo creamos 1 enemigo para mantener compatibilidad
+	# Crear 4 mechs para el enemigo
 	var enemy_mechs_data: Array = []
 	
+	# Lance enemigo - 4 mechs diferentes
+	var enemy_lance_configs = [
+		{"name": "Daishi", "tonnage": 100, "walk_mp": 3, "run_mp": 5, "jump_mp": 0},
+		{"name": "Mad Cat", "tonnage": 75, "walk_mp": 5, "run_mp": 8, "jump_mp": 0},
+		{"name": "Catapult", "tonnage": 65, "walk_mp": 4, "run_mp": 6, "jump_mp": 4},
+		{"name": "Kit Fox", "tonnage": 30, "walk_mp": 8, "run_mp": 12, "jump_mp": 0}
+	]
+	
 	if mech_bay_manager:
-		var enemy_mech_data = mech_bay_manager.get_mech_data("Mad Cat", "Timber Wolf Prime")
-		if enemy_mech_data:
-			enemy_mechs_data.append(enemy_mech_data)
-		else:
-			enemy_mechs_data.append({
-				"name": "Mad Cat",
-				"tonnage": 75,
-				"walk_mp": 4,
-				"run_mp": 6,
-				"jump_mp": 0
-			})
+		for config in enemy_lance_configs:
+			var mech_data = mech_bay_manager.get_mech_data(config["name"], "")
+			if mech_data:
+				enemy_mechs_data.append(mech_data)
+			else:
+				enemy_mechs_data.append(config)
 	else:
-		enemy_mechs_data.append({
-			"name": "Mad Cat",
-			"tonnage": 75,
-			"walk_mp": 4,
-			"run_mp": 6,
-			"jump_mp": 0
-		})
+		# Fallback: usar configuración básica
+		print("[INFO] Using default enemy lance (4 mechs)")
+		enemy_mechs_data = enemy_lance_configs.duplicate()
 	
 	# Crear todos los mechs enemigos para despliegue
 	for mech_data in enemy_mechs_data:
@@ -465,9 +514,30 @@ func _start_deployment_phase():
 	"""Inicia la fase de despliegue"""
 	deployment_phase = true
 	
+	# Contar total de mechs por equipo
+	var total_player = 0
+	var total_enemy = 0
+	for mech in mechs_to_deploy:
+		if mech.get_meta("team") == "player":
+			total_player += 1
+		else:
+			total_enemy += 1
+	
 	if ui:
-		ui.add_combat_message("=== DEPLOYMENT PHASE ===", Color.GOLD)
-		ui.add_combat_message("Place your mechs in the deployment zone", Color.CYAN)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("╔════════════════════════════════════════════╗", Color.GOLD)
+		ui.add_combat_message("║       DEPLOYMENT PHASE - PLACE MECHS      ║", Color.GOLD)
+		ui.add_combat_message("╚════════════════════════════════════════════╝", Color.GOLD)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("📋 MISSION BRIEF:", Color.CYAN)
+		ui.add_combat_message("  • Your Lance: %d mechs to deploy" % total_player, Color.WHITE)
+		ui.add_combat_message("  • Enemy Force: %d mechs detected" % total_enemy, Color.RED)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("🎯 DEPLOYMENT INSTRUCTIONS:", Color.YELLOW)
+		ui.add_combat_message("  1. Click on a GREEN hex in the southern zone", Color.WHITE)
+		ui.add_combat_message("  2. Select facing direction for each mech", Color.WHITE)
+		ui.add_combat_message("  3. Deploy all %d mechs to begin battle" % total_player, Color.WHITE)
+		ui.add_combat_message("", Color.WHITE)
 	
 	# Comenzar con el primer mech del jugador
 	_deploy_next_mech()
@@ -482,12 +552,38 @@ func _deploy_next_mech():
 	current_deploying_mech = mechs_to_deploy.pop_front()
 	var team = current_deploying_mech.get_meta("team")
 	
+	# Contar cuántos mechs quedan por desplegar de cada equipo
+	var player_remaining = 0
+	var _enemy_remaining = 0  # Prefijo _ para evitar warning
+	for mech in mechs_to_deploy:
+		if mech.get_meta("team") == "player":
+			player_remaining += 1
+		else:
+			_enemy_remaining += 1
 	
 	if team == "player":
 		# Jugador despliega manualmente
 		valid_deployment_hexes = deployment_zones["player"].duplicate()
 		if ui:
-			ui.add_combat_message("Deploy %s - Click on a hex in the deployment zone" % current_deploying_mech.mech_name, Color.CYAN)
+			var total_player_mechs = player_mechs.size() + player_remaining + 1
+			var deployed_count = total_player_mechs - player_remaining - 1
+			var current_num = deployed_count + 1
+			
+			ui.add_combat_message("─────────────────────────────────────────", Color.GRAY)
+			ui.add_combat_message("⚔️  DEPLOYING MECH [%d/%d]" % [current_num, total_player_mechs], Color.GOLD)
+			ui.add_combat_message("─────────────────────────────────────────", Color.GRAY)
+			ui.add_combat_message("🤖 Mech: %s" % current_deploying_mech.mech_name, Color.CYAN)
+			ui.add_combat_message("⚖️  Tonnage: %d tons" % current_deploying_mech.tonnage, Color.WHITE)
+			ui.add_combat_message("🏃 Movement: Walk %d / Run %d" % [current_deploying_mech.walk_mp, current_deploying_mech.run_mp], Color.WHITE)
+			if current_deploying_mech.jump_mp > 0:
+				ui.add_combat_message("🚀 Jump: %d MP" % current_deploying_mech.jump_mp, Color.LIGHT_BLUE)
+			ui.add_combat_message("", Color.WHITE)
+			if player_remaining > 0:
+				ui.add_combat_message("📊 Progress: %d deployed, %d remaining" % [deployed_count, player_remaining], Color.YELLOW)
+			else:
+				ui.add_combat_message("📊 Progress: This is your LAST mech!" % [], Color.ORANGE)
+			ui.add_combat_message("👉 Click on a GREEN hex to deploy", Color.GREEN)
+			ui.add_combat_message("", Color.WHITE)
 		update_overlays()
 	else:
 		# IA despliega automáticamente
@@ -511,6 +607,18 @@ func _deploy_ai_mech():
 	var deploy_hex = valid_hexes[randi() % valid_hexes.size()]
 	var facing = randi() % 6  # Orientación aleatoria
 	
+	# Contar cuántos enemigos quedan por desplegar
+	var enemy_remaining = 0
+	for mech in mechs_to_deploy:
+		if mech.get_meta("team") == "enemy":
+			enemy_remaining += 1
+	
+	if ui:
+		var total_enemy_mechs = enemy_mechs.size() + enemy_remaining + 1
+		var deployed_count = total_enemy_mechs - enemy_remaining - 1
+		ui.add_combat_message("🔴 ENEMY DEPLOYMENT [%d/%d]: %s" % [deployed_count + 1, total_enemy_mechs, current_deploying_mech.mech_name], Color.RED)
+		ui.add_combat_message("  Position: [%d, %d], Facing: %s" % [deploy_hex.x, deploy_hex.y, FacingSystem.get_facing_name(facing)], Color.ORANGE)
+	
 	_place_mech(current_deploying_mech, deploy_hex, facing)
 	
 	# Continuar con el siguiente mech después de un delay
@@ -530,9 +638,17 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 	mech.update_visual_position(hex_grid)
 	mech.update_facing_visual()  # Actualizar sprite según facing
 	
-	# Añadir a la lista correcta
+	# Añadir a la lista correcta y mostrar confirmación
 	if team == "player":
 		player_mechs.append(mech)
+		if ui:
+			ui.add_combat_message("✓ %s deployed at [%d, %d], facing %s" % [
+				mech.mech_name, 
+				hex.x, 
+				hex.y, 
+				FacingSystem.get_facing_name(facing)
+			], Color.GREEN)
+			ui.add_combat_message("", Color.WHITE)
 	else:
 		enemy_mechs.append(mech)
 
@@ -542,9 +658,24 @@ func _end_deployment_phase():
 	valid_deployment_hexes.clear()
 	current_deploying_mech = null
 	
-	
 	if ui:
-		ui.add_combat_message("=== DEPLOYMENT COMPLETE ===", Color.GOLD)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("╔══════════════════════════════════════════╗", Color.GREEN)
+		ui.add_combat_message("║     ✓ DEPLOYMENT COMPLETE!              ║", Color.GREEN)
+		ui.add_combat_message("╚══════════════════════════════════════════╝", Color.GREEN)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("📊 BATTLE ROSTER:", Color.CYAN)
+		ui.add_combat_message("  ► YOUR LANCE: %d mechs deployed" % player_mechs.size(), Color.LIGHT_BLUE)
+		for mech in player_mechs:
+			ui.add_combat_message("    • %s (%d tons)" % [mech.mech_name, mech.tonnage], Color.WHITE)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("  ► ENEMY FORCE: %d mechs detected" % enemy_mechs.size(), Color.ORANGE_RED)
+		for mech in enemy_mechs:
+			ui.add_combat_message("    • %s (%d tons)" % [mech.mech_name, mech.tonnage], Color.RED)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("⚔️  Preparing for combat...", Color.YELLOW)
+		ui.add_combat_message("🎲 Rolling for initiative...", Color.GOLD)
+		ui.add_combat_message("", Color.WHITE)
 	
 	# Asegurar que selected_unit apunte al primer mech del jugador
 	if player_mechs.size() > 0:
@@ -1858,6 +1989,17 @@ func _on_phase_changed(phase: String):
 
 func _on_unit_activated(unit):
 	selected_unit = unit
+	
+	# Centrar cámara en el mech activo
+	if camera and unit:
+		var target_pos = unit.global_position
+		var tween = create_tween()
+		tween.tween_property(camera, "position", target_pos, 0.5).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	
+	# Mostrar overlay de mech activo si es del jugador
+	if unit in player_mechs:
+		_show_active_mech_indicator(unit)
+	
 	# print("[DEBUG] _on_unit_activated: %s, current_state=%d, is_player=%s" % [
 	# 	unit.mech_name, 
 	# 	current_state,
@@ -2360,3 +2502,89 @@ func _draw_long_press_indicator():
 		# Nota: Para un texto centrado necesitarías usar draw_string con una fuente
 		# Por simplicidad, solo dibujamos un punto central
 		long_press_indicator.draw_circle(Vector2.ZERO, 5.0, Color.CYAN)
+
+func _show_active_mech_indicator(unit):
+	"""Muestra un indicador visual sobre el mech activo"""
+	# Limpiar indicador anterior si existe
+	_hide_active_mech_indicator()
+	
+	# Crear contenedor para el indicador
+	active_mech_indicator = Control.new()
+	active_mech_indicator.name = "ActiveMechIndicator"
+	active_mech_indicator.z_index = 150
+	
+	# Añadir al árbol principal (no como hijo del mech para que siga la cámara)
+	add_child(active_mech_indicator)
+	
+	# Panel de fondo
+	var panel = Panel.new()
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.1, 0.3, 0.6, 0.9)
+	panel_style.border_width_left = 3
+	panel_style.border_width_right = 3
+	panel_style.border_width_top = 3
+	panel_style.border_width_bottom = 3
+	panel_style.border_color = Color.CYAN
+	panel_style.corner_radius_top_left = 8
+	panel_style.corner_radius_top_right = 8
+	panel_style.corner_radius_bottom_left = 8
+	panel_style.corner_radius_bottom_right = 8
+	panel.add_theme_stylebox_override("panel", panel_style)
+	active_mech_indicator.add_child(panel)
+	
+	# Label con el nombre del mech
+	var label = Label.new()
+	label.text = "► %s ACTIVE ◄" % unit.mech_name
+	label.add_theme_font_size_override("font_size", 20)
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	panel.add_child(label)
+	
+	# Posicionar en la parte superior central de la pantalla
+	var viewport_size = get_viewport().get_visible_rect().size
+	var indicator_width = 300
+	var indicator_height = 50
+	
+	active_mech_indicator.position = Vector2(
+		(viewport_size.x - indicator_width) / 2,
+		20
+	)
+	active_mech_indicator.size = Vector2(indicator_width, indicator_height)
+	panel.position = Vector2.ZERO
+	panel.size = Vector2(indicator_width, indicator_height)
+	label.position = Vector2.ZERO
+	label.size = Vector2(indicator_width, indicator_height)
+	
+	# Animación de entrada (slide down)
+	active_mech_indicator.modulate = Color(1, 1, 1, 0)
+	active_mech_indicator.position.y = -indicator_height
+	
+	active_mech_indicator_tween = create_tween()
+	active_mech_indicator_tween.set_parallel(true)
+	active_mech_indicator_tween.tween_property(active_mech_indicator, "position:y", 20, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	active_mech_indicator_tween.tween_property(active_mech_indicator, "modulate:a", 1.0, 0.3)
+	
+	# Auto-ocultar después de 3 segundos
+	await get_tree().create_timer(3.0).timeout
+	_hide_active_mech_indicator()
+
+func _hide_active_mech_indicator():
+	"""Oculta el indicador de mech activo"""
+	if active_mech_indicator_tween:
+		active_mech_indicator_tween.kill()
+		active_mech_indicator_tween = null
+	
+	if active_mech_indicator and is_instance_valid(active_mech_indicator):
+		# Animación de salida
+		var exit_tween = create_tween()
+		exit_tween.set_parallel(true)
+		exit_tween.tween_property(active_mech_indicator, "position:y", -100, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+		exit_tween.tween_property(active_mech_indicator, "modulate:a", 0.0, 0.3)
+		
+		await exit_tween.finished
+		
+		# Verificar nuevamente antes de liberar
+		if active_mech_indicator and is_instance_valid(active_mech_indicator):
+			active_mech_indicator.queue_free()
+		active_mech_indicator = null

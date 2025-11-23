@@ -7,21 +7,39 @@ var result_label: Label
 var continue_button: Button
 var subtitle_label: Label
 
-var player_dice: Array = []
-var enemy_dice: Array = []
+var player_dice: Array = []  # 8 dados para jugador (2 por mech)
+var enemy_dice: Array = []   # 8 dados para enemigo (2 por mech)
 
-var player_results = [0, 0]
-var enemy_results = [0, 0]
+var player_results = [[0, 0], [0, 0], [0, 0], [0, 0]]  # 4 mechs, 2 dados cada uno
+var enemy_results = [[0, 0], [0, 0], [0, 0], [0, 0]]   # 4 mechs, 2 dados cada uno
 
 # Unicode dice: ⚀ ⚁ ⚂ ⚃ ⚄ ⚅
 var dice_faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"]
 var is_rolling = false
+
+var player_mech_names = []
+var enemy_mech_names = []
 
 func _ready():
 	visible = true
 	layer = 100
 	
 	setup_ui()
+	
+	# Actualizar labels de mechs después de crear la UI
+	call_deferred("_update_mech_labels")
+
+func _update_mech_labels():
+	# Buscar todos los labels de mechs y actualizar sus nombres
+	for child in get_children():
+		if child is Label and child.has_meta("mech_index"):
+			var mech_index = child.get_meta("mech_index")
+			var team = child.get_meta("team")
+			
+			if team == "player" and mech_index < player_mech_names.size():
+				child.text = player_mech_names[mech_index]
+			elif team == "enemy" and mech_index < enemy_mech_names.size():
+				child.text = enemy_mech_names[mech_index]
 
 func setup_ui():
 	# Obtener tamaño de pantalla
@@ -71,7 +89,7 @@ func setup_ui():
 	
 	# Subtítulo
 	subtitle_label = Label.new()
-	subtitle_label.text = "Roll for initiative to determine move order"
+	subtitle_label.text = "Roll for initiative - Each mech rolls 2D6"
 	subtitle_label.position = Vector2(screen_width * 0.05, screen_height * 0.10)
 	subtitle_label.size = Vector2(screen_width * 0.9, screen_height * 0.04)
 	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -79,38 +97,77 @@ func setup_ui():
 	subtitle_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9))
 	add_child(subtitle_label)
 	
-	# Headers y dados
-	var dice_size = screen_width * 0.22  # 22% del ancho
-	var dice_y_pos = screen_height * 0.25
+	# Dados más grandes y con espacio para labels
+	var dice_size = screen_width * 0.07  # Más grandes
+	var dice_y_start = screen_height * 0.18
+	var spacing_x = dice_size + margin * 0.8
+	var spacing_y = dice_size + margin * 1.5
+	var label_x_offset = dice_size * 2 + margin * 2  # Espacio para el label del mech
 	
+	# JUGADOR - Lado izquierdo
 	var player_header = Label.new()
-	player_header.text = "★ PLAYER DICE ★"
-	player_header.position = Vector2(screen_width * 0.05, screen_height * 0.18)
-	player_header.size = Vector2(screen_width * 0.4, screen_height * 0.05)
+	player_header.text = "★ PLAYER LANCE ★"
+	player_header.position = Vector2(screen_width * 0.02, screen_height * 0.145)
+	player_header.size = Vector2(screen_width * 0.46, screen_height * 0.03)
 	player_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	player_header.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	player_header.add_theme_font_size_override("font_size", int(18 * scale_factor))
 	player_header.add_theme_color_override("font_color", Color.CYAN)
 	add_child(player_header)
 	
-	# Dados del jugador (uno arriba del otro)
-	player_dice.append(create_3d_dice(Vector2(screen_width * 0.25 - dice_size / 2, dice_y_pos), Color.CYAN, dice_size))
-	player_dice.append(create_3d_dice(Vector2(screen_width * 0.25 - dice_size / 2, dice_y_pos + dice_size + margin * 2), Color.CYAN, dice_size))
+	# 4 filas de 2 dados cada una (jugador) + label del mech
+	var player_start_x = screen_width * 0.03
+	for row in range(4):
+		var y_pos = dice_y_start + row * spacing_y
+		# Primer dado del mech
+		player_dice.append(create_3d_dice(Vector2(player_start_x, y_pos), Color.CYAN, dice_size))
+		# Segundo dado del mech
+		player_dice.append(create_3d_dice(Vector2(player_start_x + spacing_x, y_pos), Color.CYAN, dice_size))
+		
+		# Label con el nombre del mech
+		var mech_label = Label.new()
+		mech_label.position = Vector2(player_start_x + label_x_offset, y_pos)
+		mech_label.size = Vector2(screen_width * 0.15, dice_size)
+		mech_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		mech_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
+		mech_label.add_theme_color_override("font_color", Color.WHITE)
+		# El nombre se actualizará después cuando tengamos los datos
+		mech_label.set_meta("mech_index", row)
+		mech_label.set_meta("team", "player")
+		add_child(mech_label)
 	
+	# ENEMIGO - Lado derecho
 	var enemy_header = Label.new()
-	enemy_header.text = "★ ENEMY DICE ★"
-	enemy_header.position = Vector2(screen_width * 0.55, screen_height * 0.18)
-	enemy_header.size = Vector2(screen_width * 0.4, screen_height * 0.05)
+	enemy_header.text = "★ ENEMY FORCE ★"
+	enemy_header.position = Vector2(screen_width * 0.52, screen_height * 0.145)
+	enemy_header.size = Vector2(screen_width * 0.46, screen_height * 0.03)
 	enemy_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	enemy_header.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	enemy_header.add_theme_font_size_override("font_size", int(18 * scale_factor))
 	enemy_header.add_theme_color_override("font_color", Color.RED)
 	add_child(enemy_header)
 	
-	# Dados del enemigo (uno arriba del otro)
-	enemy_dice.append(create_3d_dice(Vector2(screen_width * 0.75 - dice_size / 2, dice_y_pos), Color.RED, dice_size))
-	enemy_dice.append(create_3d_dice(Vector2(screen_width * 0.75 - dice_size / 2, dice_y_pos + dice_size + margin * 2), Color.RED, dice_size))
+	# 4 filas de 2 dados cada una (enemigo) + label del mech
+	var enemy_start_x = screen_width * 0.53
+	for row in range(4):
+		var y_pos = dice_y_start + row * spacing_y
+		# Primer dado del mech
+		enemy_dice.append(create_3d_dice(Vector2(enemy_start_x, y_pos), Color.RED, dice_size))
+		# Segundo dado del mech
+		enemy_dice.append(create_3d_dice(Vector2(enemy_start_x + spacing_x, y_pos), Color.RED, dice_size))
+		
+		# Label con el nombre del mech
+		var mech_label = Label.new()
+		mech_label.position = Vector2(enemy_start_x + label_x_offset, y_pos)
+		mech_label.size = Vector2(screen_width * 0.15, dice_size)
+		mech_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		mech_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
+		mech_label.add_theme_color_override("font_color", Color.WHITE)
+		# El nombre se actualizará después cuando tengamos los datos
+		mech_label.set_meta("mech_index", row)
+		mech_label.set_meta("team", "enemy")
+		add_child(mech_label)
 	
-	# Botón Roll
-	var button_y = dice_y_pos + dice_size * 2 + margin * 8
+	# Botón Roll - posición calculada después de todos los dados
+	var button_y = dice_y_start + (spacing_y * 4) + margin * 3
 	roll_button = Button.new()
 	roll_button.text = "🎲 ROLL DICE 🎲"
 	roll_button.position = Vector2(screen_width * 0.1, button_y)
@@ -205,21 +262,32 @@ func _on_roll_pressed():
 	
 	is_rolling = true
 	roll_button.disabled = true
-	subtitle_label.text = "Rolling dice..."
+	subtitle_label.text = "Rolling dice for all mechs..."
 	
-	player_results[0] = (randi() % 6) + 1
-	player_results[1] = (randi() % 6) + 1
-	enemy_results[0] = (randi() % 6) + 1
-	enemy_results[1] = (randi() % 6) + 1
+	# Tirar 2D6 para cada mech
+	for i in range(4):
+		player_results[i][0] = (randi() % 6) + 1
+		player_results[i][1] = (randi() % 6) + 1
+		enemy_results[i][0] = (randi() % 6) + 1
+		enemy_results[i][1] = (randi() % 6) + 1
 	
+	# Animar los 16 dados con delays escalonados
+	var delay = 0.0
+	for i in range(4):
+		# Dados del jugador (mech i)
+		animate_dice_3d(player_dice[i * 2], player_results[i][0], delay)
+		delay += 0.1
+		animate_dice_3d(player_dice[i * 2 + 1], player_results[i][1], delay)
+		delay += 0.1
 	
-	# Animar dados con delays
-	animate_dice_3d(player_dice[0], player_results[0], 0.0)
-	animate_dice_3d(player_dice[1], player_results[1], 0.2)
-	animate_dice_3d(enemy_dice[0], enemy_results[0], 0.4)
-	animate_dice_3d(enemy_dice[1], enemy_results[1], 0.6)
+	for i in range(4):
+		# Dados del enemigo (mech i)
+		animate_dice_3d(enemy_dice[i * 2], enemy_results[i][0], delay)
+		delay += 0.1
+		animate_dice_3d(enemy_dice[i * 2 + 1], enemy_results[i][1], delay)
+		delay += 0.1
 	
-	await get_tree().create_timer(4.5).timeout
+	await get_tree().create_timer(5.5).timeout
 	show_results()
 
 func animate_dice_3d(dice: Control, final_result: int, delay: float):
@@ -311,6 +379,7 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 	dice.rotation = 0
 	
 	# FORZAR EL RESULTADO CORRECTO
+	# final_result es un valor de 1-6 (cara del dado)
 	var correct_face = dice_faces[final_result - 1]
 	label.text = correct_face
 	
@@ -371,25 +440,32 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 	panel.add_theme_stylebox_override("panel", style)
 
 func show_results():
-	
-	var player_total = player_results[0] + player_results[1]
-	var enemy_total = enemy_results[0] + enemy_results[1]
-	var winner = "player" if player_total >= enemy_total else "enemy"
-	
-	
 	subtitle_label.text = "Initiative determined!"
 	
-	result_label.text = "PLAYER: %d + %d = %d\nENEMY: %d + %d = %d\n\n" % [
-		player_results[0], player_results[1], player_total,
-		enemy_results[0], enemy_results[1], enemy_total
-	]
+	# Construir texto con dos columnas separadas físicamente
+	result_label.text = "╔════════════════════════════════╗\n"
+	result_label.text += "║     INITIATIVE RESULTS         ║\n"
+	result_label.text += "╚════════════════════════════════╝\n\n"
 	
-	if winner == "player":
-		result_label.text += "★★★ PLAYER WINS! ★★★"
-		result_label.add_theme_color_override("font_color", Color.GREEN)
-	else:
-		result_label.text += "⚠ ENEMY WINS! ⚠"
-		result_label.add_theme_color_override("font_color", Color.ORANGE_RED)
+	# Headers de las dos columnas
+	result_label.text += "PLAYER LANCE:          ENEMY FORCE:\n"
+	result_label.text += "─────────────────────────────────\n"
+	
+	# Cada línea muestra un mech de cada equipo lado a lado
+	for i in range(4):
+		var player_name = player_mech_names[i] if i < player_mech_names.size() else ("Mech " + str(i + 1))
+		var enemy_name = enemy_mech_names[i] if i < enemy_mech_names.size() else ("Enemy " + str(i + 1))
+		
+		var player_total = player_results[i][0] + player_results[i][1]
+		var enemy_total = enemy_results[i][0] + enemy_results[i][1]
+		
+		# Columna izquierda (player) y columna derecha (enemy) con mucho espacio entre ellas
+		var player_text = "%s: %d" % [player_name.left(10).rpad(10), player_total]
+		var enemy_text = "%s: %d" % [enemy_name.left(10).rpad(10), enemy_total]
+		
+		result_label.text += player_text.rpad(23) + enemy_text + "\n"
+	
+	result_label.add_theme_color_override("font_color", Color.WHITE)
 	
 	result_label.visible = true
 	result_label.modulate = Color(1, 1, 1, 0)
@@ -413,15 +489,19 @@ func show_results():
 func _on_continue_pressed():
 	continue_button.disabled = true
 	
-	var player_total = player_results[0] + player_results[1]
-	var enemy_total = enemy_results[0] + enemy_results[1]
+	# Calcular totales para cada mech (suma de 2D6)
+	var player_totals = []
+	var enemy_totals = []
+	
+	for i in range(4):
+		player_totals.append(player_results[i][0] + player_results[i][1])
+		enemy_totals.append(enemy_results[i][0] + enemy_results[i][1])
 	
 	var data = {
-		"player_dice": player_results.duplicate(),
-		"player_total": player_total,
-		"enemy_dice": enemy_results.duplicate(),
-		"enemy_total": enemy_total,
-		"winner": "player" if player_total >= enemy_total else "enemy"
+		"player_initiatives": player_totals,
+		"enemy_initiatives": enemy_totals,
+		"player_mech_names": player_mech_names.duplicate(),
+		"enemy_mech_names": enemy_mech_names.duplicate()
 	}
 	
 	
