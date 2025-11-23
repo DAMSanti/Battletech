@@ -14,3 +14,4 @@ res://scripts/core/terrain/terrain_decoration.gd
 res://scripts/core/movement/movement_system.gd
 res://scripts/core/terrain/procedural_map_generator.gd
 res://scripts/test_procedural_generator.gd
+res://scripts/ui/facing_selector.gd

@@ -25,8 +25,14 @@ var physical_target_hexes: Array = []  # Enemigos adyacentes para ataque físico
 
 # Sistema de movimiento
 var pending_movement_selection: bool = false  # Esperando que el jugador elija Walk/Run/Jump
+var pending_turn_only: bool = false  # Esperando selección de facing para girar sin moverse
 var ignore_next_click: bool = false  # Ignorar el próximo click (usado después de cerrar UI)
 var ui_interaction_cooldown: float = 0.0  # Tiempo de cooldown después de interacción con UI
+
+# Sistema de confirmación de movimiento
+var pending_move_confirmation: bool = false  # Esperando confirmación de movimiento
+var preview_path: Array = []  # Camino a previsualizar
+var preview_destination: Vector2i = Vector2i(-1, -1)  # Destino del movimiento pendiente
 
 # USAR GameEnums en lugar de enum local
 var current_state: int = GameEnums.GameState.MOVING
@@ -154,14 +160,26 @@ func update_overlays():
 				"elevation": overlay_elev
 			})
 	else:
-		# Movement overlays (cyan)
-		for hex in reachable_hexes:
-			var terrain_elev = hex_grid.get_elevation(hex)
-			overlays.append({
-				"hex": hex,
-				"color": Color(0.2, 0.5, 1.0, 0.4),
-				"elevation": terrain_elev + 0.5
-			})
+		# Preview path overlays (yellow/orange - highest priority)
+		if preview_path.size() > 0:
+			for i in range(preview_path.size()):
+				var hex = preview_path[i]
+				var terrain_elev = hex_grid.get_elevation(hex)
+				var alpha = 0.6 if i == preview_path.size() - 1 else 0.4  # Destino más brillante
+				overlays.append({
+					"hex": hex,
+					"color": Color(1.0, 0.8, 0.0, alpha),  # Amarillo/naranja
+					"elevation": terrain_elev + 0.5
+				})
+		else:
+			# Movement overlays (cyan) - solo si no hay preview
+			for hex in reachable_hexes:
+				var terrain_elev = hex_grid.get_elevation(hex)
+				overlays.append({
+					"hex": hex,
+					"color": Color(0.2, 0.5, 1.0, 0.4),
+					"elevation": terrain_elev + 0.5
+				})
 		
 		# Attack target overlays (red)
 		for hex in target_hexes:
@@ -1043,32 +1061,46 @@ func on_facing_selected(facing: int):
 		
 		# Siguiente mech
 		_deploy_next_mech()
+	elif pending_turn_only and selected_unit and selected_unit in player_mechs:
+		# Estamos en modo Turn Only - girar sin moverse
+		print("[BATTLE] Turn only: %d -> %d" % [selected_unit.facing, facing])
+		
+		var rotation_cost = MovementSystem.get_rotation_cost(selected_unit.facing, facing)
+		
+		# Aplicar rotación
+		selected_unit.facing = facing
+		selected_unit.update_visual_position(hex_grid)
+		if selected_unit.has_method("update_facing_visual"):
+			selected_unit.update_facing_visual()
+		
+		if ui:
+			ui.add_combat_message("  → New facing: %s (Cost: %d MP)" % [FacingSystem.get_facing_name(facing), rotation_cost], Color.CYAN)
+			ui.update_unit_info(selected_unit)
+		
+		pending_turn_only = false
+		
+		# Finalizar activación
+		await get_tree().create_timer(0.2).timeout
+		turn_manager.complete_unit_activation()
 	elif selected_unit and selected_unit in player_mechs and selected_hex != Vector2i(-1, -1):
-		# Estamos después del movimiento - calcular rotación necesaria
-		var current_facing = selected_unit.facing
-		var rotations_needed = _calculate_rotations(current_facing, facing)
+		# Estamos después del movimiento - ajuste final de facing (gratis)
+		print("[BATTLE] Post-movement facing adjustment: %d -> %d" % [selected_unit.facing, facing])
 		
+		# Aplicar rotación sin costo (es parte del movimiento)
+		selected_unit.facing = facing
+		selected_unit.update_visual_position(hex_grid)
+		if selected_unit.has_method("update_facing_visual"):
+			selected_unit.update_facing_visual()
 		
-		if rotations_needed <= selected_unit.current_movement:
-			# Aplicar rotación
-			selected_unit.facing = facing
-			selected_unit.current_movement -= rotations_needed
-			selected_unit.update_visual_position(hex_grid)
-			selected_unit.update_facing_visual()  # Forzar actualización visual
-			
-			if ui:
-				ui.add_combat_message("  → Rotated to facing %d (-%d MP)" % [facing, rotations_needed], Color.CYAN)
-				ui.add_combat_message("  → Final facing: %d, MPs remaining: %d" % [facing, selected_unit.current_movement], Color.WHITE)
-				ui.update_unit_info(selected_unit)
-			
-			# Modo secuencial: finalizar
-			await get_tree().create_timer(0.3).timeout
-			turn_manager.complete_unit_activation()
-		else:
-			if ui:
-				ui.add_combat_message("Not enough MPs for that rotation!", Color.RED)
+		if ui:
+			ui.add_combat_message("  → Final facing: %s" % FacingSystem.get_facing_name(facing), Color.CYAN)
+			ui.update_unit_info(selected_unit)
 		
 		selected_hex = Vector2i(-1, -1)  # Reset
+		
+		# Finalizar activación
+		await get_tree().create_timer(0.2).timeout
+		turn_manager.complete_unit_activation()
 
 func _calculate_rotations(from_facing: int, to_facing: int) -> int:
 	"""Calcula el número mínimo de rotaciones (cada una cuesta 1 MP)"""
@@ -1132,8 +1164,47 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 			return
 		else:
 			ui.add_combat_message("%s selected: %s (%d MP, %d hexes)" % [selected_unit.mech_name, movement_names[movement_type], selected_unit.current_movement, reachable_hexes.size()], Color.CYAN)
+			# Mostrar botón de cancelar movimiento
+			ui.show_cancel_movement_button()
 	
 	update_overlays()
+
+func select_turn_only():
+	"""Llamado cuando el jugador selecciona solo girar sin moverse"""
+	if not selected_unit or selected_unit not in player_mechs:
+		return
+	
+	pending_movement_selection = false
+	pending_turn_only = true
+	
+	# Activar cooldown para evitar que el release del botón se interprete como click en mapa
+	ui_interaction_cooldown = 0.2  # 200ms de cooldown
+	
+	if ui:
+		ui.add_combat_message("%s: Select new facing (Turn only)" % selected_unit.mech_name, Color.CYAN)
+	
+	# Mostrar selector de facing en la posición del mech
+	var mech_screen_pos = selected_unit.global_position
+	if ui and ui.has_method("show_facing_selector_with_current"):
+		ui.show_facing_selector_with_current(mech_screen_pos, selected_unit.facing, 99)
+
+func cancel_movement_selection():
+	"""Cancela la selección de movimiento actual y vuelve al selector de tipo"""
+	print("[BATTLE] Cancelling movement selection")
+	
+	# Limpiar hexágonos alcanzables y overlays
+	reachable_hexes = []
+	preview_path = []
+	preview_destination = Vector2i(-1, -1)
+	pending_move_confirmation = false
+	update_overlays()
+	
+	# Volver a mostrar el selector de tipo de movimiento
+	if ui and selected_unit:
+		ui.hide_cancel_movement_button()
+		pending_movement_selection = true
+		ui.show_movement_type_selector(selected_unit)
+		ui.add_combat_message("Movement cancelled - select new movement type", Color.GRAY)
 
 func _handle_movement_click(hex: Vector2i):
 	if selected_unit == null:
@@ -1149,7 +1220,229 @@ func _handle_movement_click(hex: Vector2i):
 	
 	# Verificar que el hexágono sea alcanzable
 	if hex in reachable_hexes:
-		_move_unit_to_hex(selected_unit, hex)
+		_preview_movement_path(selected_unit, hex)
+
+
+func _preview_movement_path(unit, hex: Vector2i):
+	"""Muestra el camino de movimiento y pide confirmación"""
+	# Calcular camino
+	var path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
+	
+	if path.size() == 0:
+		return
+	
+	# Guardar información del movimiento pendiente
+	preview_path = path
+	preview_destination = hex
+	pending_move_confirmation = true
+	
+	# Calcular coste del movimiento
+	var movement_cost = 0
+	var rotation_cost = 0
+	var current_facing = unit.facing
+	
+	for i in range(1, path.size()):
+		var from_hex = path[i - 1]
+		var to_hex = path[i]
+		
+		# Calcular facing necesario para este paso
+		var step_facing = FacingSystem.get_facing_to_hex(from_hex, to_hex)
+		
+		# Calcular costo de rotación
+		var step_rotation = MovementSystem.get_rotation_cost(current_facing, step_facing)
+		rotation_cost += step_rotation
+		
+		# Calcular costo de terreno
+		var step_cost = MovementSystem.calculate_movement_cost(from_hex, to_hex, unit.movement_type_used, hex_grid)
+		movement_cost += step_cost
+		
+		current_facing = step_facing
+	
+	var total_cost = movement_cost + rotation_cost
+	
+	# Mostrar UI de confirmación
+	if ui:
+		var movement_names = {
+			GameEnums.MovementType.WALK: "Walking",
+			GameEnums.MovementType.RUN: "Running",
+			GameEnums.MovementType.JUMP: "Jumping"
+		}
+		var move_type = movement_names.get(unit.movement_type_used, "Moving")
+		var hex_count = path.size() - 1
+		
+		var message = "%s: %s %d hex" % [unit.mech_name, move_type, hex_count]
+		if hex_count != 1:
+			message += "es"
+		message += " (Cost: %d MP" % total_cost
+		if rotation_cost > 0:
+			message += ", Rotation: %d MP" % rotation_cost
+		message += ")"
+		
+		ui.show_confirmation_dialog(
+			"Confirm Movement",
+			message,
+			_on_movement_confirmed,
+			_on_movement_cancelled
+		)
+	
+	# Actualizar overlays para mostrar el camino
+	update_overlays()
+
+func _on_movement_confirmed():
+	"""Ejecutar el movimiento confirmado"""
+	print("[BATTLE] Movement confirmed - pending: %s, dest: %s" % [pending_move_confirmation, preview_destination])
+	
+	if not pending_move_confirmation or preview_destination == Vector2i(-1, -1):
+		print("[BATTLE] Movement confirmation failed - invalid state")
+		return
+	
+	if not selected_unit:
+		print("[BATTLE] Movement confirmation failed - no unit selected")
+		return
+	
+	pending_move_confirmation = false
+	
+	# Ocultar botón de cancelar
+	if ui:
+		ui.hide_cancel_movement_button()
+	
+	# Ejecutar movimiento
+	print("[BATTLE] Executing movement to %s" % preview_destination)
+	_execute_movement(selected_unit, preview_destination, preview_path)
+	
+	# Limpiar previsualización y estado
+	preview_path = []
+	preview_destination = Vector2i(-1, -1)
+	reachable_hexes = []  # Limpiar hexágonos alcanzables después del movimiento
+	
+	# Actualizar overlays
+	print("[BATTLE] Updating overlays after movement")
+	update_overlays()
+
+func _on_movement_cancelled():
+	"""Cancelar el movimiento"""
+	print("[BATTLE] Movement cancelled")
+	
+	pending_move_confirmation = false
+	preview_path = []
+	preview_destination = Vector2i(-1, -1)
+	
+	# Restaurar overlays de movimiento si aún hay una unidad seleccionada
+	print("[BATTLE] Restoring movement overlays - reachable hexes: %d" % reachable_hexes.size())
+	update_overlays()
+	
+	if ui:
+		ui.add_combat_message("Movement cancelled", Color.GRAY)
+
+func _execute_movement(unit, hex: Vector2i, path: Array):
+	"""Ejecuta el movimiento del mech"""
+	# Calcular camino si no se proporciona
+	if path.size() == 0:
+		path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
+	
+	if path.size() == 0:
+		return
+	
+	# Calcular coste REAL de movimiento recorriendo el path
+	var movement_cost = 0
+	var rotation_cost = 0
+	var current_facing = unit.facing
+	
+	for i in range(1, path.size()):
+		var from_hex = path[i - 1]
+		var to_hex = path[i]
+		
+		# Calcular facing necesario para este paso
+		var step_facing = FacingSystem.get_facing_to_hex(from_hex, to_hex)
+		
+		# Calcular costo de rotación
+		var step_rotation = MovementSystem.get_rotation_cost(current_facing, step_facing)
+		rotation_cost += step_rotation
+		
+		# Calcular costo de terreno
+		var step_cost = MovementSystem.calculate_movement_cost(from_hex, to_hex, unit.movement_type_used, hex_grid)
+		movement_cost += step_cost
+		
+		current_facing = step_facing
+	
+	var total_cost = movement_cost + rotation_cost
+	
+	# Actualizar posición en el grid
+	hex_grid.set_unit(unit.hex_position, null)
+	var old_pos = unit.hex_position
+	
+	# Registrar movimiento en el mech (actualiza modificadores)
+	unit.move_to_hex(hex, total_cost)
+	hex_grid.set_unit(hex, unit)
+	
+	# Actualizar facing al final del movimiento
+	unit.facing = current_facing
+	
+	# ACTUALIZAR POSICIÓN VISUAL DEL MECH
+	unit.update_visual_position(hex_grid)
+	
+	# Actualizar visibilidad de todos los mechs tras movimiento
+	update_mech_visibility()
+	
+	# Log de movimiento con tipo
+	if ui:
+		var movement_names = {
+			GameEnums.MovementType.WALK: "Walking",
+			GameEnums.MovementType.RUN: "Running",
+			GameEnums.MovementType.JUMP: "Jumping"
+		}
+		var move_type_str = movement_names.get(unit.movement_type_used, "Moving")
+		
+		# Calcular distancia en hexágonos
+		var hex_distance = path.size() - 1
+		
+		# Calcular cambio de elevación
+		var old_elevation = hex_grid.get_elevation(old_pos)
+		var new_elevation = hex_grid.get_elevation(hex)
+		var elevation_change = new_elevation - old_elevation
+		
+		# Mensaje principal de movimiento
+		ui.add_combat_message("%s %s from [%d,%d] to [%d,%d]" % [
+			unit.mech_name, move_type_str, old_pos.x, old_pos.y, hex.x, hex.y
+		], Color.WHITE)
+		
+		# Detalles del movimiento
+		var details = "  → Moved %d hex%s, Cost: %d MP" % [
+			hex_distance, 
+			"es" if hex_distance != 1 else "",
+			total_cost
+		]
+		
+		if rotation_cost > 0:
+			details += " (Terrain: %d MP, Rotation: %d MP)" % [movement_cost, rotation_cost]
+		
+		if elevation_change != 0:
+			var elev_str = "+%d" % elevation_change if elevation_change > 0 else str(elevation_change)
+			details += ", Elevation: %s" % elev_str
+		
+		ui.add_combat_message(details, Color.CYAN)
+	
+	# El estado se limpia en _on_movement_confirmed
+	print("[BATTLE] Movement execution completed")
+	
+	# Después del movimiento, mostrar selector de facing para ajustar orientación final (sin costo)
+	if ui and unit and unit in player_mechs:
+		print("[BATTLE] Showing post-movement facing selector")
+		var mech_screen_pos = hex_grid.hex_to_pixel(unit.hex_position, true) + hex_grid.position
+		ui.add_combat_message("Adjust final facing (free rotation)", Color.YELLOW)
+		
+		# Guardar el hex actual para el callback de facing
+		selected_hex = unit.hex_position
+		selected_unit = unit  # Asegurar que selected_unit esté disponible
+		
+		# Mostrar selector
+		ui.show_facing_selector_with_current(mech_screen_pos, unit.facing, 99)
+	else:
+		# Si no hay UI o no es mech del jugador, completar activación directamente
+		print("[BATTLE] No facing selector needed, completing activation")
+		if turn_manager:
+			await get_tree().create_timer(0.3).timeout
+			turn_manager.complete_unit_activation()
 
 
 func _move_unit_to_hex(unit, hex: Vector2i):

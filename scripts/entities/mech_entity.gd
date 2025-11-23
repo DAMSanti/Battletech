@@ -33,7 +33,7 @@ signal mech_stood_up()
 
 # Estado
 var hex_position: Vector2i = Vector2i(0, 0)
-var facing: int = 0  # 0-7 para las 8 direcciones
+var facing: int = 0  # 0-5 para las 6 direcciones hexagonales
 var is_prone: bool = false
 var is_shutdown: bool = false
 var moved_this_turn: bool = false

@@ -11,6 +11,7 @@ var unit_info_label: Label
 var armor_panel: Control = null
 var end_turn_button: Button
 var help_label: Label
+var cancel_movement_button: Button  # Botón para cancelar selección de movimiento
 var combat_log: RichTextLabel
 var combat_log_mode: String = "full"  # "full" o "short"
 var full_button: Button
@@ -23,6 +24,7 @@ var movement_selector_title: Label
 var walk_button: Button
 var run_button: Button
 var jump_button: Button
+var turn_button: Button
 
 # Selector de orientación (facing)
 var facing_selector: Control
@@ -55,6 +57,16 @@ var game_over_visible: bool = false
 var mech_inspector_panel: Panel
 var mech_inspector_armor: Control
 var mech_inspector_visible: bool = false
+
+# Panel de confirmación genérico
+var confirmation_panel: Panel
+var confirmation_title: Label
+var confirmation_message: Label
+var confirm_button: Button
+var cancel_button: Button
+var confirmation_visible: bool = false
+var on_confirm_callback: Callable
+var on_cancel_callback: Callable
 
 func _ready():
 	_setup_ui()
@@ -131,6 +143,16 @@ func _setup_ui():
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
 	add_child(end_turn_button)
 	
+	# Botón de cancelar movimiento (oculto por defecto, se muestra cuando hay movimiento activo)
+	cancel_movement_button = Button.new()
+	cancel_movement_button.text = "← CANCEL MOVEMENT"
+	cancel_movement_button.position = Vector2(margin, end_turn_button.position.y + end_turn_button.size.y + margin * 0.5)
+	cancel_movement_button.size = Vector2(screen_width * 0.95, 55 * scale_factor)
+	cancel_movement_button.add_theme_font_size_override("font_size", int(18 * scale_factor))
+	cancel_movement_button.visible = false
+	cancel_movement_button.pressed.connect(_on_cancel_movement_pressed)
+	add_child(cancel_movement_button)
+	
 	# Log de combate (en la parte inferior, 23% de la altura)
 	var log_height = screen_height * 0.23
 	var log_panel = Panel.new()
@@ -180,7 +202,7 @@ func _setup_ui():
 	
 	# Panel selector de tipo de movimiento (centrado, 50% del ancho)
 	var movement_panel_width = screen_width * 0.85
-	var movement_panel_height = screen_height * 0.35
+	var movement_panel_height = screen_height * 0.45
 	movement_selector_panel = Panel.new()
 	movement_selector_panel.position = Vector2((screen_width - movement_panel_width) / 2, (screen_height - movement_panel_height) / 2)
 	movement_selector_panel.size = Vector2(movement_panel_width, movement_panel_height)
@@ -194,7 +216,7 @@ func _setup_ui():
 	movement_selector_title.add_theme_color_override("font_color", Color.GOLD)
 	movement_selector_panel.add_child(movement_selector_title)
 	
-	var button_height = (movement_panel_height - 80 * scale_factor) / 3
+	var button_height = (movement_panel_height - 80 * scale_factor) / 4
 	var button_width = movement_panel_width - margin * 2
 	
 	walk_button = Button.new()
@@ -220,6 +242,14 @@ func _setup_ui():
 	jump_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	jump_button.pressed.connect(_on_jump_pressed)
 	movement_selector_panel.add_child(jump_button)
+	
+	turn_button = Button.new()
+	turn_button.text = "TURN"
+	turn_button.position = Vector2(margin, 50 * scale_factor + (button_height + 5) * 3)
+	turn_button.size = Vector2(button_width, button_height)
+	turn_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
+	turn_button.pressed.connect(_on_turn_pressed)
+	movement_selector_panel.add_child(turn_button)
 	
 	# Selector de orientación (facing) - capa superior
 	var FacingSelector = load("res://scripts/ui/facing_selector.gd")
@@ -372,6 +402,65 @@ func _setup_ui():
 	cancel_physical_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	cancel_physical_button.pressed.connect(_on_cancel_physical_pressed)
 	physical_attack_panel.add_child(cancel_physical_button)
+	
+	# Panel de confirmación genérico (banner compacto en la parte inferior: 90% ancho, 12% altura)
+	var confirm_panel_width = screen_width * 0.9
+	var confirm_panel_height = screen_height * 0.12
+	confirmation_panel = Panel.new()
+	confirmation_panel.position = Vector2((screen_width - confirm_panel_width) / 2, screen_height - confirm_panel_height - margin * 2)
+	confirmation_panel.size = Vector2(confirm_panel_width, confirm_panel_height)
+	confirmation_panel.visible = false
+	confirmation_panel.z_index = 200  # Encima de todo
+	add_child(confirmation_panel)
+	
+	# Estilo del panel
+	var confirm_style = StyleBoxFlat.new()
+	confirm_style.bg_color = Color(0.1, 0.1, 0.2, 0.95)
+	confirm_style.border_width_left = 3
+	confirm_style.border_width_right = 3
+	confirm_style.border_width_top = 3
+	confirm_style.border_width_bottom = 3
+	confirm_style.border_color = Color.GOLD
+	confirm_style.corner_radius_top_left = 10
+	confirm_style.corner_radius_top_right = 10
+	confirm_style.corner_radius_bottom_left = 10
+	confirm_style.corner_radius_bottom_right = 10
+	confirmation_panel.add_theme_stylebox_override("panel", confirm_style)
+	
+	# Layout horizontal: mensaje a la izquierda, botones a la derecha
+	confirmation_message = Label.new()
+	confirmation_message.text = "Confirm action?"
+	confirmation_message.position = Vector2(margin, margin)
+	confirmation_message.size = Vector2(confirm_panel_width * 0.55, confirm_panel_height - margin * 2)
+	confirmation_message.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	confirmation_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	confirmation_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	confirmation_panel.add_child(confirmation_message)
+	
+	# Título oculto (no necesario en formato banner)
+	confirmation_title = Label.new()
+	confirmation_title.visible = false
+	confirmation_panel.add_child(confirmation_title)
+	
+	var button_x_start = confirm_panel_width * 0.57
+	var button_y = (confirm_panel_height - 35 * scale_factor) / 2
+	var confirm_button_width = (confirm_panel_width * 0.4 - margin) / 2
+	
+	confirm_button = Button.new()
+	confirm_button.text = "✓ CONFIRM"
+	confirm_button.position = Vector2(button_x_start, button_y)
+	confirm_button.size = Vector2(confirm_button_width, 35 * scale_factor)
+	confirm_button.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	confirm_button.pressed.connect(_on_confirmation_confirm)
+	confirmation_panel.add_child(confirm_button)
+	
+	cancel_button = Button.new()
+	cancel_button.text = "✗ CANCEL"
+	cancel_button.position = Vector2(button_x_start + confirm_button_width + margin, button_y)
+	cancel_button.size = Vector2(confirm_button_width, 35 * scale_factor)
+	cancel_button.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	cancel_button.pressed.connect(_on_confirmation_cancel)
+	confirmation_panel.add_child(cancel_button)
 
 func _on_turn_changed(_team: String, turn_number: int):
 	if turn_label:
@@ -451,6 +540,23 @@ func update_phase_info(phase: String):
 func _on_end_turn_pressed():
 	if battle_scene and battle_scene.has_method("end_current_activation"):
 		battle_scene.end_current_activation()
+
+func _on_cancel_movement_pressed():
+	"""Cancelar selección de movimiento y volver al selector de tipo"""
+	print("[UI] Cancel movement pressed")
+	hide_cancel_movement_button()
+	if battle_scene and battle_scene.has_method("cancel_movement_selection"):
+		battle_scene.cancel_movement_selection()
+
+func show_cancel_movement_button():
+	"""Muestra el botón de cancelar movimiento"""
+	if cancel_movement_button:
+		cancel_movement_button.visible = true
+
+func hide_cancel_movement_button():
+	"""Oculta el botón de cancelar movimiento"""
+	if cancel_movement_button:
+		cancel_movement_button.visible = false
 
 func _on_log_mode_changed(mode: String):
 	combat_log_mode = mode
@@ -686,6 +792,11 @@ func _on_run_pressed():
 func _on_jump_pressed():
 	if battle_scene and battle_scene.has_method("select_movement_type"):
 		battle_scene.select_movement_type(3)  # Mech.MovementType.JUMP
+	hide_movement_type_selector()
+
+func _on_turn_pressed():
+	if battle_scene and battle_scene.has_method("select_turn_only"):
+		battle_scene.select_turn_only()
 	hide_movement_type_selector()
 
 ## SELECTOR DE ORIENTACIÓN (FACING) ##
@@ -1225,3 +1336,51 @@ func hide_mech_inspector():
 
 func _on_close_inspector_pressed():
 	hide_mech_inspector()
+
+## Panel de confirmación genérico
+func show_confirmation_dialog(title: String, message: String, on_confirm: Callable, on_cancel: Callable = Callable()):
+	"""Muestra un diálogo de confirmación genérico"""
+	print("[UI] Showing confirmation dialog: %s" % title)
+	if not confirmation_panel:
+		print("[UI] ERROR: confirmation_panel is null!")
+		return
+	
+	confirmation_title.text = title
+	confirmation_message.text = message
+	on_confirm_callback = on_confirm
+	on_cancel_callback = on_cancel
+	
+	print("[UI] Callbacks set - confirm valid: %s, cancel valid: %s" % [on_confirm.is_valid(), on_cancel.is_valid()])
+	
+	confirmation_panel.visible = true
+	confirmation_visible = true
+
+func hide_confirmation_dialog():
+	"""Oculta el diálogo de confirmación"""
+	if confirmation_panel:
+		confirmation_panel.visible = false
+	confirmation_visible = false
+	on_confirm_callback = Callable()
+	on_cancel_callback = Callable()
+
+func _on_confirmation_confirm():
+	"""Botón de confirmación presionado"""
+	print("[UI] Confirmation CONFIRM pressed")
+	var callback = on_confirm_callback  # Guardar antes de limpiar
+	hide_confirmation_dialog()
+	if callback and callback.is_valid():
+		print("[UI] Calling confirm callback")
+		callback.call()
+	else:
+		print("[UI] No valid confirm callback")
+
+func _on_confirmation_cancel():
+	"""Botón de cancelación presionado"""
+	print("[UI] Confirmation CANCEL pressed")
+	var callback = on_cancel_callback  # Guardar antes de limpiar
+	hide_confirmation_dialog()
+	if callback and callback.is_valid():
+		print("[UI] Calling cancel callback")
+		callback.call()
+	else:
+		print("[UI] No valid cancel callback")

@@ -121,11 +121,38 @@ static func can_enter_hex(hex: Vector2i, movement_type: int, mech, hex_grid) -> 
 	
 	return true
 
+## Mapear índice de vecino de HEX_DIRECTIONS a facing
+## HEX_DIRECTIONS order: N(0), NE(1), NW(2), S(3), SW(4), SE(5)
+## Facing enum: N(0), NE(1), SE(2), S(3), SW(4), NW(5)
+static func neighbor_index_to_facing(neighbor_index: int) -> int:
+	# Mapeo directo del índice de HEX_DIRECTIONS al facing correspondiente
+	match neighbor_index:
+		0: return 0  # N -> N
+		1: return 1  # NE -> NE
+		2: return 5  # NW -> NW
+		3: return 3  # S -> S
+		4: return 4  # SW -> SW
+		5: return 2  # SE -> SE
+		_: return 0
+
 ## Obtener hexes alcanzables con movimiento Walk/Run
+## Considera el costo de rotación - girar cuesta MPs
 static func get_reachable_hexes(start_hex: Vector2i, max_distance: int, movement_type: int, hex_grid, mech = null) -> Array:
 	var reachable = []
-	var queue = [{hex = start_hex, distance = 0, path = [start_hex]}]
-	var visited = {start_hex: 0}
+	# Guardar facing inicial del mech si está disponible
+	var initial_facing = -1
+	if mech != null and "facing" in mech:
+		initial_facing = mech.facing
+	
+	# Cada estado incluye: hex, distancia acumulada, facing actual, y path
+	var queue = [{hex = start_hex, distance = 0, facing = initial_facing, path = [start_hex]}]
+	# Visited ahora guarda el MEJOR coste para cada combinación de (hex, facing)
+	var visited = {}
+	if initial_facing >= 0:
+		visited[str(start_hex) + "_" + str(initial_facing)] = 0
+	else:
+		visited[str(start_hex)] = 0
+	
 	var iterations = 0
 	var MAX_ITERATIONS = 10000  # Límite de seguridad para evitar loops infinitos
 	
@@ -134,15 +161,19 @@ static func get_reachable_hexes(start_hex: Vector2i, max_distance: int, movement
 		var current = queue.pop_front()
 		var current_hex = current.hex
 		var current_distance = current.distance
+		var current_facing = current.facing
 		
 		if current_distance > max_distance:
 			continue
 		
 		if current_hex != start_hex:
-			reachable.append(current_hex)
+			# Solo agregar si este hex no está ya en reachable o si encontramos un camino mejor
+			if not reachable.has(current_hex):
+				reachable.append(current_hex)
 		
 		var neighbors = hex_grid.get_neighbors(current_hex)
-		for neighbor in neighbors:
+		for i in range(neighbors.size()):
+			var neighbor = neighbors[i]
 			if not hex_grid.is_valid_hex(neighbor):
 				continue
 			
@@ -150,18 +181,39 @@ static func get_reachable_hexes(start_hex: Vector2i, max_distance: int, movement
 			if mech != null and not can_enter_hex(neighbor, movement_type, mech, hex_grid):
 				continue
 			
-			# Calcular coste de movimiento
+			# Calcular el facing necesario para moverse a este vecino
+			# El mech cambia su facing al moverse (mira hacia donde se mueve)
+			var required_facing = neighbor_index_to_facing(i)
+			
+			# Calcular coste de rotación desde facing actual al requerido
+			var rotation_cost = get_rotation_cost(current_facing, required_facing)
+			
+			# Calcular coste de movimiento al hex vecino
 			var move_cost = calculate_movement_cost(current_hex, neighbor, movement_type, hex_grid)
-			var new_distance = current_distance + move_cost
+			
+			# Coste total = rotación + movimiento
+			var total_cost = rotation_cost + move_cost
+			var new_distance = current_distance + total_cost
 			
 			if new_distance > max_distance:
 				continue
 			
-			if not visited.has(neighbor) or new_distance < visited[neighbor]:
-				visited[neighbor] = new_distance
+			# Crear clave para visited que incluye facing si es relevante
+			var visited_key = str(neighbor)
+			if required_facing >= 0:
+				visited_key = str(neighbor) + "_" + str(required_facing)
+			
+			# Solo agregar a la cola si encontramos un camino mejor
+			if not visited.has(visited_key) or new_distance < visited[visited_key]:
+				visited[visited_key] = new_distance
 				var new_path = current.path.duplicate()
 				new_path.append(neighbor)
-				queue.append({hex = neighbor, distance = new_distance, path = new_path})
+				queue.append({
+					hex = neighbor, 
+					distance = new_distance, 
+					facing = required_facing,  # Actualizar facing al llegar
+					path = new_path
+				})
 	
 	if iterations >= MAX_ITERATIONS:
 		push_warning("MovementSystem: get_reachable_hexes alcanzó el límite de iteraciones")
@@ -246,16 +298,22 @@ static func get_target_movement_modifier(movement_type: int, hexes_moved: int) -
 
 ## Calcular coste de MP por girar
 ## BattleTech: girar cuesta MPs según cuántas facetas giras
+## Cada cambio de faceta (60 grados) cuesta 1 MP
 static func get_rotation_cost(from_facing: int, to_facing: int) -> int:
-	# Calcular diferencia de facetas (0-5)
-	var diff = abs(to_facing - from_facing)
-	if diff > 3:
-		diff = 6 - diff  # Camino más corto
+	if from_facing < 0 or to_facing < 0:
+		return 0  # Sin facing válido, sin coste
 	
-	# En BattleTech clásico, girar NO cuesta MPs
-	# Pero girar 1 hexside puede costar 1 MP en algunas variantes
-	# Por ahora, sin coste
-	return 0
+	# Calcular diferencia de facetas (0-5)
+	# Normalizar facings al rango 0-5
+	var normalized_from = from_facing % 6
+	var normalized_to = to_facing % 6
+	
+	var diff = abs(normalized_to - normalized_from)
+	if diff > 3:
+		diff = 6 - diff  # Camino más corto (girar en la otra dirección)
+	
+	# Cada faceta de rotación cuesta 1 MP
+	return diff
 
 ## Calcular calor generado por movimiento
 static func calculate_heat_from_movement(_mech, hexes_moved: int, movement_type: int) -> int:

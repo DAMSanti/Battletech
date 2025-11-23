@@ -27,8 +27,8 @@ const TERRAIN_DATA = {
 		"name": "Clear",
 		"name_es": "Despejado",
 		"movement_cost": 1,
-		"walk_cost": 1,      # BattleTech: 1 MP caminando
-		"run_cost": 2,       # BattleTech: 2 MP corriendo
+		"walk_cost": 1,      # BattleTech: 1 MP
+		"run_cost": 1,       # BattleTech: mismo costo que walk (solo cambia MPs totales)
 		"jump_cost": 1,      # BattleTech: 1 MP saltando
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
@@ -42,8 +42,8 @@ const TERRAIN_DATA = {
 		"name": "Light Woods",
 		"name_es": "Bosque Ligero",
 		"movement_cost": 2,
-		"walk_cost": 2,      # 1 base + 1 terreno
-		"run_cost": 4,       # 2 base + 1 terreno
+		"walk_cost": 2,      # BattleTech: 2 MP
+		"run_cost": 2,       # Mismo costo que walk
 		"jump_cost": 1,      # Saltar ignora terreno
 		"defense_bonus": 1,
 		"to_hit_modifier": 1,  # +1 por cada hex atravesado
@@ -59,8 +59,8 @@ const TERRAIN_DATA = {
 		"name": "Heavy Woods",
 		"name_es": "Bosque Denso",
 		"movement_cost": 3,
-		"walk_cost": 3,      # 1 base + 2 terreno
-		"run_cost": 5,       # 2 base + 2 terreno
+		"walk_cost": 3,      # BattleTech: 3 MP
+		"run_cost": 3,       # Mismo costo que walk
 		"jump_cost": 1,      # Saltar ignora terreno
 		"defense_bonus": 2,
 		"to_hit_modifier": 2,  # +2 si atraviesa 1 hex, bloquea si 2+
@@ -79,7 +79,7 @@ const TERRAIN_DATA = {
 		"name_es": "Bosque",
 		"movement_cost": 2,
 		"walk_cost": 2,
-		"run_cost": 4,
+		"run_cost": 2,       # Mismo costo que walk
 		"jump_cost": 1,
 		"defense_bonus": 1,
 		"to_hit_modifier": 2,  # Tratado como Heavy Woods
@@ -95,8 +95,8 @@ const TERRAIN_DATA = {
 		"name": "Water",
 		"name_es": "Agua",
 		"movement_cost": 2,
-		"walk_cost": 2,      # Agua poco profunda: 1 base + 1 terreno
-		"run_cost": 4,       # 2 base + 1 terreno
+		"walk_cost": 2,      # Agua poco profunda: 2 MP
+		"run_cost": 2,       # Mismo costo que walk
 		"jump_cost": 1,      # Saltar ignora terreno
 		"depth": 1,          # Profundidad en niveles
 		"defense_bonus": 0,
@@ -111,8 +111,8 @@ const TERRAIN_DATA = {
 		"name": "Rough",
 		"name_es": "Difícil",
 		"movement_cost": 2,
-		"walk_cost": 2,      # 1 base + 1 terreno
-		"run_cost": 4,       # 2 base + 1 terreno (algunas reglas prohíben correr)
+		"walk_cost": 2,      # BattleTech: 2 MP
+		"run_cost": 2,       # Mismo costo que walk
 		"jump_cost": 1,      # Saltar ignora terreno
 		"prohibits_running": true,  # Según edición
 		"defense_bonus": 0,
@@ -127,8 +127,8 @@ const TERRAIN_DATA = {
 		"name": "Bog/Swamp",
 		"name_es": "Pantano",
 		"movement_cost": 2,
-		"walk_cost": 2,      # 1 base + 1 terreno
-		"run_cost": 4,       # 2 base + 1 terreno
+		"walk_cost": 2,      # BattleTech: 2 MP
+		"run_cost": 2,       # Mismo costo que walk
 		"jump_cost": 1,      # Saltar ignora terreno
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
@@ -143,8 +143,8 @@ const TERRAIN_DATA = {
 		"name": "Rubble",
 		"name_es": "Escombros",
 		"movement_cost": 3,
-		"walk_cost": 3,      # 1 base + 2 terreno
-		"run_cost": 5,       # 2 base + 2 terreno
+		"walk_cost": 3,      # BattleTech: 3 MP
+		"run_cost": 3,       # Mismo costo que walk
 		"jump_cost": 1,      # Saltar ignora terreno
 		"requires_piloting_check": true,
 		"defense_bonus": 1,
@@ -160,7 +160,7 @@ const TERRAIN_DATA = {
 		"name_es": "Carretera",
 		"movement_cost": 1,
 		"walk_cost": 0,      # -1 al coste (mínimo 1 total)
-		"run_cost": 1,       # -1 al coste (mínimo 1 total)
+		"run_cost": 0,       # Mismo costo que walk (mínimo 1 total)
 		"jump_cost": 1,      # Saltar no beneficia de carretera
 		"cost_modifier": -1, # Reduce coste en 1 (mínimo 1)
 		"defense_bonus": 0,
@@ -176,7 +176,7 @@ const TERRAIN_DATA = {
 		"name_es": "Pavimento",
 		"movement_cost": 1,
 		"walk_cost": 1,
-		"run_cost": 2,
+		"run_cost": 1,       # Mismo costo que walk
 		"jump_cost": 1,
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
@@ -191,7 +191,7 @@ const TERRAIN_DATA = {
 		"name_es": "Arena",
 		"movement_cost": 2,
 		"walk_cost": 2,
-		"run_cost": 4,
+		"run_cost": 2,       # Mismo costo que walk
 		"jump_cost": 1,
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
@@ -206,7 +206,7 @@ const TERRAIN_DATA = {
 		"name_es": "Hielo",
 		"movement_cost": 1,
 		"walk_cost": 1,
-		"run_cost": 2,
+		"run_cost": 1,       # Mismo costo que walk
 		"jump_cost": 1,
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
@@ -221,8 +221,8 @@ const TERRAIN_DATA = {
 		"name": "Building",
 		"name_es": "Edificio",
 		"movement_cost": 2,
-		"walk_cost": 2,      # 1 base + 1 entrada
-		"run_cost": 4,       # 2 base + 1 entrada
+		"walk_cost": 2,      # BattleTech: 2 MP entrar
+		"run_cost": 2,       # Mismo costo que walk
 		"jump_cost": 1,      # Saltar a edificio (según altura)
 		"requires_piloting_check": true,
 		"defense_bonus": 2,
@@ -239,7 +239,7 @@ const TERRAIN_DATA = {
 		"name_es": "Colina",
 		"movement_cost": 2,
 		"walk_cost": 1,      # +1 por cada nivel ascendido (bajar=0)
-		"run_cost": 2,       # +1 por cada nivel ascendido (bajar=0)
+		"run_cost": 1,       # Mismo costo que walk, +1 por nivel
 		"jump_cost": 1,      # Saltar ignora coste de elevación
 		"elevation_cost_per_level": 1,  # +1 MP por nivel al subir
 		"defense_bonus": 0,
@@ -261,11 +261,13 @@ static func get_movement_cost_by_type(terrain_type: Type, movement_type: int) ->
 	var data = TERRAIN_DATA[terrain_type]
 	
 	# movement_type: 1=WALK, 2=RUN, 3=JUMP (desde GameEnums.MovementType)
+	# IMPORTANTE: En BattleTech, el costo por hex es el MISMO para Walk y Run
+	# Solo cambia el total de MPs disponibles (Run = 1.5x Walk)
 	match movement_type:
 		1:  # WALK
 			return data.get("walk_cost", data["movement_cost"])
-		2:  # RUN
-			return data.get("run_cost", data["movement_cost"] * 2)
+		2:  # RUN - mismo costo que Walk
+			return data.get("run_cost", data.get("walk_cost", data["movement_cost"]))
 		3:  # JUMP
 			return data.get("jump_cost", 1)
 		_:

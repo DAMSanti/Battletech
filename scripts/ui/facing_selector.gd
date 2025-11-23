@@ -83,8 +83,30 @@ func _get_direction_name(facing: int) -> String:
 	return "?"
 
 func show_at_position(pos: Vector2, facing: int = -1, mp: int = 99):
-	"""Muestra el selector en una posición específica"""
-	position = pos - size / 2
+	"""Muestra el selector en una posición específica, asegurando que esté dentro de la pantalla"""
+	# Obtener tamaño del viewport
+	var viewport_size = get_viewport().get_visible_rect().size
+	
+	# Calcular posición inicial (centrado en el punto especificado)
+	var target_pos = pos - size / 2
+	
+	# Ajustar para que esté completamente visible
+	# Margen mínimo desde los bordes
+	var margin = 10.0
+	
+	# Ajustar X
+	if target_pos.x < margin:
+		target_pos.x = margin
+	elif target_pos.x + size.x > viewport_size.x - margin:
+		target_pos.x = viewport_size.x - size.x - margin
+	
+	# Ajustar Y
+	if target_pos.y < margin:
+		target_pos.y = margin
+	elif target_pos.y + size.y > viewport_size.y - margin:
+		target_pos.y = viewport_size.y - size.y - margin
+	
+	position = target_pos
 	current_facing = facing
 	available_mp = mp
 	_update_buttons()
