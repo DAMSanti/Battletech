@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="120" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Center Torso Structure (Inner Layer) -->
+  <g id="torso_center_structure">
+    <!-- Main torso frame -->
+    <rect x="38" y="50" width="24" height="35" rx="2" fill="#404040" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Engine core -->
+    <rect x="42" y="58" width="16" height="20" rx="2" fill="#303030"/>
+    
+    <!-- Internal supports -->
+    <line x1="45" y1="55" x2="45" y2="80" stroke="#505050" stroke-width="1"/>
+    <line x1="50" y1="55" x2="50" y2="80" stroke="#505050" stroke-width="1"/>
+    <line x1="55" y1="55" x2="55" y2="80" stroke="#505050" stroke-width="1"/>
+    
+    <!-- Cockpit connection -->
+    <rect x="45" y="48" width="10" height="4" fill="#383838"/>
+  </g>
+</svg>

@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://b1p3n14u7q3io" path="res://scripts/battle_scene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bgykjlbw56ccy" path="res://scripts/hex_grid.gd" id="2_hexgrid"]
 
-[sub_resource type="GDScript" id="GDScript_ui"]
+[sub_resource type="GDScript" id="GDScript_ui_v2"]
 script/source = "extends CanvasLayer
 
 @onready var battle_scene = get_parent()
@@ -14,6 +14,7 @@ var unit_info_label: Label
 var end_turn_button: Button
 var help_label: Label
 var combat_log: RichTextLabel
+var mech_paper_doll: Control  # Paper doll del mech
 
 # Elementos de animación de dados
 var dice_panel: Panel
@@ -32,16 +33,23 @@ func _ready():
 			battle_scene.turn_manager.phase_changed.connect(_on_phase_changed)
 
 func _setup_ui():
-	# Panel de información superior
+	# Panel de información superior (expandido para incluir el paper doll)
 	var info_panel = Panel.new()
 	info_panel.position = Vector2(10, 10)
-	info_panel.size = Vector2(400, 200)
+	info_panel.size = Vector2(650, 320)  # Más ancho y alto para el paper doll
 	add_child(info_panel)
 	
+	# Layout horizontal: info a la izquierda, paper doll a la derecha
+	var hbox = HBoxContainer.new()
+	hbox.position = Vector2(15, 15)
+	hbox.size = Vector2(620, 290)
+	hbox.add_theme_constant_override(\"separation\", 20)
+	info_panel.add_child(hbox)
+	
+	# Columna izquierda: información de turno/fase/unidad
 	var vbox = VBoxContainer.new()
-	vbox.position = Vector2(15, 15)
-	vbox.size = Vector2(370, 170)
-	info_panel.add_child(vbox)
+	vbox.custom_minimum_size = Vector2(350, 290)
+	hbox.add_child(vbox)
 	
 	turn_label = Label.new()
 	turn_label.text = \"Turn: 1\"
@@ -55,7 +63,7 @@ func _setup_ui():
 	vbox.add_child(phase_label)
 	
 	unit_info_label = Label.new()
-	unit_info_label.text = \"No unit selected\"
+	unit_info_label.text = \"Hunchback - MP: 4 | Heat: 0/30\"
 	unit_info_label.add_theme_font_size_override(\"font_size\", 14)
 	vbox.add_child(unit_info_label)
 	
@@ -65,13 +73,32 @@ func _setup_ui():
 	help_label.add_theme_font_size_override(\"font_size\", 16)
 	help_label.add_theme_color_override(\"font_color\", Color.YELLOW)
 	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	help_label.custom_minimum_size = Vector2(370, 40)
+	help_label.custom_minimum_size = Vector2(370, 60)
 	vbox.add_child(help_label)
 	
-	# Botón de fin de turno
+	# Columna derecha: Paper doll del mech
+	# Cargar la escena del paper doll si existe
+	if ResourceLoader.exists(\"res://scenes/mech_paper_doll.tscn\"):
+		var paper_doll_scene = load(\"res://scenes/mech_paper_doll.tscn\")
+		if paper_doll_scene:
+			mech_paper_doll = paper_doll_scene.instantiate()
+			hbox.add_child(mech_paper_doll)
+	else:
+		# Placeholder temporal hasta que los SVG estén importados
+		var placeholder = Panel.new()
+		placeholder.custom_minimum_size = Vector2(200, 290)
+		var placeholder_label = Label.new()
+		placeholder_label.text = \"MECH\\nPAPER DOLL\"
+		placeholder_label.position = Vector2(50, 120)
+		placeholder_label.add_theme_font_size_override(\"font_size\", 20)
+		placeholder.add_child(placeholder_label)
+		hbox.add_child(placeholder)
+		mech_paper_doll = placeholder
+	
+	# Botón de fin de turno (ajustado por el nuevo tamaño del panel)
 	end_turn_button = Button.new()
 	end_turn_button.text = \"End Activation\"
-	end_turn_button.position = Vector2(10, 220)
+	end_turn_button.position = Vector2(10, 340)  # Movido hacia abajo
 	end_turn_button.size = Vector2(200, 50)
 	end_turn_button.add_theme_font_size_override(\"font_size\", 18)
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
@@ -258,7 +285,14 @@ func update_unit_info(unit):
 	
 	if unit == null:
 		unit_info_label.text = \"No unit selected\"
+		if mech_paper_doll:
+			mech_paper_doll.visible = false
 		return
+	
+	# Mostrar paper doll
+	if mech_paper_doll:
+		mech_paper_doll.visible = true
+		mech_paper_doll.update_from_mech(unit)
 	
 	var info = \"%s\\n\" % unit.mech_name
 	info += \"Pilot: %s\\n\" % unit.pilot_name
@@ -452,7 +486,7 @@ script = ExtResource("2_hexgrid")
 [node name="TurnManager" type="Node" parent="."]
 
 [node name="UI" type="CanvasLayer" parent="."]
-script = SubResource("GDScript_ui")
+script = SubResource("GDScript_ui_v2")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(540, 960)

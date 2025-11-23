@@ -2,6 +2,8 @@ extends CanvasLayer
 
 signal initiative_complete(data: Dictionary)
 
+@onready var battletech_theme = load("res://assets/themes/battletech_theme.tres")
+
 var roll_button: Button
 var result_label: Label
 var continue_button: Button
@@ -50,33 +52,39 @@ func setup_ui():
 	var margin = 10 * scale_factor
 	
 	
-	# Fondo oscuro
+	# Fondo con transparencia para ver el mapa (20% opaco)
 	var bg = ColorRect.new()
-	bg.color = Color(0.02, 0.02, 0.08, 0.98)
+	bg.color = Color(0.02, 0.05, 0.08, 0.2)
 	bg.position = Vector2.ZERO
 	bg.size = viewport_size
 	add_child(bg)
 	
-	# Panel decorativo superior (95% del ancho)
+	# Panel decorativo superior (95% del ancho) - Estilo BattleTech
 	var panel_width = screen_width * 0.95
 	var top_panel = Panel.new()
 	top_panel.position = Vector2((screen_width - panel_width) / 2, margin * 2)
 	top_panel.size = Vector2(panel_width, screen_height * 0.12)
 	var top_style = StyleBoxFlat.new()
-	top_style.bg_color = Color(0.08, 0.08, 0.15, 0.9)
+	top_style.bg_color = Color(0.08, 0.12, 0.18, 0.4)  # Transparente
 	top_style.border_width_top = int(3 * scale_factor)
 	top_style.border_width_bottom = int(3 * scale_factor)
 	top_style.border_width_left = int(3 * scale_factor)
 	top_style.border_width_right = int(3 * scale_factor)
-	top_style.border_color = Color.GOLD
-	top_style.corner_radius_top_left = int(15 * scale_factor)
-	top_style.corner_radius_top_right = int(15 * scale_factor)
-	top_style.corner_radius_bottom_left = int(15 * scale_factor)
-	top_style.corner_radius_bottom_right = int(15 * scale_factor)
+	top_style.border_color = Color(0.3, 0.7, 1, 1)  # Cian brillante BattleTech
+	top_style.corner_radius_top_left = int(8 * scale_factor)
+	top_style.corner_radius_top_right = int(8 * scale_factor)
+	top_style.corner_radius_bottom_left = int(8 * scale_factor)
+	top_style.corner_radius_bottom_right = int(8 * scale_factor)
+	top_style.border_blend = true
+	top_style.anti_aliasing = true
+	top_style.shadow_color = Color(0.3, 0.7, 1, 0.5)
+	top_style.shadow_size = int(6 * scale_factor)
+	top_style.shadow_offset = Vector2(0, 2)
+	top_style.skew = Vector2(0.05, 0)  # Skew futurista
 	top_panel.add_theme_stylebox_override("panel", top_style)
 	add_child(top_panel)
 	
-	# Título
+	# Título con estilo BattleTech
 	var title = Label.new()
 	title.text = "⚔ BATTLETECH INITIATIVE ⚔"
 	title.position = Vector2(screen_width * 0.05, screen_height * 0.04)
@@ -84,17 +92,21 @@ func setup_ui():
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", int(32 * scale_factor))
-	title.add_theme_color_override("font_color", Color.GOLD)
+	title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Color BattleTech
+	title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	title.add_theme_constant_override("outline_size", 3)
 	add_child(title)
 	
-	# Subtítulo
+	# Subtítulo con estilo BattleTech
 	subtitle_label = Label.new()
 	subtitle_label.text = "Roll for initiative - Each mech rolls 2D6"
 	subtitle_label.position = Vector2(screen_width * 0.05, screen_height * 0.10)
 	subtitle_label.size = Vector2(screen_width * 0.9, screen_height * 0.04)
 	subtitle_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	subtitle_label.add_theme_font_size_override("font_size", int(18 * scale_factor))
-	subtitle_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9))
+	subtitle_label.add_theme_color_override("font_color", Color(0.6, 0.8, 0.9, 1))
+	subtitle_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	subtitle_label.add_theme_constant_override("outline_size", 2)
 	add_child(subtitle_label)
 	
 	# Dados más grandes y con espacio para labels
@@ -104,14 +116,16 @@ func setup_ui():
 	var spacing_y = dice_size + margin * 1.5
 	var label_x_offset = dice_size * 2 + margin * 2  # Espacio para el label del mech
 	
-	# JUGADOR - Lado izquierdo
+	# JUGADOR - Lado izquierdo con estilo BattleTech
 	var player_header = Label.new()
 	player_header.text = "★ PLAYER LANCE ★"
 	player_header.position = Vector2(screen_width * 0.02, screen_height * 0.145)
 	player_header.size = Vector2(screen_width * 0.46, screen_height * 0.03)
 	player_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	player_header.add_theme_font_size_override("font_size", int(18 * scale_factor))
-	player_header.add_theme_color_override("font_color", Color.CYAN)
+	player_header.add_theme_color_override("font_color", Color(0.3, 0.7, 1, 1))  # Cian BattleTech
+	player_header.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	player_header.add_theme_constant_override("outline_size", 2)
 	add_child(player_header)
 	
 	# 4 filas de 2 dados cada una (jugador) + label del mech
@@ -123,26 +137,30 @@ func setup_ui():
 		# Segundo dado del mech
 		player_dice.append(create_3d_dice(Vector2(player_start_x + spacing_x, y_pos), Color.CYAN, dice_size))
 		
-		# Label con el nombre del mech
+		# Label con el nombre del mech (estilo BattleTech)
 		var mech_label = Label.new()
 		mech_label.position = Vector2(player_start_x + label_x_offset, y_pos)
 		mech_label.size = Vector2(screen_width * 0.15, dice_size)
 		mech_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		mech_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
-		mech_label.add_theme_color_override("font_color", Color.WHITE)
+		mech_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))
+		mech_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+		mech_label.add_theme_constant_override("outline_size", 1)
 		# El nombre se actualizará después cuando tengamos los datos
 		mech_label.set_meta("mech_index", row)
 		mech_label.set_meta("team", "player")
 		add_child(mech_label)
 	
-	# ENEMIGO - Lado derecho
+	# ENEMIGO - Lado derecho con estilo BattleTech
 	var enemy_header = Label.new()
 	enemy_header.text = "★ ENEMY FORCE ★"
 	enemy_header.position = Vector2(screen_width * 0.52, screen_height * 0.145)
 	enemy_header.size = Vector2(screen_width * 0.46, screen_height * 0.03)
 	enemy_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	enemy_header.add_theme_font_size_override("font_size", int(18 * scale_factor))
-	enemy_header.add_theme_color_override("font_color", Color.RED)
+	enemy_header.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 1))  # Rojo más brillante
+	enemy_header.add_theme_color_override("font_outline_color", Color(0.2, 0, 0, 1))
+	enemy_header.add_theme_constant_override("outline_size", 2)
 	add_child(enemy_header)
 	
 	# 4 filas de 2 dados cada una (enemigo) + label del mech
@@ -154,43 +172,51 @@ func setup_ui():
 		# Segundo dado del mech
 		enemy_dice.append(create_3d_dice(Vector2(enemy_start_x + spacing_x, y_pos), Color.RED, dice_size))
 		
-		# Label con el nombre del mech
+		# Label con el nombre del mech (estilo BattleTech)
 		var mech_label = Label.new()
 		mech_label.position = Vector2(enemy_start_x + label_x_offset, y_pos)
 		mech_label.size = Vector2(screen_width * 0.15, dice_size)
 		mech_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		mech_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
-		mech_label.add_theme_color_override("font_color", Color.WHITE)
+		mech_label.add_theme_color_override("font_color", Color(1, 0.7, 0.7, 1))
+		mech_label.add_theme_color_override("font_outline_color", Color(0.2, 0, 0, 1))
+		mech_label.add_theme_constant_override("outline_size", 1)
 		# El nombre se actualizará después cuando tengamos los datos
 		mech_label.set_meta("mech_index", row)
 		mech_label.set_meta("team", "enemy")
 		add_child(mech_label)
 	
-	# Botón Roll - posición calculada después de todos los dados
+	# Botón Roll - estilo BattleTech
 	var button_y = dice_y_start + (spacing_y * 4) + margin * 3
 	roll_button = Button.new()
 	roll_button.text = "🎲 ROLL DICE 🎲"
 	roll_button.position = Vector2(screen_width * 0.1, button_y)
 	roll_button.custom_minimum_size = Vector2(screen_width * 0.8, screen_height * 0.08)
+	roll_button.theme = battletech_theme
 	roll_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
 	roll_button.pressed.connect(_on_roll_pressed)
 	add_child(roll_button)
 	
-	# Resultado
+	# Resultado con paneles visuales en lugar de label
 	result_label = Label.new()
 	result_label.position = Vector2(screen_width * 0.05, button_y + screen_height * 0.12)
 	result_label.size = Vector2(screen_width * 0.9, screen_height * 0.15)
 	result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	result_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	result_label.add_theme_font_size_override("font_size", int(24 * scale_factor))
+	result_label.add_theme_font_size_override("font_size", int(20 * scale_factor))
+	result_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1, 1))
+	result_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	result_label.add_theme_constant_override("outline_size", 2)
 	result_label.visible = false
+	result_label.set_meta("is_results_container", true)  # Marcador para identificar contenedor
 	add_child(result_label)
 	
-	# Botón continuar
+	# Botón continuar - estilo BattleTech
 	continue_button = Button.new()
 	continue_button.text = "⚔ START BATTLE ⚔"
 	continue_button.position = Vector2(screen_width * 0.1, screen_height - screen_height * 0.15)
 	continue_button.custom_minimum_size = Vector2(screen_width * 0.8, screen_height * 0.08)
+	continue_button.theme = battletech_theme
 	continue_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
 	continue_button.pressed.connect(_on_continue_pressed)
 	continue_button.visible = false
@@ -442,39 +468,192 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 func show_results():
 	subtitle_label.text = "Initiative determined!"
 	
-	# Construir texto con dos columnas separadas físicamente
-	result_label.text = "╔════════════════════════════════╗\n"
-	result_label.text += "║     INITIATIVE RESULTS         ║\n"
-	result_label.text += "╚════════════════════════════════╝\n\n"
+	# Obtener tamaño de pantalla para escalado
+	var viewport_size = get_viewport().get_visible_rect().size
+	var screen_width = viewport_size.x
+	var screen_height = viewport_size.y
+	var scale_factor = screen_width / 720.0
+	var margin = 10 * scale_factor
 	
-	# Headers de las dos columnas
-	result_label.text += "PLAYER LANCE:          ENEMY FORCE:\n"
-	result_label.text += "─────────────────────────────────\n"
+	# Crear título principal
+	var title_y = result_label.position.y - 30 * scale_factor
+	var results_title = Label.new()
+	results_title.text = "★ INITIATIVE RESULTS ★"
+	results_title.position = Vector2(screen_width * 0.05, title_y)
+	results_title.size = Vector2(screen_width * 0.9, 30 * scale_factor)
+	results_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	results_title.add_theme_font_size_override("font_size", int(24 * scale_factor))
+	results_title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))
+	results_title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	results_title.add_theme_constant_override("outline_size", 3)
+	add_child(results_title)
 	
-	# Cada línea muestra un mech de cada equipo lado a lado
+	# Panel izquierdo (Jugador)
+	var panel_width = screen_width * 0.43
+	var panel_height = screen_height * 0.25
+	var panel_y = result_label.position.y + 10 * scale_factor
+	
+	var player_panel = Panel.new()
+	player_panel.position = Vector2(screen_width * 0.04, panel_y)
+	player_panel.size = Vector2(panel_width, panel_height)
+	
+	var player_style = StyleBoxFlat.new()
+	player_style.bg_color = Color(0.08, 0.15, 0.22, 0.6)
+	player_style.border_width_left = int(3 * scale_factor)
+	player_style.border_width_top = int(3 * scale_factor)
+	player_style.border_width_right = int(3 * scale_factor)
+	player_style.border_width_bottom = int(3 * scale_factor)
+	player_style.border_color = Color(0.3, 0.7, 1, 0.9)
+	player_style.corner_radius_top_left = int(8 * scale_factor)
+	player_style.corner_radius_top_right = int(8 * scale_factor)
+	player_style.corner_radius_bottom_left = int(8 * scale_factor)
+	player_style.corner_radius_bottom_right = int(8 * scale_factor)
+	player_style.shadow_color = Color(0.3, 0.7, 1, 0.6)
+	player_style.shadow_size = int(8 * scale_factor)
+	player_style.shadow_offset = Vector2(0, 2)
+	player_style.skew = Vector2(0.03, 0)
+	player_panel.add_theme_stylebox_override("panel", player_style)
+	add_child(player_panel)
+	
+	# Header del panel jugador
+	var player_header = Label.new()
+	player_header.text = "★ PLAYER LANCE ★"
+	player_header.position = Vector2(margin, margin)
+	player_header.size = Vector2(panel_width - margin * 2, 25 * scale_factor)
+	player_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	player_header.add_theme_font_size_override("font_size", int(18 * scale_factor))
+	player_header.add_theme_color_override("font_color", Color(0.5, 0.9, 1, 1))
+	player_header.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	player_header.add_theme_constant_override("outline_size", 2)
+	player_panel.add_child(player_header)
+	
+	# Línea separadora
+	var player_line = ColorRect.new()
+	player_line.color = Color(0.3, 0.7, 1, 0.5)
+	player_line.position = Vector2(margin, 35 * scale_factor)
+	player_line.size = Vector2(panel_width - margin * 2, 2)
+	player_panel.add_child(player_line)
+	
+	# Resultados del jugador
+	var y_offset = 45 * scale_factor
 	for i in range(4):
 		var player_name = player_mech_names[i] if i < player_mech_names.size() else ("Mech " + str(i + 1))
-		var enemy_name = enemy_mech_names[i] if i < enemy_mech_names.size() else ("Enemy " + str(i + 1))
-		
 		var player_total = player_results[i][0] + player_results[i][1]
+		
+		var row = HBoxContainer.new()
+		row.position = Vector2(margin * 2, y_offset)
+		row.size = Vector2(panel_width - margin * 4, 25 * scale_factor)
+		player_panel.add_child(row)
+		
+		var name_label = Label.new()
+		name_label.text = player_name
+		name_label.custom_minimum_size = Vector2(panel_width * 0.6, 25 * scale_factor)
+		name_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
+		name_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1, 1))
+		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(name_label)
+		
+		var score_label = Label.new()
+		score_label.text = str(player_total)
+		score_label.custom_minimum_size = Vector2(50 * scale_factor, 25 * scale_factor)
+		score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		score_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		score_label.add_theme_font_size_override("font_size", int(22 * scale_factor))
+		score_label.add_theme_color_override("font_color", Color(0.4, 1, 0.4, 1))
+		score_label.add_theme_color_override("font_outline_color", Color(0, 0.2, 0, 1))
+		score_label.add_theme_constant_override("outline_size", 2)
+		row.add_child(score_label)
+		
+		y_offset += 30 * scale_factor
+	
+	# Panel derecho (Enemigo)
+	var enemy_panel = Panel.new()
+	enemy_panel.position = Vector2(screen_width * 0.53, panel_y)
+	enemy_panel.size = Vector2(panel_width, panel_height)
+	
+	var enemy_style = StyleBoxFlat.new()
+	enemy_style.bg_color = Color(0.22, 0.08, 0.08, 0.6)
+	enemy_style.border_width_left = int(3 * scale_factor)
+	enemy_style.border_width_top = int(3 * scale_factor)
+	enemy_style.border_width_right = int(3 * scale_factor)
+	enemy_style.border_width_bottom = int(3 * scale_factor)
+	enemy_style.border_color = Color(1, 0.3, 0.3, 0.9)
+	enemy_style.corner_radius_top_left = int(8 * scale_factor)
+	enemy_style.corner_radius_top_right = int(8 * scale_factor)
+	enemy_style.corner_radius_bottom_left = int(8 * scale_factor)
+	enemy_style.corner_radius_bottom_right = int(8 * scale_factor)
+	enemy_style.shadow_color = Color(1, 0.3, 0.3, 0.6)
+	enemy_style.shadow_size = int(8 * scale_factor)
+	enemy_style.shadow_offset = Vector2(0, 2)
+	enemy_style.skew = Vector2(-0.03, 0)
+	enemy_panel.add_theme_stylebox_override("panel", enemy_style)
+	add_child(enemy_panel)
+	
+	# Header del panel enemigo
+	var enemy_header = Label.new()
+	enemy_header.text = "★ ENEMY FORCE ★"
+	enemy_header.position = Vector2(margin, margin)
+	enemy_header.size = Vector2(panel_width - margin * 2, 25 * scale_factor)
+	enemy_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	enemy_header.add_theme_font_size_override("font_size", int(18 * scale_factor))
+	enemy_header.add_theme_color_override("font_color", Color(1, 0.5, 0.5, 1))
+	enemy_header.add_theme_color_override("font_outline_color", Color(0.2, 0, 0, 1))
+	enemy_header.add_theme_constant_override("outline_size", 2)
+	enemy_panel.add_child(enemy_header)
+	
+	# Línea separadora
+	var enemy_line = ColorRect.new()
+	enemy_line.color = Color(1, 0.3, 0.3, 0.5)
+	enemy_line.position = Vector2(margin, 35 * scale_factor)
+	enemy_line.size = Vector2(panel_width - margin * 2, 2)
+	enemy_panel.add_child(enemy_line)
+	
+	# Resultados del enemigo
+	y_offset = 45 * scale_factor
+	for i in range(4):
+		var enemy_name = enemy_mech_names[i] if i < enemy_mech_names.size() else ("Enemy " + str(i + 1))
 		var enemy_total = enemy_results[i][0] + enemy_results[i][1]
 		
-		# Columna izquierda (player) y columna derecha (enemy) con mucho espacio entre ellas
-		var player_text = "%s: %d" % [player_name.left(10).rpad(10), player_total]
-		var enemy_text = "%s: %d" % [enemy_name.left(10).rpad(10), enemy_total]
+		var row = HBoxContainer.new()
+		row.position = Vector2(margin * 2, y_offset)
+		row.size = Vector2(panel_width - margin * 4, 25 * scale_factor)
+		enemy_panel.add_child(row)
 		
-		result_label.text += player_text.rpad(23) + enemy_text + "\n"
+		var name_label = Label.new()
+		name_label.text = enemy_name
+		name_label.custom_minimum_size = Vector2(panel_width * 0.6, 25 * scale_factor)
+		name_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
+		name_label.add_theme_color_override("font_color", Color(1, 0.8, 0.8, 1))
+		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(name_label)
+		
+		var score_label = Label.new()
+		score_label.text = str(enemy_total)
+		score_label.custom_minimum_size = Vector2(50 * scale_factor, 25 * scale_factor)
+		score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		score_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		score_label.add_theme_font_size_override("font_size", int(22 * scale_factor))
+		score_label.add_theme_color_override("font_color", Color(1, 0.4, 0.4, 1))
+		score_label.add_theme_color_override("font_outline_color", Color(0.2, 0, 0, 1))
+		score_label.add_theme_constant_override("outline_size", 2)
+		row.add_child(score_label)
+		
+		y_offset += 30 * scale_factor
 	
-	result_label.add_theme_color_override("font_color", Color.WHITE)
-	
-	result_label.visible = true
-	result_label.modulate = Color(1, 1, 1, 0)
-	result_label.scale = Vector2(0.5, 0.5)
+	# Animación de entrada
+	results_title.modulate = Color(1, 1, 1, 0)
+	player_panel.modulate = Color(1, 1, 1, 0)
+	enemy_panel.modulate = Color(1, 1, 1, 0)
+	player_panel.scale = Vector2(0.8, 0.8)
+	enemy_panel.scale = Vector2(0.8, 0.8)
 	
 	var fade = create_tween()
 	fade.set_parallel(true)
-	fade.tween_property(result_label, "modulate", Color.WHITE, 0.6)
-	fade.tween_property(result_label, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	fade.tween_property(results_title, "modulate", Color.WHITE, 0.5)
+	fade.tween_property(player_panel, "modulate", Color.WHITE, 0.6).set_delay(0.2)
+	fade.tween_property(enemy_panel, "modulate", Color.WHITE, 0.6).set_delay(0.3)
+	fade.tween_property(player_panel, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.2)
+	fade.tween_property(enemy_panel, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT).set_delay(0.3)
 	
 	await get_tree().create_timer(0.8).timeout
 	

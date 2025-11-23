@@ -294,6 +294,10 @@ func _process(delta):
 			long_press_indicator.visible = false
 
 func show_initiative_screen():
+	# Ocultar el UI principal durante la iniciativa
+	if ui and ui.has_method("hide_main_ui"):
+		ui.hide_main_ui()
+	
 	var initiative_screen = initiative_screen_scene.instantiate()
 	
 	# CRÍTICO: Poner el CanvasLayer en un layer MÁS ALTO que el UI
@@ -315,6 +319,10 @@ func show_initiative_screen():
 	initiative_screen.initiative_complete.connect(_on_initiative_screen_complete, CONNECT_ONE_SHOT)
 
 func _on_initiative_screen_complete(data: Dictionary):
+	# Mostrar el UI principal de nuevo
+	if ui and ui.has_method("show_main_ui"):
+		ui.show_main_ui()
+	
 	# Guardar datos de iniciativa
 	initiative_data_stored = data
 	
@@ -1180,7 +1188,15 @@ func _handle_deployment_click(hex: Vector2i):
 		screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
 	
 	if ui and ui.has_method("show_facing_selector"):
-		ui.show_facing_selector(screen_pos)
+		ui.show_facing_selector(screen_pos, hex)
+
+func get_screen_position_for_hex(hex: Vector2i) -> Vector2:
+	"""Convierte una posición hex a coordenadas de pantalla"""
+	var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
+	var screen_pos = hex_pixel
+	if camera:
+		screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
+	return screen_pos
 
 func on_facing_selected(facing: int):
 	"""Llamado cuando el jugador selecciona una orientación"""

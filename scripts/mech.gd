@@ -865,3 +865,21 @@ func get_combat_status() -> Dictionary:
 		"total_weapons": weapons.size(),
 		"destroyed_locations": destroyed_locations.duplicate()
 	}
+
+func get_all_locations_status() -> Dictionary:
+	"""Retorna el estado de armadura y estructura de todas las ubicaciones del mech"""
+	var status = {}
+	
+	# Lista de todas las ubicaciones
+	var locations = ["head", "center_torso", "left_torso", "right_torso", 
+					 "left_arm", "right_arm", "left_leg", "right_leg"]
+	
+	for loc in locations:
+		status[loc] = {
+			"armor": armor[loc]["current"] if armor.has(loc) else 0,
+			"max_armor": armor[loc]["max"] if armor.has(loc) else 0,
+			"structure": structure[loc]["current"] if structure.has(loc) else 0,
+			"max_structure": structure[loc]["max"] if structure.has(loc) else 0
+		}
+	
+	return status

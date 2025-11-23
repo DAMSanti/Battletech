@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="120" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Right Arm Structure (Inner Layer) -->
+  <g id="arm_right_structure">
+    <!-- Upper arm -->
+    <rect x="81" y="55" width="14" height="25" rx="2" fill="#404040" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Elbow joint -->
+    <circle cx="88" cy="81" r="4" fill="#353535" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Lower arm -->
+    <rect x="83" y="82" width="10" height="22" rx="1.5" fill="#404040" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Actuators -->
+    <circle cx="88" cy="62" r="2" fill="#303030"/>
+    <circle cx="88" cy="70" r="2" fill="#303030"/>
+    <circle cx="88" cy="90" r="2" fill="#303030"/>
+    <circle cx="88" cy="98" r="2" fill="#303030"/>
+  </g>
+</svg>

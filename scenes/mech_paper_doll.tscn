@@ -1,0 +1,217 @@
+[gd_scene load_steps=18 format=3 uid="uid://dyxk8m5n2vtpl"]
+
+[ext_resource type="Script" path="res://scripts/ui/mech_paper_doll.gd" id="1_script"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/head_structure.svg" id="2_head_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/head_armor.svg" id="3_head_armor"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/torso_center_structure.svg" id="4_torso_c_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/torso_center_armor.svg" id="5_torso_c_armor"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/torso_left_structure.svg" id="6_torso_l_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/torso_left_armor.svg" id="7_torso_l_armor"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/torso_right_structure.svg" id="8_torso_r_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/torso_right_armor.svg" id="9_torso_r_armor"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/arm_left_structure.svg" id="10_arm_l_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/arm_left_armor.svg" id="11_arm_l_armor"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/arm_right_structure.svg" id="12_arm_r_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/arm_right_armor.svg" id="13_arm_r_armor"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/leg_left_structure.svg" id="14_leg_l_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/leg_left_armor.svg" id="15_leg_l_armor"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/leg_right_structure.svg" id="16_leg_r_struct"]
+[ext_resource type="Texture2D" path="res://assets/mech_paperdoll/leg_right_armor.svg" id="17_leg_r_armor"]
+
+[node name="MechPaperDoll" type="Control"]
+custom_minimum_size = Vector2(120, 170)
+layout_mode = 3
+anchors_preset = 0
+script = ExtResource("1_script")
+
+[node name="Container" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Head" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/Head"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("2_head_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/Head"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("3_head_armor")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TorsoCenter" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/TorsoCenter"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("4_torso_c_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/TorsoCenter"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("5_torso_c_armor")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TorsoLeft" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/TorsoLeft"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("6_torso_l_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/TorsoLeft"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("7_torso_l_armor")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="TorsoRight" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/TorsoRight"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("8_torso_r_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/TorsoRight"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("9_torso_r_armor")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ArmLeft" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/ArmLeft"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("10_arm_l_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/ArmLeft"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("11_arm_l_armor")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="ArmRight" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/ArmRight"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("12_arm_r_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/ArmRight"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("13_arm_r_armor")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LegLeft" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/LegLeft"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("14_leg_l_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/LegLeft"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("15_leg_l_armor")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="LegRight" type="Control" parent="Container"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="Structure" type="TextureRect" parent="Container/LegRight"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("16_leg_r_struct")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Armor" type="TextureRect" parent="Container/LegRight"]
+layout_mode = 0
+offset_right = 200.0
+offset_bottom = 240.0
+scale = Vector2(0.6, 0.6)
+texture = ExtResource("17_leg_r_armor")
+expand_mode = 1
+stretch_mode = 5

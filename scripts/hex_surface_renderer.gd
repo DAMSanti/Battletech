@@ -288,44 +288,51 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	# FUSIONAR OVERLAYS con tiles para renderizar intercalados
 	var overlay_count = 0
 	if pending_overlays.size() > 0 and pending_overlays_hex_grid:
-		overlay_count = pending_overlays.size()
+		# Crear lista temporal de overlays a añadir
+		var overlays_to_add = []
+		
 		for overlay_data in pending_overlays:
 			var hex = overlay_data.get("hex", Vector2i(0, 0))
 			var color = overlay_data.get("color", Color(1.0, 0.0, 0.0, 0.5))
-
-			# Buscar el tile correspondiente para usar su elevación
+			
+			# Buscar el tile "top" correspondiente
 			var tile_elevation = base_elevation
 			var tile_depth = null
 			for entry in surf_entries:
-				if !entry.has("is_overlay") and entry.has("surf") and entry["surf"].has("hex") and entry["surf"].hex == hex:
-					if entry["surf"].has("elevation"):
-						tile_elevation = entry["surf"]["elevation"]
-					tile_depth = entry["depth"]
-					break
-
+				if entry.has("surf"):
+					var s = entry["surf"]
+					if s.has("type") and s["type"] == "top" and s.has("hex") and s["hex"] == hex:
+						tile_elevation = s.get("elevation", base_elevation)
+						tile_depth = entry.get("depth", 0.0)
+						break
+			
+			if tile_depth == null:
+				continue  # No encontramos el tile, skip este overlay
+			
 			# Get base pixel position WITHOUT elevation
 			var pixel_pos = pending_overlays_hex_grid.hex_to_pixel(hex, false)
-
-			# Calculate vertices at TILE elevation (same as the tile)
+			
+			# Calculate vertices at TILE elevation
 			var elevation_offset = Vector2(0, -tile_elevation * 10.0)
 			var top_center = pixel_pos + elevation_offset
-
+			
 			var points = PackedVector2Array()
-			for i in range(6):
-				var angle = deg_to_rad(60 * i)
+			for j in range(6):
+				var angle = deg_to_rad(60 * j)
 				var v = Vector2(
 					top_center.x + pending_overlays_hex_grid.hex_size * cos(angle),
 					top_center.y + pending_overlays_hex_grid.hex_size * sin(angle)
 				)
 				points.append(v)
-
+			
 			var avg_y = top_center.y
-			var height = tile_elevation * 10.0
-			var depth = avg_y + height + 0.1 # valor por defecto
-			if tile_depth != null:
-				depth = tile_depth + 0.1 # overlay se pinta después del tile
-
-			surf_entries.append({
+			# El height del overlay debe coincidir con el del tile top
+			# height = (tile_elevation - base_elevation) * 10.0
+			var height = (tile_elevation - base_elevation) * 10.0
+			# depth debe ser igual al del tile + pequeño offset
+			var depth = avg_y + height + 0.01
+			
+			overlays_to_add.append({
 				"is_overlay": true,
 				"hex": hex,
 				"color": color,
@@ -337,7 +344,12 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 				"avg_y": avg_y
 			})
 		
-		# Re-sort to intercalar overlays with tiles
+		# Añadir overlays al array
+		overlay_count = overlays_to_add.size()
+		for overlay in overlays_to_add:
+			surf_entries.append(overlay)
+		
+		# Re-ordenar TODO el array (tiles + overlays)
 		surf_entries.sort_custom(Callable(self, "_surf_cmp"))
 		
 		# Clear pending overlays
@@ -855,8 +867,9 @@ func _render_single_overlay(s_entry: Dictionary, idx: int, _bounds_min: Vector2,
 	main_poly.position = Vector2.ZERO
 	main_poly.visible = true
 	main_poly.color = color
-	# Z-index basado en depth (que ya tiene +0.1 offset del sorting)
-	main_poly.z_index = int(depth)
+	# Z-index MAYOR que los tiles para que se dibuje encima de elevaciones altas
+	# Añadimos 100 al depth para asegurar que esté por encima
+	main_poly.z_index = int(depth) + 100
 	main_poly.texture = null
 	
 	# SIN SHADER - usar solo el color directo para ver el overlay
@@ -865,7 +878,7 @@ func _render_single_overlay(s_entry: Dictionary, idx: int, _bounds_min: Vector2,
 	# Dibujar borde del overlay
 	var border_line: Line2D = overlay_border_pool[idx]
 	border_line.visible = true
-	border_line.z_index = int(depth) + 1  # Por encima del overlay
+	border_line.z_index = int(depth) + 101  # Por encima del overlay
 	border_line.width = 3.0
 	var border_color = Color(color.r, color.g, color.b, min(1.0, color.a * 2.0))
 	border_line.default_color = border_color

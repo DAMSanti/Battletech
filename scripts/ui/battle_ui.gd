@@ -4,11 +4,16 @@ var scale_factor := 1.0
 var margin := 10.0
 
 @onready var battle_scene = get_parent()
+@onready var battletech_theme = load("res://assets/themes/battletech_theme.tres")
+
+# Paneles principales para ocultar/mostrar
+var info_panel: Panel
+var log_panel: Panel
 
 var turn_label: Label
 var phase_label: Label
 var unit_info_label: Label
-var armor_panel: Control = null
+var mech_paper_doll: Control = null  # Paper doll del mech
 var end_turn_button: Button
 var help_label: Label
 var cancel_movement_button: Button  # Botón para cancelar selección de movimiento
@@ -90,40 +95,67 @@ func _setup_ui():
 	scale_factor = screen_width / 720.0  # Resolución base 720px de ancho
 	margin = 10 * scale_factor
 	
-	# Panel de información superior (20% del ancho de pantalla)
-	var info_panel = Panel.new()
+	# Panel de información superior (20% del ancho de pantalla) - EXPANDIDO para paper doll
+	info_panel = Panel.new()
 	info_panel.position = Vector2(margin, margin)
-	info_panel.size = Vector2(screen_width * 0.95, screen_height * 0.18)
+	info_panel.size = Vector2(screen_width * 0.95, screen_height * 0.15)  # Reducido a 0.15
+	
+	# Aplicar estilo BattleTech al panel superior
+	var info_style = StyleBoxFlat.new()
+	info_style.bg_color = Color(0.08, 0.12, 0.18, 0.3)
+	info_style.border_width_left = 3
+	info_style.border_width_top = 1
+	info_style.border_width_right = 3
+	info_style.border_width_bottom = 3
+	info_style.border_color = Color(0.2, 0.5, 0.7, 0.9)
+	info_style.corner_radius_top_left = 8
+	info_style.corner_radius_top_right = 8
+	info_style.corner_radius_bottom_right = 8
+	info_style.corner_radius_bottom_left = 8
+	info_style.border_blend = true
+	info_style.anti_aliasing = true
+	info_style.shadow_color = Color(0.2, 0.5, 0.7, 0.4)
+	info_style.shadow_size = 4
+	info_style.shadow_offset = Vector2(0, 2)
+	info_style.skew = Vector2(0.05, 0)
+	info_panel.add_theme_stylebox_override("panel", info_style)
 	add_child(info_panel)
 	
+	# Layout horizontal: info a la izquierda, paper doll a la derecha
+	var hbox = HBoxContainer.new()
+	hbox.position = Vector2(margin, margin)
+	hbox.size = Vector2(info_panel.size.x - margin * 2, info_panel.size.y - margin * 2)
+	hbox.add_theme_constant_override("separation", int(10 * scale_factor))
+	info_panel.add_child(hbox)
+	
+	# Columna izquierda: información textual (70% del ancho)
 	var vbox = VBoxContainer.new()
-	vbox.position = Vector2(margin, margin)
-	vbox.size = Vector2(info_panel.size.x - margin * 2, info_panel.size.y - margin * 2)
-	info_panel.add_child(vbox)
+	vbox.custom_minimum_size = Vector2(hbox.size.x * 0.7, hbox.size.y)
+	hbox.add_child(vbox)
 	
 	turn_label = Label.new()
 	turn_label.text = "Turn: 1"
 	turn_label.add_theme_font_size_override("font_size", int(24 * scale_factor))
+	turn_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Color BattleTech
+	turn_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	turn_label.add_theme_constant_override("outline_size", 2)
 	vbox.add_child(turn_label)
 	
 	phase_label = Label.new()
 	phase_label.text = "Phase: Movement"
 	phase_label.add_theme_font_size_override("font_size", int(20 * scale_factor))
 	phase_label.add_theme_color_override("font_color", Color.CYAN)
+	phase_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	phase_label.add_theme_constant_override("outline_size", 2)
 	vbox.add_child(phase_label)
 	
 	unit_info_label = Label.new()
 	unit_info_label.text = "No unit selected"
 	unit_info_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
+	unit_info_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Color BattleTech
+	unit_info_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	unit_info_label.add_theme_constant_override("outline_size", 1)
 	vbox.add_child(unit_info_label)
-
-	# Panel gráfico de armadura alineado a la derecha dentro del vbox (CustomArmorPanel)
-	var CustomArmorPanel = load("res://scripts/ui/custom_armor_panel.gd")
-	armor_panel = CustomArmorPanel.new()
-	armor_panel.custom_minimum_size = Vector2(180 * scale_factor, vbox.size.y)
-	armor_panel.size_flags_horizontal = Control.SIZE_SHRINK_END
-	armor_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vbox.add_child(armor_panel)
 	
 	# Label de ayuda
 	help_label = Label.new()
@@ -134,11 +166,27 @@ func _setup_ui():
 	help_label.custom_minimum_size = Vector2(vbox.size.x, 40 * scale_factor)
 	vbox.add_child(help_label)
 	
+	# Columna derecha: Paper doll del mech (30% del ancho)
+	if ResourceLoader.exists("res://scenes/mech_paper_doll.tscn"):
+		var paper_doll_scene = load("res://scenes/mech_paper_doll.tscn")
+		if paper_doll_scene:
+			mech_paper_doll = paper_doll_scene.instantiate()
+			mech_paper_doll.custom_minimum_size = Vector2(hbox.size.x * 0.25, hbox.size.y)
+			mech_paper_doll.size_flags_horizontal = Control.SIZE_SHRINK_END
+			mech_paper_doll.visible = false  # Oculto por defecto hasta que haya un mech seleccionado
+			hbox.add_child(mech_paper_doll)
+			print("[UI] Mech paper doll loaded successfully")
+		else:
+			print("[UI] Failed to load mech_paper_doll scene")
+	else:
+		print("[UI] mech_paper_doll.tscn not found")
+	
 	# Botón de fin de turno
 	end_turn_button = Button.new()
 	end_turn_button.text = "End Activation"
 	end_turn_button.position = Vector2(margin, info_panel.position.y + info_panel.size.y + margin)
 	end_turn_button.size = Vector2(screen_width * 0.95, 70 * scale_factor)
+	end_turn_button.theme = battletech_theme
 	end_turn_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	end_turn_button.pressed.connect(_on_end_turn_pressed)
 	add_child(end_turn_button)
@@ -148,6 +196,7 @@ func _setup_ui():
 	cancel_movement_button.text = "← CANCEL MOVEMENT"
 	cancel_movement_button.position = Vector2(margin, end_turn_button.position.y + end_turn_button.size.y + margin * 0.5)
 	cancel_movement_button.size = Vector2(screen_width * 0.95, 55 * scale_factor)
+	cancel_movement_button.theme = battletech_theme
 	cancel_movement_button.add_theme_font_size_override("font_size", int(18 * scale_factor))
 	cancel_movement_button.visible = false
 	cancel_movement_button.pressed.connect(_on_cancel_movement_pressed)
@@ -155,15 +204,38 @@ func _setup_ui():
 	
 	# Log de combate (en la parte inferior, 23% de la altura)
 	var log_height = screen_height * 0.23
-	var log_panel = Panel.new()
+	log_panel = Panel.new()
 	log_panel.position = Vector2(margin, screen_height - log_height - margin)
 	log_panel.size = Vector2(screen_width * 0.95, log_height)
+	
+	# Aplicar estilo BattleTech al panel de combat log
+	var log_style = StyleBoxFlat.new()
+	log_style.bg_color = Color(0.08, 0.12, 0.18, 0.3)
+	log_style.border_width_left = 3
+	log_style.border_width_top = 1
+	log_style.border_width_right = 3
+	log_style.border_width_bottom = 3
+	log_style.border_color = Color(0.2, 0.5, 0.7, 0.9)
+	log_style.corner_radius_top_left = 8
+	log_style.corner_radius_top_right = 8
+	log_style.corner_radius_bottom_right = 8
+	log_style.corner_radius_bottom_left = 8
+	log_style.border_blend = true
+	log_style.anti_aliasing = true
+	log_style.shadow_color = Color(0.2, 0.5, 0.7, 0.4)
+	log_style.shadow_size = 4
+	log_style.shadow_offset = Vector2(0, 2)
+	log_style.skew = Vector2(0.05, 0)
+	log_panel.add_theme_stylebox_override("panel", log_style)
 	add_child(log_panel)
 	
 	var log_title = Label.new()
 	log_title.text = "Combat Log:"
 	log_title.position = Vector2(margin, margin)
 	log_title.add_theme_font_size_override("font_size", int(18 * scale_factor))
+	log_title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Color BattleTech
+	log_title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	log_title.add_theme_constant_override("outline_size", 2)
 	log_panel.add_child(log_title)
 	
 	# Botones de modo Full/Short (a la derecha del título)
@@ -176,6 +248,7 @@ func _setup_ui():
 	full_button.text = "FULL"
 	full_button.position = Vector2(log_button_x_start, log_button_y)
 	full_button.size = Vector2(log_button_width, log_button_height)
+	full_button.theme = battletech_theme
 	full_button.add_theme_font_size_override("font_size", int(12 * scale_factor))
 	full_button.pressed.connect(_on_log_mode_changed.bind("full"))
 	log_panel.add_child(full_button)
@@ -184,6 +257,7 @@ func _setup_ui():
 	short_button.text = "SHORT"
 	short_button.position = Vector2(log_button_x_start + log_button_width + 5 * scale_factor, log_button_y)
 	short_button.size = Vector2(log_button_width, log_button_height)
+	short_button.theme = battletech_theme
 	short_button.add_theme_font_size_override("font_size", int(12 * scale_factor))
 	short_button.pressed.connect(_on_log_mode_changed.bind("short"))
 	log_panel.add_child(short_button)
@@ -198,55 +272,99 @@ func _setup_ui():
 	combat_log.scroll_following = true
 	combat_log.mouse_filter = Control.MOUSE_FILTER_STOP  # Evita que el scroll pase a la cámara
 	combat_log.add_theme_font_size_override("normal_font_size", int(14 * scale_factor))
+	
+	# Aplicar estilo BattleTech al fondo del combat log
+	var combat_log_bg = StyleBoxFlat.new()
+	combat_log_bg.bg_color = Color(0.05, 0.08, 0.12, 0.25)  # Fondo más oscuro para contraste
+	combat_log_bg.border_width_left = 1
+	combat_log_bg.border_width_top = 1
+	combat_log_bg.border_width_right = 1
+	combat_log_bg.border_width_bottom = 1
+	combat_log_bg.border_color = Color(0.15, 0.35, 0.5, 0.6)
+	combat_log_bg.corner_radius_top_left = 4
+	combat_log_bg.corner_radius_top_right = 4
+	combat_log_bg.corner_radius_bottom_right = 4
+	combat_log_bg.corner_radius_bottom_left = 4
+	combat_log.add_theme_stylebox_override("normal", combat_log_bg)
+	combat_log.add_theme_color_override("default_color", Color(0.8, 0.9, 1, 1))  # Color de texto por defecto
 	log_panel.add_child(combat_log)
 	
-	# Panel selector de tipo de movimiento (centrado, 50% del ancho)
+	# Panel selector de tipo de movimiento (centrado, 85% del ancho) - Estilo BattleTech
 	var movement_panel_width = screen_width * 0.85
 	var movement_panel_height = screen_height * 0.45
 	movement_selector_panel = Panel.new()
 	movement_selector_panel.position = Vector2((screen_width - movement_panel_width) / 2, (screen_height - movement_panel_height) / 2)
 	movement_selector_panel.size = Vector2(movement_panel_width, movement_panel_height)
 	movement_selector_panel.visible = false
+	
+	# Estilo BattleTech para el panel de movimiento
+	var movement_style = StyleBoxFlat.new()
+	movement_style.bg_color = Color(0.08, 0.12, 0.18, 0.5)  # Fondo semi-transparente
+	movement_style.border_width_left = int(3 * scale_factor)
+	movement_style.border_width_top = int(3 * scale_factor)
+	movement_style.border_width_right = int(3 * scale_factor)
+	movement_style.border_width_bottom = int(3 * scale_factor)
+	movement_style.border_color = Color(0.3, 0.7, 1, 1)  # Cian brillante
+	movement_style.corner_radius_top_left = int(12 * scale_factor)
+	movement_style.corner_radius_top_right = int(12 * scale_factor)
+	movement_style.corner_radius_bottom_left = int(12 * scale_factor)
+	movement_style.corner_radius_bottom_right = int(12 * scale_factor)
+	movement_style.border_blend = true
+	movement_style.anti_aliasing = true
+	movement_style.shadow_color = Color(0.3, 0.7, 1, 0.6)
+	movement_style.shadow_size = int(10 * scale_factor)
+	movement_style.shadow_offset = Vector2(0, 3)
+	movement_style.skew = Vector2(0.05, 0)  # Inclinación futurista
+	movement_selector_panel.add_theme_stylebox_override("panel", movement_style)
 	add_child(movement_selector_panel)
 	
 	movement_selector_title = Label.new()
 	movement_selector_title.text = "SELECT MOVEMENT TYPE"
-	movement_selector_title.position = Vector2(margin, margin)
-	movement_selector_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
-	movement_selector_title.add_theme_color_override("font_color", Color.GOLD)
+	movement_selector_title.position = Vector2(margin * 2, margin * 2)
+	movement_selector_title.size = Vector2(movement_panel_width - margin * 4, 30 * scale_factor)
+	movement_selector_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	movement_selector_title.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	movement_selector_title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Cian BattleTech
+	movement_selector_title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	movement_selector_title.add_theme_constant_override("outline_size", 2)
 	movement_selector_panel.add_child(movement_selector_title)
 	
-	var button_height = (movement_panel_height - 80 * scale_factor) / 4
-	var button_width = movement_panel_width - margin * 2
+	var button_height = (movement_panel_height - 100 * scale_factor) / 4
+	var button_width = movement_panel_width - margin * 4
+	var button_x = margin * 2
 	
 	walk_button = Button.new()
 	walk_button.text = "WALK"
-	walk_button.position = Vector2(margin, 50 * scale_factor)
+	walk_button.position = Vector2(button_x, 55 * scale_factor)
 	walk_button.size = Vector2(button_width, button_height)
+	walk_button.theme = battletech_theme
 	walk_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	walk_button.pressed.connect(_on_walk_pressed)
 	movement_selector_panel.add_child(walk_button)
 	
 	run_button = Button.new()
 	run_button.text = "RUN"
-	run_button.position = Vector2(margin, 50 * scale_factor + button_height + 5)
+	run_button.position = Vector2(button_x, 55 * scale_factor + button_height + 5)
 	run_button.size = Vector2(button_width, button_height)
+	run_button.theme = battletech_theme
 	run_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	run_button.pressed.connect(_on_run_pressed)
 	movement_selector_panel.add_child(run_button)
 	
 	jump_button = Button.new()
 	jump_button.text = "JUMP"
-	jump_button.position = Vector2(margin, 50 * scale_factor + (button_height + 5) * 2)
+	jump_button.position = Vector2(button_x, 55 * scale_factor + (button_height + 5) * 2)
 	jump_button.size = Vector2(button_width, button_height)
+	jump_button.theme = battletech_theme
 	jump_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	jump_button.pressed.connect(_on_jump_pressed)
 	movement_selector_panel.add_child(jump_button)
 	
 	turn_button = Button.new()
 	turn_button.text = "TURN"
-	turn_button.position = Vector2(margin, 50 * scale_factor + (button_height + 5) * 3)
+	turn_button.position = Vector2(button_x, 55 * scale_factor + (button_height + 5) * 3)
 	turn_button.size = Vector2(button_width, button_height)
+	turn_button.theme = battletech_theme
 	turn_button.add_theme_font_size_override("font_size", int(26 * scale_factor))
 	turn_button.pressed.connect(_on_turn_pressed)
 	movement_selector_panel.add_child(turn_button)
@@ -259,20 +377,44 @@ func _setup_ui():
 	facing_selector.facing_selected.connect(_on_facing_selected)
 	add_child(facing_selector)
 	
-	# Panel selector de armas (85% del ancho, 65% de la altura)
+	# Panel selector de armas (85% del ancho, 50% de la altura)
 	var weapon_panel_width = screen_width * 0.85
-	var weapon_panel_height = screen_height * 0.65
+	var weapon_panel_height = screen_height * 0.50
 	weapon_selector_panel = Panel.new()
 	weapon_selector_panel.position = Vector2((screen_width - weapon_panel_width) / 2, (screen_height - weapon_panel_height) / 2)
 	weapon_selector_panel.size = Vector2(weapon_panel_width, weapon_panel_height)
 	weapon_selector_panel.visible = false
+	
+	# Estilo BattleTech para el panel de armas - MÁS TRANSPARENTE
+	var weapon_style = StyleBoxFlat.new()
+	weapon_style.bg_color = Color(0.08, 0.12, 0.18, 0.3)  # Reducida opacidad de 0.5 a 0.3
+	weapon_style.border_width_left = int(3 * scale_factor)
+	weapon_style.border_width_top = int(3 * scale_factor)
+	weapon_style.border_width_right = int(3 * scale_factor)
+	weapon_style.border_width_bottom = int(3 * scale_factor)
+	weapon_style.border_color = Color(0.3, 0.7, 1, 1)  # Cian brillante
+	weapon_style.corner_radius_top_left = int(12 * scale_factor)
+	weapon_style.corner_radius_top_right = int(12 * scale_factor)
+	weapon_style.corner_radius_bottom_left = int(12 * scale_factor)
+	weapon_style.corner_radius_bottom_right = int(12 * scale_factor)
+	weapon_style.border_blend = true
+	weapon_style.anti_aliasing = true
+	weapon_style.shadow_color = Color(0.3, 0.7, 1, 0.6)
+	weapon_style.shadow_size = int(10 * scale_factor)
+	weapon_style.shadow_offset = Vector2(0, 3)
+	weapon_style.skew = Vector2(0.05, 0)  # Inclinación futurista
+	weapon_selector_panel.add_theme_stylebox_override("panel", weapon_style)
 	add_child(weapon_selector_panel)
 	
 	weapon_selector_title = Label.new()
 	weapon_selector_title.text = "SELECT WEAPONS TO FIRE"
 	weapon_selector_title.position = Vector2(margin, margin)
+	weapon_selector_title.size = Vector2(weapon_panel_width - margin * 2, 30 * scale_factor)
+	weapon_selector_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	weapon_selector_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
-	weapon_selector_title.add_theme_color_override("font_color", Color.GOLD)
+	weapon_selector_title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))
+	weapon_selector_title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	weapon_selector_title.add_theme_constant_override("outline_size", 2)
 	weapon_selector_panel.add_child(weapon_selector_title)
 	
 	# Los botones de armas se crearán dinámicamente en show_weapon_selector()
@@ -403,37 +545,45 @@ func _setup_ui():
 	cancel_physical_button.pressed.connect(_on_cancel_physical_pressed)
 	physical_attack_panel.add_child(cancel_physical_button)
 	
-	# Panel de confirmación genérico (banner compacto en la parte inferior: 90% ancho, 12% altura)
-	var confirm_panel_width = screen_width * 0.9
-	var confirm_panel_height = screen_height * 0.12
+	# Panel de confirmación genérico - Estilo BattleTech (centrado en pantalla, compacto)
+	var confirm_panel_width = 420 * scale_factor
+	var confirm_panel_height = 90 * scale_factor
 	confirmation_panel = Panel.new()
-	confirmation_panel.position = Vector2((screen_width - confirm_panel_width) / 2, screen_height - confirm_panel_height - margin * 2)
+	confirmation_panel.position = Vector2((screen_width - confirm_panel_width) / 2, (screen_height - confirm_panel_height) / 2)  # Centrado
 	confirmation_panel.size = Vector2(confirm_panel_width, confirm_panel_height)
 	confirmation_panel.visible = false
 	confirmation_panel.z_index = 200  # Encima de todo
 	add_child(confirmation_panel)
 	
-	# Estilo del panel
+	# Estilo BattleTech: fondo azul transparente, borde cian brillante, forma romboide
 	var confirm_style = StyleBoxFlat.new()
-	confirm_style.bg_color = Color(0.1, 0.1, 0.2, 0.95)
-	confirm_style.border_width_left = 3
-	confirm_style.border_width_right = 3
-	confirm_style.border_width_top = 3
-	confirm_style.border_width_bottom = 3
-	confirm_style.border_color = Color.GOLD
-	confirm_style.corner_radius_top_left = 10
-	confirm_style.corner_radius_top_right = 10
-	confirm_style.corner_radius_bottom_left = 10
-	confirm_style.corner_radius_bottom_right = 10
+	confirm_style.bg_color = Color(0.08, 0.12, 0.18, 0.5)  # Azul transparente BattleTech
+	confirm_style.border_width_left = int(3 * scale_factor)
+	confirm_style.border_width_right = int(3 * scale_factor)
+	confirm_style.border_width_top = int(3 * scale_factor)
+	confirm_style.border_width_bottom = int(3 * scale_factor)
+	confirm_style.border_color = Color(0.3, 0.7, 1, 1)  # Cian brillante
+	confirm_style.corner_radius_top_left = int(8 * scale_factor)
+	confirm_style.corner_radius_top_right = int(8 * scale_factor)
+	confirm_style.corner_radius_bottom_left = int(8 * scale_factor)
+	confirm_style.corner_radius_bottom_right = int(8 * scale_factor)
+	confirm_style.border_blend = true
+	confirm_style.anti_aliasing = true
+	confirm_style.shadow_color = Color(0.3, 0.7, 1, 0.6)
+	confirm_style.shadow_size = int(10 * scale_factor)
+	confirm_style.shadow_offset = Vector2(0, 3)
+	confirm_style.skew = Vector2(0.05, 0)  # Inclinación futurista romboide
 	confirmation_panel.add_theme_stylebox_override("panel", confirm_style)
 	
-	# Layout horizontal: mensaje a la izquierda, botones a la derecha
+	# Mensaje centrado horizontalmente en la parte superior del panel
 	confirmation_message = Label.new()
 	confirmation_message.text = "Confirm action?"
 	confirmation_message.position = Vector2(margin, margin)
-	confirmation_message.size = Vector2(confirm_panel_width * 0.55, confirm_panel_height - margin * 2)
-	confirmation_message.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	confirmation_message.size = Vector2(confirm_panel_width - margin * 2, 30 * scale_factor)
+	confirmation_message.add_theme_font_size_override("font_size", int(13 * scale_factor))
+	confirmation_message.add_theme_color_override("font_color", Color(0.85, 0.85, 0.9))  # Texto claro
 	confirmation_message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	confirmation_message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	confirmation_message.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	confirmation_panel.add_child(confirmation_message)
 	
@@ -442,23 +592,72 @@ func _setup_ui():
 	confirmation_title.visible = false
 	confirmation_panel.add_child(confirmation_title)
 	
-	var button_x_start = confirm_panel_width * 0.57
-	var button_y = (confirm_panel_height - 35 * scale_factor) / 2
-	var confirm_button_width = (confirm_panel_width * 0.4 - margin) / 2
+	# Botones como iconos grandes centrados horizontalmente
+	var button_size = 45 * scale_factor  # Botones cuadrados grandes
+	var button_spacing = 30 * scale_factor
+	var total_buttons_width = button_size * 2 + button_spacing
+	var button_x_start = (confirm_panel_width - total_buttons_width) / 2
+	var button_y = 40 * scale_factor
 	
+	# Botón CONFIRMAR - Tick verde
 	confirm_button = Button.new()
-	confirm_button.text = "✓ CONFIRM"
+	confirm_button.text = "✓"
 	confirm_button.position = Vector2(button_x_start, button_y)
-	confirm_button.size = Vector2(confirm_button_width, 35 * scale_factor)
-	confirm_button.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	confirm_button.size = Vector2(button_size, button_size)
+	confirm_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
+	confirm_button.add_theme_color_override("font_color", Color(0.1, 0.9, 0.1))  # Verde brillante
+	confirm_button.add_theme_color_override("font_hover_color", Color(0.2, 1.0, 0.2))
+	confirm_button.add_theme_color_override("font_pressed_color", Color(0.0, 0.7, 0.0))
+	
+	# Estilo del botón confirmar
+	var confirm_btn_style = StyleBoxFlat.new()
+	confirm_btn_style.bg_color = Color(0.05, 0.3, 0.05, 0.8)  # Verde oscuro
+	confirm_btn_style.border_width_left = 2
+	confirm_btn_style.border_width_right = 2
+	confirm_btn_style.border_width_top = 2
+	confirm_btn_style.border_width_bottom = 2
+	confirm_btn_style.border_color = Color(0.1, 0.9, 0.1)
+	confirm_btn_style.corner_radius_top_left = 4
+	confirm_btn_style.corner_radius_top_right = 4
+	confirm_btn_style.corner_radius_bottom_left = 4
+	confirm_btn_style.corner_radius_bottom_right = 4
+	confirm_button.add_theme_stylebox_override("normal", confirm_btn_style)
+	
+	var confirm_btn_hover = confirm_btn_style.duplicate()
+	confirm_btn_hover.bg_color = Color(0.1, 0.4, 0.1, 0.9)
+	confirm_button.add_theme_stylebox_override("hover", confirm_btn_hover)
+	
 	confirm_button.pressed.connect(_on_confirmation_confirm)
 	confirmation_panel.add_child(confirm_button)
 	
+	# Botón CANCELAR - Cruz roja
 	cancel_button = Button.new()
-	cancel_button.text = "✗ CANCEL"
-	cancel_button.position = Vector2(button_x_start + confirm_button_width + margin, button_y)
-	cancel_button.size = Vector2(confirm_button_width, 35 * scale_factor)
-	cancel_button.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	cancel_button.text = "✗"
+	cancel_button.position = Vector2(button_x_start + button_size + button_spacing, button_y)
+	cancel_button.size = Vector2(button_size, button_size)
+	cancel_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
+	cancel_button.add_theme_color_override("font_color", Color(0.95, 0.15, 0.15))  # Rojo brillante
+	cancel_button.add_theme_color_override("font_hover_color", Color(1.0, 0.25, 0.25))
+	cancel_button.add_theme_color_override("font_pressed_color", Color(0.7, 0.0, 0.0))
+	
+	# Estilo del botón cancelar
+	var cancel_btn_style = StyleBoxFlat.new()
+	cancel_btn_style.bg_color = Color(0.3, 0.05, 0.05, 0.8)  # Rojo oscuro
+	cancel_btn_style.border_width_left = 2
+	cancel_btn_style.border_width_right = 2
+	cancel_btn_style.border_width_top = 2
+	cancel_btn_style.border_width_bottom = 2
+	cancel_btn_style.border_color = Color(0.95, 0.15, 0.15)
+	cancel_btn_style.corner_radius_top_left = 4
+	cancel_btn_style.corner_radius_top_right = 4
+	cancel_btn_style.corner_radius_bottom_left = 4
+	cancel_btn_style.corner_radius_bottom_right = 4
+	cancel_button.add_theme_stylebox_override("normal", cancel_btn_style)
+	
+	var cancel_btn_hover = cancel_btn_style.duplicate()
+	cancel_btn_hover.bg_color = Color(0.4, 0.1, 0.1, 0.9)
+	cancel_button.add_theme_stylebox_override("hover", cancel_btn_hover)
+	
 	cancel_button.pressed.connect(_on_confirmation_cancel)
 	confirmation_panel.add_child(cancel_button)
 
@@ -516,18 +715,16 @@ func _on_unit_activated(unit):
 
 			var info = "%s - MP: %s | Heat: %s/%s" % [unit_name, mp, heat, heat_cap]
 			unit_info_label.text = info
-
-		# Mostrar valores individuales de armadura en el panel gráfico
-		# SOLO para unidades del jugador, no mostrar armadura de enemigos
-		if armor_panel:
-			if is_player_unit:
-				if unit.has_method("get_armor_data_for_ui"):
-					armor_panel.set_armor(unit.get_armor_data_for_ui())
-				elif "armor" in unit and typeof(unit.armor) == TYPE_DICTIONARY:
-					armor_panel.set_armor(unit.armor)
-				else:
-					armor_panel.set_armor(null)
-			# No actualizar el panel si es un enemigo, mantener el estado anterior
+			
+			# Actualizar paper doll si existe
+			if mech_paper_doll and mech_paper_doll.has_method("update_from_mech"):
+				mech_paper_doll.visible = true
+				mech_paper_doll.update_from_mech(unit)
+				print("[UI] Paper doll updated for: %s" % unit_name)
+		else:
+			# Si es un enemigo, ocultar el paper doll
+			if mech_paper_doll:
+				mech_paper_doll.visible = false
 
 func update_unit_info(unit):
 	# Alias para _on_unit_activated para compatibilidad
@@ -600,6 +797,24 @@ func _add_message_to_log(message: String, color: Color):
 			return
 		if "═══" in msg or "╔═" in msg or "╚═" in msg or "║" in msg:
 			return
+		if "─────────" in msg:
+			return  # Ocultar líneas decorativas
+		
+		# DEPLOYMENT - Solo mostrar "DEPLOYING MECH [X/Y]"
+		if "DEPLOYING MECH" in msg:
+			pass  # Mostrar tal cual
+		elif "ENEMY DEPLOYMENT" in msg:
+			pass  # Mostrar tal cual
+		elif "MISSION BRIEF:" in msg or "DEPLOYMENT INSTRUCTIONS:" in msg:
+			return  # Ocultar títulos de briefing
+		elif "BATTLE ROSTER:" in msg or "PLAYER LANCE:" in msg or "ENEMY LANCE:" in msg or "ENEMY FORCE:" in msg:
+			return  # Ocultar títulos de roster
+		elif "Invalid deployment location" in msg:
+			return  # Ocultar mensaje de error de deployment
+		elif "Mech:" in msg or "Tonnage:" in msg or "Movement:" in msg or "Jump:" in msg:
+			return  # Ocultar detalles de deployment
+		elif "Progress:" in msg or "Click on a GREEN hex" in msg:
+			return  # Ocultar instrucciones
 		
 		# INICIATIVA - Mostrar tiradas y ganador
 		if "rolls:" in msg and ("[" in msg or "=" in msg):
@@ -755,7 +970,7 @@ func show_movement_type_selector(unit):
 	if movement_selector_panel:
 		# Actualizar título con nombre del mech
 		if movement_selector_title:
-			movement_selector_title.text = "SELECT MOVEMENT TYPE - %s" % unit.mech_name
+			movement_selector_title.text = "★ SELECT MOVEMENT TYPE - %s ★" % unit.mech_name.to_upper()
 		
 		# Actualizar textos de botones con MP disponibles
 		walk_button.text = "WALK (%d MP)\nNo penalty" % unit.walk_mp
@@ -767,6 +982,8 @@ func show_movement_type_selector(unit):
 		else:
 			jump_button.text = "JUMP (No Jets)"
 			jump_button.disabled = true
+		
+		turn_button.text = "TURN IN PLACE\nChange facing only"
 		
 		movement_selector_panel.visible = true
 
@@ -801,14 +1018,18 @@ func _on_turn_pressed():
 
 ## SELECTOR DE ORIENTACIÓN (FACING) ##
 
-func show_facing_selector(screen_position: Vector2):
+func show_facing_selector(screen_position: Vector2, hex: Vector2i = Vector2i(-1, -1)):
 	"""Muestra el selector de orientación en una posición de pantalla (para despliegue)"""
 	if facing_selector:
+		if hex != Vector2i(-1, -1) and battle_scene:
+			facing_selector.set_target_hex(hex, battle_scene)
 		facing_selector.show_at_position(screen_position, -1, 99)
 
-func show_facing_selector_with_current(screen_position: Vector2, current_facing: int, available_mp: int):
+func show_facing_selector_with_current(screen_position: Vector2, current_facing: int, available_mp: int, hex: Vector2i = Vector2i(-1, -1)):
 	"""Muestra el selector de orientación con facing actual y MPs disponibles"""
 	if facing_selector:
+		if hex != Vector2i(-1, -1) and battle_scene:
+			facing_selector.set_target_hex(hex, battle_scene)
 		facing_selector.show_at_position(screen_position, current_facing, available_mp)
 
 func hide_facing_selector():
@@ -964,7 +1185,7 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 	# Debug: verificar qué mech y cuántas armas tiene
 	# print("[DEBUG] show_weapon_selector - Attacker: %s, Weapons count: %d" % [attacker.mech_name, attacker.weapons.size()])
 	
-	# Crear filas para cada arma con label clickeable + checkbox separados
+	# Crear filas para cada arma con label clickeable + switch separados
 	var y_pos = 50
 	var weapon_index = 0
 	
@@ -989,7 +1210,7 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 		if not in_range:
 			weapon_info += "  [OUT OF RANGE]"
 		
-		# Contenedor horizontal para label + checkbox
+		# Contenedor horizontal para label + switch
 		var hbox = HBoxContainer.new()
 		hbox.position = Vector2(20, y_pos)
 		hbox.size = Vector2(480, 40)
@@ -1014,15 +1235,12 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 		weapon_label.gui_input.connect(_on_weapon_label_clicked.bind(weapon_index, weapon, breakdown, to_hit_data))
 		hbox.add_child(weapon_label)
 		
-		# CheckButton (switch/toggle) para activar/desactivar el arma
-		var weapon_check = CheckButton.new()
-		weapon_check.custom_minimum_size = Vector2(60, 40)
-		weapon_check.disabled = not in_range
-		weapon_check.set_meta("weapon_index", weapon_index)
-		weapon_check.toggled.connect(_on_weapon_toggled.bind(weapon_index))
-		hbox.add_child(weapon_check)
+		# Switch personalizado estilo BattleTech
+		var weapon_switch = _create_battletech_switch(weapon_index, in_range)
+		weapon_switch.set_meta("weapon_index", weapon_index)
+		hbox.add_child(weapon_switch)
 		
-		weapon_buttons.append(weapon_check)
+		weapon_buttons.append(weapon_switch)
 		y_pos += 45
 		weapon_index += 1
 	
@@ -1091,6 +1309,121 @@ func _is_weapon_in_range(weapon: Dictionary, range_hexes: int) -> bool:
 	var min_range = weapon.get("min_range", 0)
 	
 	return range_hexes >= min_range and range_hexes <= long_range
+
+func _create_battletech_switch(weapon_index: int, enabled: bool) -> Control:
+	"""Crea un switch personalizado estilo BattleTech con toggle animado"""
+	var switch_container = Control.new()
+	switch_container.custom_minimum_size = Vector2(60, 40)
+	switch_container.mouse_filter = Control.MOUSE_FILTER_STOP
+	switch_container.set_meta("toggled", false)
+	switch_container.set_meta("enabled", enabled)
+	
+	# Panel de fondo del switch (rectángulo redondeado)
+	var bg_panel = Panel.new()
+	bg_panel.position = Vector2(10, 10)
+	bg_panel.size = Vector2(40, 20)
+	bg_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	# Estilo del fondo (OFF por defecto)
+	var bg_style = StyleBoxFlat.new()
+	if enabled:
+		bg_style.bg_color = Color(0.2, 0.2, 0.25, 0.8)  # Gris oscuro
+	else:
+		bg_style.bg_color = Color(0.15, 0.15, 0.15, 0.5)  # Gris muy oscuro deshabilitado
+	bg_style.border_width_left = 2
+	bg_style.border_width_top = 2
+	bg_style.border_width_right = 2
+	bg_style.border_width_bottom = 2
+	bg_style.border_color = Color(0.3, 0.5, 0.7, 0.9) if enabled else Color(0.2, 0.2, 0.2, 0.5)
+	bg_style.corner_radius_top_left = 10
+	bg_style.corner_radius_top_right = 10
+	bg_style.corner_radius_bottom_left = 10
+	bg_style.corner_radius_bottom_right = 10
+	bg_style.anti_aliasing = true
+	bg_panel.add_theme_stylebox_override("panel", bg_style)
+	bg_panel.set_meta("style", bg_style)  # Guardar referencia para modificar después
+	switch_container.add_child(bg_panel)
+	
+	# Botón deslizante (círculo)
+	var slider = Panel.new()
+	slider.position = Vector2(12, 12)  # Posición izquierda (OFF)
+	slider.size = Vector2(16, 16)
+	slider.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	
+	# Estilo del slider
+	var slider_style = StyleBoxFlat.new()
+	if enabled:
+		slider_style.bg_color = Color(0.6, 0.6, 0.7, 1)  # Gris claro
+	else:
+		slider_style.bg_color = Color(0.4, 0.4, 0.4, 0.6)  # Gris apagado
+	slider_style.corner_radius_top_left = 8
+	slider_style.corner_radius_top_right = 8
+	slider_style.corner_radius_bottom_left = 8
+	slider_style.corner_radius_bottom_right = 8
+	slider_style.anti_aliasing = true
+	if enabled:
+		slider_style.shadow_color = Color(0.3, 0.5, 0.7, 0.5)
+		slider_style.shadow_size = 3
+		slider_style.shadow_offset = Vector2(0, 1)
+	slider.add_theme_stylebox_override("panel", slider_style)
+	slider.set_meta("style", slider_style)
+	switch_container.add_child(slider)
+	
+	# Guardar referencias
+	switch_container.set_meta("bg_panel", bg_panel)
+	switch_container.set_meta("slider", slider)
+	
+	# Conectar evento de clic
+	if enabled:
+		switch_container.gui_input.connect(_on_switch_clicked.bind(switch_container, weapon_index))
+	
+	return switch_container
+
+func _on_switch_clicked(event: InputEvent, switch_control: Control, weapon_index: int):
+	"""Maneja el clic en el switch personalizado"""
+	if not event is InputEventMouseButton:
+		return
+	if not event.pressed or event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	
+	var enabled = switch_control.get_meta("enabled")
+	if not enabled:
+		return
+	
+	# Toggle del estado
+	var is_toggled = switch_control.get_meta("toggled")
+	is_toggled = !is_toggled
+	switch_control.set_meta("toggled", is_toggled)
+	
+	# Actualizar visualmente
+	var bg_panel = switch_control.get_meta("bg_panel")
+	var slider = switch_control.get_meta("slider")
+	var bg_style = bg_panel.get_meta("style")
+	var slider_style = slider.get_meta("style")
+	
+	if is_toggled:
+		# Estado ON - Verde cian brillante
+		bg_style.bg_color = Color(0.1, 0.4, 0.5, 0.9)  # Azul verdoso
+		bg_style.border_color = Color(0.3, 0.7, 1, 1)  # Cian brillante
+		slider_style.bg_color = Color(0.5, 0.9, 1, 1)  # Cian muy brillante
+		slider_style.shadow_color = Color(0.5, 0.9, 1, 0.8)
+		slider_style.shadow_size = 5
+		slider.position.x = 32  # Posición derecha
+	else:
+		# Estado OFF - Gris
+		bg_style.bg_color = Color(0.2, 0.2, 0.25, 0.8)
+		bg_style.border_color = Color(0.3, 0.5, 0.7, 0.9)
+		slider_style.bg_color = Color(0.6, 0.6, 0.7, 1)
+		slider_style.shadow_color = Color(0.3, 0.5, 0.7, 0.5)
+		slider_style.shadow_size = 3
+		slider.position.x = 12  # Posición izquierda
+	
+	# Forzar redibujado
+	bg_panel.queue_redraw()
+	slider.queue_redraw()
+	
+	# Llamar al manejador de toggle
+	_on_weapon_toggled(is_toggled, weapon_index)
 
 func _on_weapon_toggled(button_pressed: bool, weapon_index: int):
 	# Marcar/desmarcar arma para disparar
@@ -1384,3 +1717,26 @@ func _on_confirmation_cancel():
 		callback.call()
 	else:
 		print("[UI] No valid cancel callback")
+
+## Funciones para ocultar/mostrar UI completo durante iniciativa
+func hide_main_ui():
+	"""Oculta el UI principal (info superior, botones, combat log) durante la iniciativa"""
+	if info_panel:
+		info_panel.visible = false
+	if end_turn_button:
+		end_turn_button.visible = false
+	if cancel_movement_button:
+		cancel_movement_button.visible = false
+	if log_panel:
+		log_panel.visible = false
+
+func show_main_ui():
+	"""Muestra el UI principal después de la iniciativa"""
+	if info_panel:
+		info_panel.visible = true
+	if end_turn_button:
+		end_turn_button.visible = true
+	if cancel_movement_button:
+		cancel_movement_button.visible = cancel_movement_button.has_meta("should_be_visible") and cancel_movement_button.get_meta("should_be_visible")
+	if log_panel:
+		log_panel.visible = true

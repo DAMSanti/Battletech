@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://dtfp50g0eqyje"]
+[gd_scene load_steps=4 format=3 uid="uid://dtfp50g0eqyje"]
 
 [ext_resource type="Script" path="res://scripts/ui/screens/main_menu.gd" id="1_mainmenu"]
-[ext_resource type="Texture2D" uid="uid://placeholder" path="res://assets/menu_background.png" id="2_background"]
+[ext_resource type="Texture2D" path="res://assets/menu_background.png" id="2_background"]
+[ext_resource type="Theme" path="res://assets/themes/battletech_theme.tres" id="3_theme"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -10,6 +11,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme = ExtResource("3_theme")
 script = ExtResource("1_mainmenu")
 
 [node name="Background" type="TextureRect" parent="."]
@@ -21,7 +23,7 @@ grow_horizontal = 2
 grow_vertical = 2
 texture = ExtResource("2_background")
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 6
 
 [node name="DarkOverlay" type="ColorRect" parent="."]
 layout_mode = 1
@@ -31,3 +33,17 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0, 0, 0, 0.3)
+
+[node name="VersionLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 15.0
+offset_top = -30.0
+offset_right = 150.0
+offset_bottom = -10.0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.5, 0.7, 0.9, 0.7)
+theme_override_font_sizes/font_size = 14
+text = "v. Alpha 0.1"

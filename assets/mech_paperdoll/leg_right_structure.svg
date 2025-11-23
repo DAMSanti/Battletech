@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="120" viewBox="0 0 100 120" xmlns="http://www.w3.org/2000/svg">
+  <!-- Right Leg Structure (Inner Layer) -->
+  <g id="leg_right_structure">
+    <!-- Hip joint -->
+    <circle cx="65" cy="86" r="4" fill="#353535" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Upper leg -->
+    <rect x="60" y="87" width="10" height="20" rx="1.5" fill="#404040" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Knee joint -->
+    <circle cx="65" cy="108" r="3.5" fill="#353535" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Lower leg -->
+    <path d="M 69 109 L 69 125 L 72 130 L 72 135 L 58 135 L 58 130 L 61 125 L 61 109 Z" 
+          fill="#404040" stroke="#202020" stroke-width="1"/>
+    
+    <!-- Actuators -->
+    <circle cx="65" cy="95" r="1.5" fill="#303030"/>
+    <circle cx="65" cy="100" r="1.5" fill="#303030"/>
+    <circle cx="65" cy="117" r="1.5" fill="#303030"/>
+    <circle cx="65" cy="125" r="1.5" fill="#303030"/>
+  </g>
+</svg>
