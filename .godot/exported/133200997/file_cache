@@ -1,11 +1,12 @@
-res://scenes/battle_scene.tscn::719fbe069a2b20dd81aa7b1e6bd92737::1762034374::res://.godot/exported/133200997/export-0dc7cd1ec98504a90682f39960b085b1-battle_scene.scn
+res://scenes/battle_scene.tscn::62f8edc4d25b526fa606ca2ee61c1710::1763932271::res://.godot/exported/133200997/export-0dc7cd1ec98504a90682f39960b085b1-battle_scene.scn
 res://scenes/battle_scene_simple.tscn::61ed2984f18ccc784c933fbeea628e44::1762013678::res://.godot/exported/133200997/export-8f3a2e3522cbad8b810a5d6d93e62658-battle_scene_simple.scn
 res://scenes/initiative_screen.tscn::f1dd0adaac8a96de64a75cb8cdaf4138::1762013678::res://.godot/exported/133200997/export-14a5539cbfaf6a668e55d04aad59be65-initiative_screen.scn
-res://scenes/main_menu.tscn::022b2b00cf2882c382ea658debd2f80f::1763926509::res://.godot/exported/133200997/export-ea5c6ad4629af728dc514cefde332394-main_menu.scn
-res://scenes/mech_bay_screen.tscn::715300d5d2128387de41641acf772ff9::1763926509::res://.godot/exported/133200997/export-7e0c2100b75d3cdb467ec6944b2456a3-mech_bay_screen.scn
+res://scenes/main_menu.tscn::43408bc61b89bb0524c249298d92632e::1763926777::res://.godot/exported/133200997/export-ea5c6ad4629af728dc514cefde332394-main_menu.scn
+res://scenes/mech_bay_screen.tscn::dcfdc6883194beae45d6da48e43d536a::1763926777::res://.godot/exported/133200997/export-7e0c2100b75d3cdb467ec6944b2456a3-mech_bay_screen.scn
 res://scenes/mech_bay.tscn::f25f484f2fb94d06b394a23ff2629d05::1762121294::res://.godot/exported/133200997/export-951ebb308bc3019d738d113a05ea3a29-mech_bay.scn
-res://scenes/mech_bay_advanced.tscn::ab8da50716f05e0b03da8d6eaa9cd8c2::1763926509::res://.godot/exported/133200997/export-5b86980d2927cbdf5d4721c75b8365de-mech_bay_advanced.scn
+res://scenes/mech_bay_advanced.tscn::f69caaec3cadcd605ee9fad7ce92edf5::1763926777::res://.godot/exported/133200997/export-5b86980d2927cbdf5d4721c75b8365de-mech_bay_advanced.scn
 res://assets/themes/battletech_theme.tres::a74c86467f04407753a8ef9b06316050::1763926343::res://.godot/exported/133200997/export-7e110916af02c037cd955d5a06c90834-battletech_theme.res
-res://scenes/team_setup.tscn::00e044607245afe3e240197dc566658e::1763926509::res://.godot/exported/133200997/export-c7bdb843e569c70b1807b046d506379f-team_setup.scn
+res://scenes/team_setup.tscn::907a115e033f42e72ea2f37903678163::1763926777::res://.godot/exported/133200997/export-c7bdb843e569c70b1807b046d506379f-team_setup.scn
 res://scenes/test_mechs.tscn::fae1d74ed5590b2c072d242e52f193f2::1762512107::res://.godot/exported/133200997/export-16a9d61e9dce1554b4f9c530431dda97-test_mechs.scn
 res://scenes/test_procedural_generator.tscn::db820800ff9c5eb9ec3215a486e863f4::1763912719::res://.godot/exported/133200997/export-187ad350acafc96f6cf8cfbeb6c187f0-test_procedural_generator.scn
+res://scenes/mech_paper_doll.tscn::d9ce8d5aff81f3491d9a802f06db8391::1763932271::res://.godot/exported/133200997/export-d1b71821c22e4ee7d2041c029536670a-mech_paper_doll.scn

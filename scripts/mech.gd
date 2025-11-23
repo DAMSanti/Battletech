@@ -153,7 +153,11 @@ func update_visual_position(hex_grid):
 		# Ajustar z_index basado en la elevación y posición Y para simular profundidad
 		var elevation = hex_grid.get_elevation(hex_position)
 		# Usar posición Y para que cosas al sur (Y mayor) aparezcan delante
-		z_index = int(position.y) + (elevation * 1000)
+		# LÍMITE: RenderingServer.CANVAS_ITEM_Z_MAX = 4096
+		# Mantener valores altos pero dentro del límite permitido
+		var base_z = int(position.y) + (elevation * 1000)
+		# Normalizar al rango válido manteniendo el orden relativo
+		z_index = clampi(base_z, -4096, 4096)
 	# Siempre redibujar para actualizar facing y otros indicadores visuales
 	queue_redraw()
 

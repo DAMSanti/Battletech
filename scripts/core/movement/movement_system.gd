@@ -164,10 +164,12 @@ static func get_reachable_hexes(start_hex: Vector2i, max_distance: int, movement
 		var current_distance = current.distance
 		var current_facing = current.facing
 		
+		# IMPORTANTE: Verificar que el coste actual no exceda el máximo ANTES de procesar
 		if current_distance > max_distance:
 			continue
 		
-		if current_hex != start_hex:
+		# Agregar el hex actual a reachable SOLO si está dentro del presupuesto
+		if current_hex != start_hex and current_distance <= max_distance:
 			# Solo agregar si este hex no está ya en reachable o si encontramos un camino mejor
 			if not reachable.has(current_hex):
 				reachable.append(current_hex)
@@ -189,13 +191,14 @@ static func get_reachable_hexes(start_hex: Vector2i, max_distance: int, movement
 			# Calcular coste de rotación desde facing actual al requerido
 			var rotation_cost = get_rotation_cost(current_facing, required_facing)
 			
-			# Calcular coste de movimiento al hex vecino
+			# Calcular coste de movimiento al hex vecino (INCLUYE ELEVACIÓN)
 			var move_cost = calculate_movement_cost(current_hex, neighbor, movement_type, hex_grid)
 			
 			# Coste total = rotación + movimiento
 			var total_cost = rotation_cost + move_cost
 			var new_distance = current_distance + total_cost
 			
+			# CRÍTICO: No agregar a la cola si excede el máximo de distancia
 			if new_distance > max_distance:
 				continue
 			

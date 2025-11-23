@@ -437,48 +437,91 @@ func _setup_ui():
 	cancel_weapon_button.pressed.connect(_on_cancel_weapons_pressed)
 	weapon_selector_panel.add_child(cancel_weapon_button)
 	
-	# Panel de información detallada de arma (dentro del selector, lado derecho)
-	var info_panel_width = weapon_panel_width * 0.45
-	var info_panel_height = weapon_panel_height * 0.75
+	# Panel de información detallada de arma (PANEL INDEPENDIENTE CENTRADO)
+	# Tamaño optimizado: 60% ancho x 55% alto
+	var info_panel_width = screen_width * 0.60
+	var info_panel_height = screen_height * 0.55
 	weapon_info_panel = Panel.new()
-	weapon_info_panel.position = Vector2(weapon_panel_width * 0.52, 50 * scale_factor)
+	# Centrado en la pantalla
+	weapon_info_panel.position = Vector2((screen_width - info_panel_width) / 2, (screen_height - info_panel_height) / 2)
 	weapon_info_panel.size = Vector2(info_panel_width, info_panel_height)
 	weapon_info_panel.visible = false
-	weapon_info_panel.z_index = 10  # Asegurar que aparezca encima de los botones
+	weapon_info_panel.z_index = 100  # MUY por encima para asegurar visibilidad
 	
-	# Crear StyleBox para fondo opaco
+	# Crear StyleBox modernizado estilo BattleTech con ROMBOIDE (skew)
 	var style_box = StyleBoxFlat.new()
-	style_box.bg_color = Color(0.1, 0.1, 0.15, 1.0)  # Azul oscuro opaco
-	style_box.border_width_left = 2
-	style_box.border_width_right = 2
-	style_box.border_width_top = 2
-	style_box.border_width_bottom = 2
-	style_box.border_color = Color.CYAN
+	style_box.bg_color = Color(0.05, 0.08, 0.12, 0.96)  # Azul muy oscuro casi opaco
+	style_box.border_width_left = int(4 * scale_factor)
+	style_box.border_width_right = int(4 * scale_factor)
+	style_box.border_width_top = int(4 * scale_factor)
+	style_box.border_width_bottom = int(4 * scale_factor)
+	style_box.border_color = Color(0.3, 0.7, 1.0, 1.0)  # Cian brillante
+	style_box.corner_radius_top_left = int(2 * scale_factor)
+	style_box.corner_radius_top_right = int(12 * scale_factor)
+	style_box.corner_radius_bottom_left = int(12 * scale_factor)
+	style_box.corner_radius_bottom_right = int(2 * scale_factor)
+	style_box.border_blend = true
+	style_box.anti_aliasing = true
+	style_box.shadow_color = Color(0.2, 0.6, 0.9, 0.7)
+	style_box.shadow_size = int(12 * scale_factor)
+	style_box.shadow_offset = Vector2(2, 4)
+	style_box.skew = Vector2(0.08, 0)  # ROMBOIDE - Inclinación futurista más pronunciada
 	weapon_info_panel.add_theme_stylebox_override("panel", style_box)
 	
-	weapon_selector_panel.add_child(weapon_info_panel)
+	# Añadir como hijo directo de battle_ui, NO del weapon_selector_panel
+	add_child(weapon_info_panel)
+	
+	var header_bar = Panel.new()
+	header_bar.position = Vector2(0, 0)
+	header_bar.size = Vector2(info_panel_width, 40 * scale_factor)
+	var header_style = StyleBoxFlat.new()
+	header_style.bg_color = Color(0.12, 0.22, 0.35, 0.9)
+	header_style.border_width_bottom = int(3 * scale_factor)
+	header_style.border_color = Color(0.3, 0.7, 1.0, 1.0)
+	header_style.skew = Vector2(0.08, 0)  # Mismo skew que el panel principal
+	header_bar.add_theme_stylebox_override("panel", header_style)
+	weapon_info_panel.add_child(header_bar)
 	
 	var info_title = Label.new()
-	info_title.text = "WEAPON INFO"
-	info_title.position = Vector2(margin, margin)
-	info_title.add_theme_font_size_override("font_size", int(18 * scale_factor))
-	info_title.add_theme_color_override("font_color", Color.CYAN)
+	info_title.text = "◢ WEAPON DATA ◣"
+	# Centrado normal sin compensación excesiva
+	info_title.position = Vector2(margin, 6 * scale_factor)
+	info_title.size = Vector2(info_panel_width - margin * 2 - 50 * scale_factor, 28 * scale_factor)
+	info_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	info_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	info_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
+	info_title.add_theme_color_override("font_color", Color(0.5, 0.9, 1.0, 1.0))
+	info_title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	info_title.add_theme_constant_override("outline_size", 2)
 	weapon_info_panel.add_child(info_title)
 	
 	# Botón para cerrar el panel de info
 	var close_info_button = Button.new()
-	close_info_button.text = "X"
-	close_info_button.position = Vector2(info_panel_width - 40 * scale_factor, margin)
-	close_info_button.size = Vector2(30 * scale_factor, 30 * scale_factor)
-	close_info_button.add_theme_font_size_override("font_size", int(18 * scale_factor))
+	close_info_button.text = "✕"
+	close_info_button.position = Vector2(info_panel_width - 45 * scale_factor, 4 * scale_factor)
+	close_info_button.size = Vector2(36 * scale_factor, 32 * scale_factor)
+	close_info_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	close_info_button.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3, 1.0))
+	close_info_button.add_theme_color_override("font_hover_color", Color(1.0, 0.5, 0.5, 1.0))
 	close_info_button.pressed.connect(_on_close_weapon_info_pressed)
 	weapon_info_panel.add_child(close_info_button)
 	
 	weapon_info_label = RichTextLabel.new()
-	weapon_info_label.position = Vector2(margin, 40 * scale_factor)
-	weapon_info_label.size = Vector2(info_panel_width - margin * 2, info_panel_height - 50 * scale_factor)
+	weapon_info_label.position = Vector2(margin * 2, 48 * scale_factor)
+	weapon_info_label.size = Vector2(info_panel_width - margin * 4, info_panel_height - 60 * scale_factor)
 	weapon_info_label.bbcode_enabled = true
 	weapon_info_label.fit_content = true
+	weapon_info_label.scroll_following = true
+	# Fondo semi-transparente SIN skew (el skew del panel principal ya da el efecto)
+	var text_bg = StyleBoxFlat.new()
+	text_bg.bg_color = Color(0.02, 0.04, 0.08, 0.5)
+	text_bg.border_width_left = 1
+	text_bg.border_width_right = 1
+	text_bg.border_width_top = 1
+	text_bg.border_width_bottom = 1
+	text_bg.border_color = Color(0.2, 0.4, 0.6, 0.3)
+	# NO aplicar skew al texto para evitar deformación
+	weapon_info_label.add_theme_stylebox_override("normal", text_bg)
 	weapon_info_panel.add_child(weapon_info_label)
 	
 	# Panel selector de ataque físico (85% del ancho, 50% de la altura)
@@ -1270,38 +1313,163 @@ func _on_weapon_clicked(_weapon_index: int, weapon: Dictionary, breakdown: Strin
 	
 	weapon_info_panel.visible = true
 	
-	# Construir información detallada con BBCode
-	var info_text = "[b][color=cyan]%s[/color][/b]\n\n" % weapon.get("name", "Unknown Weapon")
+	# Construir información detallada con BBCode modernizado en dos columnas
+	var info_text = ""
 	
-	# Estadísticas básicas
-	info_text += "[color=yellow]WEAPON STATS[/color]\n"
-	info_text += "Damage: [color=red]%d[/color]\n" % weapon.get("damage", 0)
-	info_text += "Heat: [color=orange]%d[/color]\n" % weapon.get("heat", 0)
-	info_text += "Min Range: [color=white]%d[/color]\n" % weapon.get("min_range", 0)
-	info_text += "Short Range: [color=green]%d[/color]\n" % weapon.get("short_range", 3)
-	info_text += "Medium Range: [color=yellow]%d[/color]\n" % weapon.get("medium_range", 6)
-	info_text += "Long Range: [color=red]%d[/color]\n" % weapon.get("long_range", 9)
+	# Nombre del arma con icono según tipo
+	var weapon_icon = _get_weapon_type_icon(weapon.get("type", "energy"))
+	info_text += "[center][font_size=20][b][color=#50D0FF]%s %s[/color][/b][/font_size][/center]\n" % [weapon_icon, weapon.get("name", "Unknown Weapon")]
+	info_text += "[center][color=#406080]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/color][/center]\n"
 	
 	# Tipo de arma
 	var weapon_type = weapon.get("type", "energy")
-	var weapon_type_str = str(weapon_type) if typeof(weapon_type) == TYPE_INT else weapon_type
-	info_text += "\nType: [color=cyan]%s[/color]\n" % weapon_type_str
+	var weapon_type_str = _get_weapon_type_name(weapon_type)
+	var type_color = _get_weapon_type_color(weapon_type)
+	info_text += "[center][color=%s]▸ %s WEAPON ◂[/color][/center]\n\n" % [type_color, weapon_type_str.to_upper()]
 	
-	# Información de to-hit
-	info_text += "\n[color=yellow]TO-HIT CALCULATION[/color]\n"
-	info_text += "[color=white]%s[/color]\n" % breakdown.replace("\n", "\n")
+	# Usar tabla para organizar en dos columnas
+	info_text += "[table=2]\n"
 	
-	# Modifiers individuales
+	# COLUMNA IZQUIERDA: Combat Specs
+	info_text += "[cell]"
+	info_text += "[color=#FFC040]┏━ COMBAT SPECS ━━━━━━━┓[/color]\n"
+	info_text += "[color=#909090]┃[/color] Damage Output\n"
+	info_text += "[color=#909090]┃[/color]   [color=#FF4040][b]%d[/b][/color] points\n" % weapon.get("damage", 0)
+	info_text += "[color=#909090]┃[/color]\n"
+	info_text += "[color=#909090]┃[/color] Heat Generated\n"
+	info_text += "[color=#909090]┃[/color]   [color=#FF9030][b]%d[/b][/color] heat\n" % weapon.get("heat", 0)
+	
+	# Información de munición si requiere
+	if weapon.get("requires_ammo", false):
+		var ammo = weapon.get("ammo", 0)
+		var ammo_color = "#40FF40" if ammo > 5 else ("#FFFF40" if ammo > 2 else "#FF4040")
+		info_text += "[color=#909090]┃[/color]\n"
+		info_text += "[color=#909090]┃[/color] Ammunition\n"
+		info_text += "[color=#909090]┃[/color]   [color=%s][b]%d[/b] rounds[/color]\n" % [ammo_color, ammo]
+	
+	info_text += "[color=#FFC040]┗━━━━━━━━━━━━━━━━━━━━━━┛[/color]"
+	info_text += "[/cell]\n"
+	
+	# COLUMNA DERECHA: Range Profile
+	info_text += "[cell]"
+	info_text += "[color=#40C0FF]┏━ RANGE PROFILE ━━━━━┓[/color]\n"
+	var min_range = weapon.get("min_range", 0)
+	var short_range = weapon.get("short_range", 3)
+	var medium_range = weapon.get("medium_range", 6)
+	var long_range = weapon.get("long_range", 9)
+	
+	if min_range > 0:
+		info_text += "[color=#909090]┃[/color] Dead Zone\n"
+		info_text += "[color=#909090]┃[/color]   [color=#FF4040][b]< %d[/b][/color] hexes\n" % min_range
+		info_text += "[color=#909090]┃[/color]\n"
+	
+	info_text += "[color=#909090]┃[/color] Short Range\n"
+	info_text += "[color=#909090]┃[/color]   [color=#40FF40][b]%d[/b][/color] hexes [color=#60A060](+0)[/color]\n" % short_range
+	info_text += "[color=#909090]┃[/color]\n"
+	info_text += "[color=#909090]┃[/color] Medium Range\n"
+	info_text += "[color=#909090]┃[/color]   [color=#FFFF40][b]%d[/b][/color] hexes [color=#A0A040](+2)[/color]\n" % medium_range
+	info_text += "[color=#909090]┃[/color]\n"
+	info_text += "[color=#909090]┃[/color] Long Range\n"
+	info_text += "[color=#909090]┃[/color]   [color=#FFA040][b]%d[/b][/color] hexes [color=#A06040](+4)[/color]\n" % long_range
+	info_text += "[color=#40C0FF]┗━━━━━━━━━━━━━━━━━━━━━┛[/color]"
+	info_text += "[/cell]\n"
+	
+	info_text += "[/table]\n"
+	
+	# TO-HIT ANALYSIS - Ancho completo debajo (sin espacio extra)
+	info_text += "[color=#FF80FF]┏━ TO-HIT ANALYSIS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓[/color]\n"
+	
+	# Parse del breakdown para mejor formato
+	var breakdown_lines = breakdown.split("\n")
+	for line in breakdown_lines:
+		if line.strip_edges() != "":
+			# Detectar número target
+			if "Target Number" in line or "Final" in line:
+				info_text += "[color=#909090]┃[/color] [color=#FFD040][b]%s[/b][/color]\n" % line.strip_edges()
+			else:
+				info_text += "[color=#909090]┃[/color] [color=#D0D0D0]%s[/color]\n" % line.strip_edges()
+	
+	# Modifiers individuales con mejor formato
 	var modifiers = to_hit_data.get("modifiers", {})
 	if modifiers.size() > 0:
-		info_text += "\n[color=yellow]MODIFIERS BREAKDOWN[/color]\n"
-		for mod_name in modifiers.keys():
-			var mod_val = modifiers[mod_name]
-			var color = "green" if mod_val <= 0 else "red"
-			var mod_name_str = str(mod_name) if typeof(mod_name) != TYPE_STRING else mod_name
-			info_text += "%s: [color=%s]%+d[/color]\n" % [mod_name_str.replace("_", " ").capitalize(), color, mod_val]
+		info_text += "[color=#909090]┃[/color]\n"
+		info_text += "[color=#909090]┃[/color] [color=#C0C0FF][b]Modifier Breakdown:[/b][/color]\n"
+		
+		# Organizar modificadores en dos columnas si hay muchos
+		var mod_keys = modifiers.keys()
+		if mod_keys.size() > 6:
+			# Dos columnas para muchos modificadores
+			var half = ceili(mod_keys.size() / 2.0)
+			for i in range(half):
+				var left_key = mod_keys[i]
+				var left_val = modifiers[left_key]
+				var left_color = "#40FF80" if left_val <= 0 else "#FF6060"
+				var left_name = str(left_key).replace("_", " ").capitalize()
+				
+				var line_text = "[color=#909090]┃[/color]  • %-20s [color=%s]%+d[/color]" % [left_name, left_color, left_val]
+				
+				# Añadir segunda columna si existe
+				var right_idx = i + half
+				if right_idx < mod_keys.size():
+					var right_key = mod_keys[right_idx]
+					var right_val = modifiers[right_key]
+					var right_color = "#40FF80" if right_val <= 0 else "#FF6060"
+					var right_name = str(right_key).replace("_", " ").capitalize()
+					line_text += "  • %s [color=%s]%+d[/color]" % [right_name, right_color, right_val]
+				
+				info_text += line_text + "\n"
+		else:
+			# Una columna para pocos modificadores
+			for mod_name in mod_keys:
+				var mod_val = modifiers[mod_name]
+				var color = "#40FF80" if mod_val <= 0 else "#FF6060"
+				var formatted_name = str(mod_name).replace("_", " ").capitalize()
+				info_text += "[color=#909090]┃[/color]  • %s [color=%s]%+d[/color]\n" % [formatted_name, color, mod_val]
+	
+	info_text += "[color=#FF80FF]┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛[/color]\n"
 	
 	weapon_info_label.text = info_text
+
+func _get_weapon_type_icon(weapon_type) -> String:
+	"""Retorna un icono según el tipo de arma"""
+	if typeof(weapon_type) == TYPE_INT:
+		match weapon_type:
+			1: return "⚡"  # Energy
+			2: return "●"  # Ballistic
+			3: return "▲"  # Missile
+			_: return "◆"
+	else:
+		match str(weapon_type).to_lower():
+			"energy": return "⚡"
+			"ballistic": return "●"
+			"missile": return "▲"
+			_: return "◆"
+
+func _get_weapon_type_name(weapon_type) -> String:
+	"""Retorna el nombre del tipo de arma"""
+	if typeof(weapon_type) == TYPE_INT:
+		match weapon_type:
+			1: return "ENERGY"
+			2: return "BALLISTIC"
+			3: return "MISSILE"
+			_: return "UNKNOWN"
+	else:
+		return str(weapon_type).to_upper()
+
+func _get_weapon_type_color(weapon_type) -> String:
+	"""Retorna el color del tipo de arma"""
+	if typeof(weapon_type) == TYPE_INT:
+		match weapon_type:
+			1: return "#40D0FF"  # Cian para Energy
+			2: return "#FFD040"  # Amarillo para Ballistic
+			3: return "#FF6060"  # Rojo para Missile
+			_: return "#C0C0C0"
+	else:
+		match str(weapon_type).to_lower():
+			"energy": return "#40D0FF"
+			"ballistic": return "#FFD040"
+			"missile": return "#FF6060"
+			_: return "#C0C0C0"
 
 func _is_weapon_in_range(weapon: Dictionary, range_hexes: int) -> bool:
 	# Verifica si el arma puede disparar a esta distancia
