@@ -633,11 +633,9 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		for child in label_root.get_children():
 			child.queue_free()
 		
-		# Crear nuevas labels solo para superficies "top" QUE FUERON PROCESADAS
-		# Solo procesar hasta idx (las que realmente se renderizaron)
-		for i in range(min(idx, surf_entries.size())):
-			var s_entry = surf_entries[i]
-			
+		# Crear nuevas labels para TODAS las superficies "top" (no limitadas por max_polygons_per_frame)
+		# Recorrer todas las entradas de surf_entries
+		for s_entry in surf_entries:
 			# Skip overlays - they don't have labels
 			if s_entry.get("is_overlay", false):
 				continue

@@ -17,3 +17,4 @@ res://scripts/test_procedural_generator.gd
 res://scripts/ui/facing_selector.gd
 res://scripts/managers/turn_manager.gd
 res://scripts/ui/screens/initiative_screen.gd
+res://scripts/hex_surface_renderer.gd

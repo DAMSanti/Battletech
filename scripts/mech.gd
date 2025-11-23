@@ -50,6 +50,24 @@ var heat_dissipation: int = 10
 # Armas equipadas
 var weapons: Array = []
 
+# Equipamiento adicional (heatsinks, ECM, BAP, etc.)
+var equipment: Array = []
+
+# Localizaciones destruidas
+var destroyed_locations: Array = []
+
+# Componentes críticos por localización
+var critical_slots: Dictionary = {
+	"head": [],
+	"center_torso": [],
+	"left_torso": [],
+	"right_torso": [],
+	"left_arm": [],
+	"right_arm": [],
+	"left_leg": [],
+	"right_leg": []
+}
+
 # Estado del mech
 var is_shutdown: bool = false
 var is_destroyed: bool = false
@@ -778,3 +796,72 @@ func set_visibility(visible_state: bool):
 	"""Actualiza la visibilidad del mech según LoS"""
 	is_visible_to_player = visible_state
 	_update_sprite()
+
+## ========== FUNCIONES DE COMBATE AVANZADO ==========
+
+func get_functional_weapons() -> Array:
+	"""Retorna solo las armas que pueden disparar"""
+	var functional = []
+	for weapon in weapons:
+		if not weapon.get("destroyed", false):
+			# Verificar que la localización no esté destruida
+			var loc = weapon.get("location", "")
+			if loc != "" and not destroyed_locations.has(loc):
+				functional.append(weapon)
+	return functional
+
+func get_weapon_by_index(index: int) -> Dictionary:
+	"""Obtiene un arma por índice"""
+	if index >= 0 and index < weapons.size():
+		return weapons[index]
+	return {}
+
+func add_equipment(equip: Dictionary):
+	"""Añade equipamiento al mech"""
+	equipment.append(equip)
+
+func get_equipment_in_location(location: String) -> Array:
+	"""Obtiene todo el equipamiento en una localización"""
+	var result = []
+	for equip in equipment:
+		if equip.get("location", "") == location and not equip.get("destroyed", false):
+			result.append(equip)
+	return result
+
+func is_location_destroyed(location: String) -> bool:
+	"""Verifica si una localización está destruida"""
+	return destroyed_locations.has(location)
+
+func get_armor_percentage(location: String) -> float:
+	"""Obtiene el porcentaje de armadura restante en una localización"""
+	if not armor.has(location):
+		return 0.0
+	var current = armor[location]["current"]
+	var maximum = armor[location]["max"]
+	if maximum <= 0:
+		return 0.0
+	return (float(current) / float(maximum)) * 100.0
+
+func get_structure_percentage(location: String) -> float:
+	"""Obtiene el porcentaje de estructura restante en una localización"""
+	if not structure.has(location):
+		return 0.0
+	var current = structure[location]["current"]
+	var maximum = structure[location]["max"]
+	if maximum <= 0:
+		return 0.0
+	return (float(current) / float(maximum)) * 100.0
+
+func get_combat_status() -> Dictionary:
+	"""Retorna el estado de combate completo del mech"""
+	return {
+		"name": mech_name,
+		"is_destroyed": is_destroyed,
+		"is_shutdown": is_shutdown,
+		"is_prone": is_prone,
+		"heat": heat,
+		"heat_capacity": heat_capacity,
+		"functional_weapons": get_functional_weapons().size(),
+		"total_weapons": weapons.size(),
+		"destroyed_locations": destroyed_locations.duplicate()
+	}
