@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3 uid="uid://dtfp50g0eqyje"]
+[gd_scene load_steps=3 format=3 uid="uid://dtfp50g0eqyje"]
 
 [ext_resource type="Script" path="res://scripts/ui/screens/main_menu.gd" id="1_mainmenu"]
+[ext_resource type="Texture2D" uid="uid://placeholder" path="res://assets/menu_background.png" id="2_background"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -11,11 +12,22 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_mainmenu")
 
-[node name="ColorRect" type="ColorRect" parent="."]
+[node name="Background" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.1, 0.1, 0.15, 1)
+texture = ExtResource("2_background")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DarkOverlay" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.3)

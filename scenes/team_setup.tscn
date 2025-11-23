@@ -1,0 +1,146 @@
+[gd_scene load_steps=3 format=3 uid="uid://c8jk3m5n6p7q8"]
+
+[ext_resource type="Script" path="res://scripts/ui/screens/team_setup.gd" id="1_teamsetup"]
+[ext_resource type="Texture2D" uid="uid://placeholder" path="res://assets/menu_background.png" id="2_background"]
+
+[node name="TeamSetup" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_teamsetup")
+
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_background")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DarkOverlay" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.3)
+
+[node name="MarginContainer" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 50
+theme_override_constants/margin_top = 50
+theme_override_constants/margin_right = 50
+theme_override_constants/margin_bottom = 50
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MarginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "CONFIGURE YOUR LANCE"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="Description" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "Select up to 4 mechs for your lance. Empty slots will be filled with random mechs."
+horizontal_alignment = 1
+
+[node name="HSeparator2" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="LanceContainer" type="GridContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/h_separation = 20
+theme_override_constants/v_separation = 20
+columns = 2
+
+[node name="Slot1" type="VBoxContainer" parent="MarginContainer/VBoxContainer/LanceContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Slot2" type="VBoxContainer" parent="MarginContainer/VBoxContainer/LanceContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Slot3" type="VBoxContainer" parent="MarginContainer/VBoxContainer/LanceContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Slot4" type="VBoxContainer" parent="MarginContainer/VBoxContainer/LanceContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="HSeparator3" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="AvailableMechsLabel" type="Label" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+text = "AVAILABLE MECHS FROM HANGAR"
+horizontal_alignment = 1
+
+[node name="MechListScroll" type="ScrollContainer" parent="MarginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 150)
+layout_mode = 2
+
+[node name="MechList" type="VBoxContainer" parent="MarginContainer/VBoxContainer/MechListScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 5
+
+[node name="HSeparator4" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ButtonsContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="FillRandomButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonsContainer"]
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+text = "Fill with Random Mechs"
+
+[node name="ClearAllButton" type="Button" parent="MarginContainer/VBoxContainer/ButtonsContainer"]
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+text = "Clear All"
+
+[node name="HSeparator5" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
+[node name="ActionsContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="BackButton" type="Button" parent="MarginContainer/VBoxContainer/ActionsContainer"]
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+text = "Back to Menu"
+
+[node name="StartBattleButton" type="Button" parent="MarginContainer/VBoxContainer/ActionsContainer"]
+custom_minimum_size = Vector2(200, 50)
+layout_mode = 2
+text = "Start Battle"

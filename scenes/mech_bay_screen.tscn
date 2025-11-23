@@ -1,6 +1,25 @@
-[gd_scene load_steps=2 format=3 uid="uid://ctj8yh2kqw5r8"]
+[gd_scene load_steps=3 format=3 uid="uid://ctj8yh2kqw5r8"]
 
 [ext_resource type="Script" path="res://scripts/ui/screens/mech_bay_screen.gd" id="1_mech_bay"]
+[ext_resource type="Texture2D" uid="uid://placeholder" path="res://assets/menu_background.png" id="2_background"]
 
 [node name="MechBayScreen" type="CanvasLayer"]
 script = ExtResource("1_mech_bay")
+
+[node name="Background" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+texture = ExtResource("2_background")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DarkOverlay" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.3)

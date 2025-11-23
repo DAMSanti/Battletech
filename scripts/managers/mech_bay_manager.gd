@@ -233,7 +233,7 @@ var player_hangar := []
 var selected_mech_index: int = 0
 
 # Flag temporal para forzar regeneración del hangar (cambiar a true para limpiar datos corruptos)
-var force_regenerate_hangar: bool = true
+var force_regenerate_hangar: bool = false
 
 func _ready():
 	# Intentar cargar hangar guardado, si no existe usar default
@@ -244,6 +244,9 @@ func _ready():
 		save_hangar_to_file()
 	elif not load_hangar_from_file():
 		_initialize_default_hangar()
+		save_hangar_to_file()
+	
+	print("[MechBayManager] Hangar ready with %d mechs" % player_hangar.size())
 
 func _initialize_default_hangar():
 	# Añadir algunos mechs al hangar inicial
@@ -300,6 +303,7 @@ func get_mech_data(mech_type: String, variant: String) -> Dictionary:
 
 func get_player_hangar() -> Array:
 	# Devuelve la lista de mechs en el hangar del jugador
+	print("[MechBayManager] get_player_hangar called - returning %d mechs" % player_hangar.size())
 	return player_hangar
 
 func get_available_mech_types() -> Array:
@@ -434,7 +438,16 @@ func get_first_player_mech() -> Dictionary:
 	return get_selected_player_mech()
 
 func get_player_lance() -> Array:
-	# Obtiene los primeros 4 mechs del hangar para usar como lance en batalla
+	# Obtiene la lance configurada para batalla, o los primeros 4 mechs del hangar si no hay configuración
+	
+	# Si hay una configuración de lance guardada, usarla
+	if has_meta("battle_lance"):
+		var battle_lance = get_meta("battle_lance")
+		if battle_lance is Array and battle_lance.size() > 0:
+			print("[MechBayManager] Using configured battle lance: %d mechs" % battle_lance.size())
+			return battle_lance
+	
+	# Fallback: usar los primeros 4 mechs del hangar
 	var lance = []
 	var count = min(4, player_hangar.size())
 	
@@ -446,3 +459,14 @@ func get_player_lance() -> Array:
 		lance.append(get_mech_data("Atlas", "AS7-D"))
 	
 	return lance
+
+func set_battle_lance(lance_data: Array):
+	# Establece la configuración de lance para la próxima batalla
+	set_meta("battle_lance", lance_data)
+	print("[MechBayManager] Battle lance configured with %d mechs" % lance_data.size())
+
+func clear_battle_lance():
+	# Limpia la configuración de lance guardada
+	if has_meta("battle_lance"):
+		remove_meta("battle_lance")
+		print("[MechBayManager] Battle lance configuration cleared")

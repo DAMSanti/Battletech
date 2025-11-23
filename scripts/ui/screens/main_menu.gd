@@ -29,7 +29,7 @@ func _ready():
 	
 	# Botón de nueva batalla
 	var new_battle_btn = Button.new()
-	new_battle_btn.text = "New Battle"
+	new_battle_btn.text = "New Game"
 	new_battle_btn.custom_minimum_size = Vector2(200, 50)
 	new_battle_btn.pressed.connect(_on_new_battle_pressed)
 	vbox.add_child(new_battle_btn)
@@ -63,7 +63,8 @@ func _ready():
 	vbox.add_child(quit_btn)
 
 func _on_new_battle_pressed():
-	get_tree().change_scene_to_file("res://scenes/battle_scene_simple.tscn")
+	# Ir a la pantalla de configuración de equipo
+	get_tree().change_scene_to_file("res://scenes/team_setup.tscn")
 
 func _on_mechs_pressed():
 	# Abrir Mech Bay

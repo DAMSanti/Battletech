@@ -18,3 +18,8 @@ res://scripts/ui/facing_selector.gd
 res://scripts/managers/turn_manager.gd
 res://scripts/ui/screens/initiative_screen.gd
 res://scripts/hex_surface_renderer.gd
+res://scripts/core/component_database.gd
+res://scripts/managers/mech_bay_manager.gd
+res://scripts/ui/screens/main_menu.gd
+res://scripts/ui/screens/team_setup.gd
+res://scripts/ui/screens/mech_bay_screen.gd

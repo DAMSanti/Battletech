@@ -40,19 +40,13 @@ func _setup_ui():
 	scale_factor = screen_width / 720.0
 	margin = 10 * scale_factor
 	
-	# Panel principal de fondo
-	var background = ColorRect.new()
-	background.color = Color(0.05, 0.05, 0.1, 1.0)
-	background.size = viewport_size
-	add_child(background)
-	
 	# Panel principal
 	main_panel = Panel.new()
 	main_panel.position = Vector2(margin, margin)
 	main_panel.size = Vector2(screen_width - margin * 2, screen_height - margin * 2)
 	
 	var style_box = StyleBoxFlat.new()
-	style_box.bg_color = Color(0.1, 0.1, 0.15, 0.95)
+	style_box.bg_color = Color(0.1, 0.1, 0.15, 0.7)
 	style_box.border_width_left = 3
 	style_box.border_width_right = 3
 	style_box.border_width_top = 3
@@ -75,7 +69,7 @@ func _setup_ui():
 	list_panel.size = Vector2(main_panel.size.x * 0.35, main_panel.size.y - 130 * scale_factor)
 	
 	var list_style = StyleBoxFlat.new()
-	list_style.bg_color = Color(0.15, 0.15, 0.2, 1.0)
+	list_style.bg_color = Color(0.15, 0.15, 0.2, 0.6)
 	list_panel.add_theme_stylebox_override("panel", list_style)
 	main_panel.add_child(list_panel)
 	
@@ -99,7 +93,7 @@ func _setup_ui():
 	detail_panel.size = Vector2(main_panel.size.x * 0.6, main_panel.size.y - 130 * scale_factor)
 	
 	var detail_style = StyleBoxFlat.new()
-	detail_style.bg_color = Color(0.15, 0.15, 0.2, 1.0)
+	detail_style.bg_color = Color(0.15, 0.15, 0.2, 0.6)
 	detail_panel.add_theme_stylebox_override("panel", detail_style)
 	main_panel.add_child(detail_panel)
 	
