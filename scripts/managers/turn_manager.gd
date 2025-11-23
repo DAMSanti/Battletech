@@ -120,11 +120,11 @@ func use_precalculated_initiative(data: Dictionary):
 ## Avanza a la siguiente fase del turno
 func advance_phase():
 	if is_phase_transitioning:
-		print("[TURN_MGR] advance_phase() blocked - already transitioning")
+		# print("[TURN_MGR] advance_phase() blocked - already transitioning")
 		return
 	
 	is_phase_transitioning = true
-	print("[TURN_MGR] Advancing from phase: %s" % GameEnums.phase_to_string(current_phase))
+	# print("[TURN_MGR] Advancing from phase: %s" % GameEnums.phase_to_string(current_phase))
 	
 	match current_phase:
 		GameEnums.TurnPhase.INITIATIVE:
@@ -164,14 +164,14 @@ func advance_phase():
 
 ## Inicia la fase de movimiento
 func start_movement_phase():
-	print("[TURN_MGR] === MOVEMENT PHASE START ===")
+	# print("[TURN_MGR] === MOVEMENT PHASE START ===")
 	_build_activation_order()
 	current_unit_index = 0
 	
-	print("[TURN_MGR] Waiting for phase transition delay...")
+	# print("[TURN_MGR] Waiting for phase transition delay...")
 	# Pequeño delay para que phase_changed se procese
 	await get_tree().create_timer(GameConstants.PHASE_TRANSITION_DELAY).timeout
-	print("[TURN_MGR] Delay finished, calling activate_next_unit(), units_to_activate.size()=%d" % units_to_activate.size())
+	# print("[TURN_MGR] Delay finished, calling activate_next_unit(), units_to_activate.size()=%d" % units_to_activate.size())
 	activate_next_unit()
 
 ## Inicia la fase de ataque con armas
@@ -203,13 +203,13 @@ func start_heat_phase():
 ## Alterna la activación: Unit1_TeamA, Unit1_TeamB, Unit2_TeamA, Unit2_TeamB, etc.
 func _build_activation_order():
 	units_to_activate.clear()
-	print("[TURN_MGR] Building activation order for phase: %s" % GameEnums.phase_to_string(current_phase))
-	print("[TURN_MGR]   Player units: %d, Enemy units: %d" % [player_units.size(), enemy_units.size()])
+	# print("[TURN_MGR] Building activation order for phase: %s" % GameEnums.phase_to_string(current_phase))
+	# print("[TURN_MGR]   Player units: %d, Enemy units: %d" % [player_units.size(), enemy_units.size()])
 	
 	# Filtrar solo unidades activas (no destruidas)
 	var player_active = player_units.filter(func(u): return not u.is_destroyed)
 	var enemy_active = enemy_units.filter(func(u): return not u.is_destroyed)
-	print("[TURN_MGR]   Active - Player: %d, Enemy: %d" % [player_active.size(), enemy_active.size()])
+	# print("[TURN_MGR]   Active - Player: %d, Enemy: %d" % [player_active.size(), enemy_active.size()])
 	
 	# Determinar el número máximo de unidades para alternar correctamente
 	var max_units = max(player_active.size(), enemy_active.size())
@@ -248,28 +248,28 @@ func _build_activation_order():
 					units_to_activate.append(enemy_active[i])
 				if i < player_active.size():
 					units_to_activate.append(player_active[i])
-	print("[TURN_MGR] Built activation order: %d units" % units_to_activate.size())
-	for i in range(units_to_activate.size()):
-		var unit = units_to_activate[i]
-		var team_str = "player" if unit in player_units else "enemy"
-		print("[TURN_MGR]   [%d] %s (%s)" % [i, unit.mech_name, team_str])
-		# Debug: imprimir armas
-		if typeof(unit.weapons) == TYPE_ARRAY:
-			print("[TURN_MGR]     Weapons: %d" % unit.weapons.size())
-			for w_idx in range(min(3, unit.weapons.size())):
-				print("[TURN_MGR]       - %s" % unit.weapons[w_idx].get("name", "Unknown"))
+	# print("[TURN_MGR] Built activation order: %d units" % units_to_activate.size())
+	# for i in range(units_to_activate.size()):
+	# 	var unit = units_to_activate[i]
+	# 	var team_str = "player" if unit in player_units else "enemy"
+	# 	print("[TURN_MGR]   [%d] %s (%s)" % [i, unit.mech_name, team_str])
+	# 	# Debug: imprimir armas
+	# 	if typeof(unit.weapons) == TYPE_ARRAY:
+	# 		print("[TURN_MGR]     Weapons: %d" % unit.weapons.size())
+	# 		for w_idx in range(min(3, unit.weapons.size())):
+	# 			print("[TURN_MGR]       - %s" % unit.weapons[w_idx].get("name", "Unknown"))
 
 ## Activa la siguiente unidad en el orden
 func activate_next_unit():
-	print("[TURN_MGR] activate_next_unit(): current_unit_index=%d, units_to_activate.size()=%d" % [current_unit_index, units_to_activate.size()])
+	# print("[TURN_MGR] activate_next_unit(): current_unit_index=%d, units_to_activate.size()=%d" % [current_unit_index, units_to_activate.size()])
 	# Si no hay unidades para activar y es el inicio de la fase, hay un problema
 	if units_to_activate.size() == 0:
-		print("[TURN_MGR] WARNING: No units to activate in phase %s!" % GameEnums.phase_to_string(current_phase))
+		# print("[TURN_MGR] WARNING: No units to activate in phase %s!" % GameEnums.phase_to_string(current_phase))
 		advance_phase()
 		return
 	
 	if current_unit_index >= units_to_activate.size():
-		print("[TURN_MGR] All units activated, advancing phase")
+		# print("[TURN_MGR] All units activated, advancing phase")
 		advance_phase()
 		return
 	
@@ -279,7 +279,7 @@ func activate_next_unit():
 	if current_phase == GameEnums.TurnPhase.MOVEMENT and unit.has_method("reset_movement"):
 		unit.reset_movement()
 	
-	print("[TURN_MGR] Activating unit: %s [%d/%d]" % [unit.mech_name, current_unit_index + 1, units_to_activate.size()])
+	# print("[TURN_MGR] Activating unit: %s [%d/%d]" % [unit.mech_name, current_unit_index + 1, units_to_activate.size()])
 	unit_activated.emit(unit)
 
 ## Completa la activación de la unidad actual

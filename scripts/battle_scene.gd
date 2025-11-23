@@ -11,6 +11,7 @@ var hex_grid
 var turn_manager
 var ui
 var overlay_layer  # Capa para dibujar hexágonos alcanzables ENCIMA del terreno
+var battle_ai: BattleAI  # Sistema de IA mejorado
 
 var player_mechs: Array = []
 var enemy_mechs: Array = []
@@ -51,6 +52,11 @@ var touch_points: Dictionary = {}  # ID del toque -> posición
 var initial_pinch_distance: float = 0.0
 var initial_zoom: Vector2 = Vector2.ONE
 
+# Sistema de detección de tap vs drag
+var touch_start_positions: Dictionary = {}  # ID del toque -> posición inicial
+var has_moved_significantly: bool = false  # True si se movió más del umbral
+const TOUCH_MOVE_THRESHOLD: float = 15.0  # Píxeles de umbral para considerar movimiento
+
 # Sistema de tap largo para inspección
 var long_press_timer: float = 0.0
 var long_press_start_pos: Vector2  # Posición en pantalla
@@ -63,6 +69,66 @@ const LONG_PRESS_DURATION: float = 0.5  # Medio segundo para tap largo
 const MIN_ZOOM = 0.3
 const MAX_ZOOM = 2.0
 const CAMERA_SMOOTH_SPEED = 10.0
+
+func update_mech_visibility():
+	"""Actualiza la visibilidad de mechs enemigos según LoS desde mechs aliados"""
+	if not hex_grid:
+		return
+	
+	# Actualizar visibilidad de cada mech enemigo
+	for enemy in enemy_mechs:
+		if enemy.is_destroyed:
+			enemy.set_visibility(false)
+			continue
+		
+		# Verificar si algún mech aliado tiene LoS a este enemigo
+		var mech_is_visible = false
+		for player_mech in player_mechs:
+			if player_mech.is_destroyed:
+				continue
+			
+			# Verificar LoS desde este mech aliado al enemigo
+			var has_los = LineOfSight.can_shoot(hex_grid, player_mech.hex_position, enemy.hex_position)
+			if has_los:
+				mech_is_visible = true
+				break
+		
+		enemy.set_visibility(mech_is_visible)
+
+func has_enemies_in_los(unit) -> bool:
+	"""Verifica si la unidad tiene algún enemigo en línea de vista"""
+	if not hex_grid:
+		return false
+	
+	var enemies = enemy_mechs if unit in player_mechs else player_mechs
+	
+	for enemy in enemies:
+		if enemy.is_destroyed:
+			continue
+		
+		# Verificar LoS
+		var has_los = LineOfSight.can_shoot(hex_grid, unit.hex_position, enemy.hex_position)
+		if has_los:
+			return true
+	
+	return false
+
+func has_adjacent_enemies(unit) -> bool:
+	"""Verifica si la unidad tiene algún enemigo adyacente para ataque físico"""
+	if not hex_grid:
+		return false
+	
+	var enemies = enemy_mechs if unit in player_mechs else player_mechs
+	
+	for enemy in enemies:
+		if enemy.is_destroyed:
+			continue
+		
+		var dist = hex_grid.hex_distance(unit.hex_position, enemy.hex_position)
+		if dist <= 1:
+			return true
+	
+	return false
 
 func update_overlays():
 	# Preparar datos de overlays para renderizado con oclusión
@@ -164,6 +230,10 @@ func _ready():
 	turn_manager.unit_activated.connect(_on_unit_activated)
 	turn_manager.initiative_rolled.connect(_on_initiative_rolled)
 	
+	# Inicializar sistema de IA mejorado
+	battle_ai = BattleAI.new()
+	add_child(battle_ai)
+	
 	# Iniciar la batalla con fase de despliegue
 	_setup_battle()
 
@@ -223,6 +293,13 @@ func _on_initiative_screen_complete(data: Dictionary):
 		# Iniciar el sistema de turnos
 		turn_manager.start_battle(player_mechs, enemy_mechs)
 		
+		# Configurar el sistema de IA mejorado
+		if battle_ai:
+			battle_ai.setup(hex_grid, player_mechs, self)
+		
+		# Actualizar visibilidad inicial
+		update_mech_visibility()
+		
 		battle_started = true
 		
 		# Mostrar mensaje de ayuda para inspección de mechs
@@ -263,58 +340,70 @@ func _setup_battle():
 			elif y < 4:
 				deployment_zones["enemy"].append(hex_pos)
 	
-	# Primero verificar si hay un loadout seleccionado desde el Mech Bay
+	# TODO: ESCALABILIDAD 4v4 - Obtener lista de mechs del jugador
+	# En el futuro, esto debería venir de una pantalla de selección de lance
+	# Por ahora, solo obtenemos 1 mech para mantener compatibilidad
 	var loadout_manager = get_node_or_null("/root/SelectedLoadoutManager")
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
-	var player_mech_data: Dictionary = {}
+	
+	# Array para almacenar todos los mechs del jugador (1-4)
+	var player_mechs_data: Array = []
 	
 	if loadout_manager and loadout_manager.has_loadout():
 		var loadout = loadout_manager.get_selected_loadout()
-		player_mech_data = _convert_loadout_to_mech_data(loadout)
+		var player_mech_data = _convert_loadout_to_mech_data(loadout)
+		player_mechs_data.append(player_mech_data)
 	else:
-		# Fallback: usar MechBayManager si no hay loadout seleccionado
+		# Fallback: usar MechBayManager
 		if mech_bay_manager:
-			print("[DEBUG] selected_mech_index:", mech_bay_manager.selected_mech_index)
-			player_mech_data = mech_bay_manager.get_first_player_mech()
-			print("[DEBUG] get_first_player_mech() returned: ", player_mech_data.get("name", "Unknown"))
+			var player_mech_data = mech_bay_manager.get_first_player_mech()
+			player_mechs_data.append(player_mech_data)
 		else:
 			# Fallback si no existe el manager
 			print("[WARNING] MechBayManager not found, using default Atlas")
-			player_mech_data = {
+			player_mechs_data.append({
 				"name": "Atlas",
 				"tonnage": 100,
 				"walk_mp": 3,
 				"run_mp": 5,
 				"jump_mp": 0
-			}
+			})
 	
-	# Crear mechs pero NO colocarlos todavía - guardarlos para despliegue
-	var player_mech = _create_mech_for_deployment(player_mech_data, "player")
-	mechs_to_deploy.append(player_mech)
+	# Crear todos los mechs del jugador para despliegue
+	for mech_data in player_mechs_data:
+		var player_mech = _create_mech_for_deployment(mech_data, "player")
+		mechs_to_deploy.append(player_mech)
 	
-	# Equipo enemigo
-	var enemy_mech_data: Dictionary
+	# TODO: ESCALABILIDAD 4v4 - Obtener lista de mechs enemigos
+	# En el futuro, esto debería venir de una configuración de misión
+	# Por ahora, solo creamos 1 enemigo para mantener compatibilidad
+	var enemy_mechs_data: Array = []
+	
 	if mech_bay_manager:
-		enemy_mech_data = mech_bay_manager.get_mech_data("Mad Cat", "Timber Wolf Prime")
-		if not enemy_mech_data:
-			enemy_mech_data = {
+		var enemy_mech_data = mech_bay_manager.get_mech_data("Mad Cat", "Timber Wolf Prime")
+		if enemy_mech_data:
+			enemy_mechs_data.append(enemy_mech_data)
+		else:
+			enemy_mechs_data.append({
 				"name": "Mad Cat",
 				"tonnage": 75,
 				"walk_mp": 4,
 				"run_mp": 6,
 				"jump_mp": 0
-			}
+			})
 	else:
-		enemy_mech_data = {
+		enemy_mechs_data.append({
 			"name": "Mad Cat",
 			"tonnage": 75,
 			"walk_mp": 4,
 			"run_mp": 6,
 			"jump_mp": 0
-		}
+		})
 	
-	var enemy_mech = _create_mech_for_deployment(enemy_mech_data, "enemy")
-	mechs_to_deploy.append(enemy_mech)
+	# Crear todos los mechs enemigos para despliegue
+	for mech_data in enemy_mechs_data:
+		var enemy_mech = _create_mech_for_deployment(mech_data, "enemy")
+		mechs_to_deploy.append(enemy_mech)
 	
 	# Iniciar fase de despliegue
 	_start_deployment_phase()
@@ -329,6 +418,7 @@ func _create_mech_for_deployment(mech_data: Dictionary, team: String) -> Mech:
 	mech.run_mp = mech_data.get("run_mp", 6)
 	mech.jump_mp = mech_data.get("jump_mp", 0)
 	mech.current_movement = mech.walk_mp
+	mech.is_player_controlled = (team == "player")  # Marcar si es del jugador
 	
 	# Copiar armadura
 	if mech_data.has("armor"):
@@ -691,6 +781,11 @@ func _input(event):
 			long_press_active = true
 			long_press_timer = 0.0
 			long_press_start_pos = event.position
+			has_moved_significantly = false  # Reset del flag de movimiento
+			
+			# Guardar posición inicial del toque para detectar drags
+			if event is InputEventScreenTouch:
+				touch_start_positions[event.index] = event.position
 			
 			# Calcular el hexágono donde empezó el long press
 			var world_pos = camera.get_global_mouse_position()
@@ -698,8 +793,19 @@ func _input(event):
 	
 	# Cancelar tap largo si se mueve mucho o se suelta antes de tiempo
 	if event is InputEventScreenDrag or event is InputEventMouseMotion:
-		if long_press_active and event.position.distance_to(long_press_start_pos) > 20:
+		if long_press_active and event.position.distance_to(long_press_start_pos) > TOUCH_MOVE_THRESHOLD:
 			long_press_active = false
+			has_moved_significantly = true
+		
+		# Detectar movimiento significativo para cualquier toque
+		if event is InputEventScreenDrag and touch_start_positions.has(event.index):
+			if event.position.distance_to(touch_start_positions[event.index]) > TOUCH_MOVE_THRESHOLD:
+				has_moved_significantly = true
+		
+		# Detectar movimiento significativo para mouse
+		if event is InputEventMouseMotion and touch_start_positions.has(0):
+			if event.position.distance_to(touch_start_positions[0]) > TOUCH_MOVE_THRESHOLD:
+				has_moved_significantly = true
 	
 	if (event is InputEventScreenTouch and not event.pressed) or (event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
 		if long_press_active and long_press_timer < LONG_PRESS_DURATION:
@@ -720,7 +826,12 @@ func _input(event):
 		
 	# Click/toque en hexágono
 	if event is InputEventScreenTouch and not event.pressed:  # Solo en release
-		if touch_points.size() == 0 and not long_press_active:  # Asegurar que no fue un gesto o tap largo
+		# Limpiar la posición inicial del toque
+		if touch_start_positions.has(event.index):
+			touch_start_positions.erase(event.index)
+		
+		# Solo procesar como click si no hubo movimiento significativo
+		if touch_points.size() == 0 and not long_press_active and not has_moved_significantly:
 			# Verificar cooldown de interacción con UI
 			if ui_interaction_cooldown > 0:
 				return
@@ -737,8 +848,18 @@ func _input(event):
 			var world_pos = camera.get_global_mouse_position()
 			var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 			_handle_hex_clicked(hex)
+		
+		# Resetear el flag de movimiento cuando se sueltan todos los toques
+		# Usar call_deferred para evitar race conditions con eventos emulados de mouse
+		if touch_points.size() == 0:
+			call_deferred("_reset_movement_flag")
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if not long_press_active:  # Solo si no está en proceso de tap largo
+		# Guardar posición inicial para detectar drags con mouse
+		touch_start_positions[0] = event.position
+		has_moved_significantly = false
+	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# Solo procesar como click si no hubo movimiento significativo
+		if not long_press_active and not has_moved_significantly:
 			# Verificar cooldown de interacción con UI (solo en móvil, no en PC)
 			if OS.has_feature("mobile") and ui_interaction_cooldown > 0:
 				return
@@ -755,6 +876,10 @@ func _input(event):
 			var world_pos = camera.get_global_mouse_position()
 			var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 			_handle_hex_clicked(hex)
+		
+		# Limpiar posición inicial y resetear flag con deferred
+		touch_start_positions.erase(0)
+		call_deferred("_reset_movement_flag")
 
 func _handle_camera_input(event) -> bool:
 	# Retorna true si el evento fue procesado como gesto de cámara
@@ -781,6 +906,8 @@ func _handle_camera_input(event) -> bool:
 				initial_zoom = camera.zoom
 		else:
 			# Soltar toque
+			# NO marcar movimiento aquí - solo se marca durante el drag real
+			
 			touch_points.erase(event.index)
 			
 			if touch_points.size() == 0:
@@ -792,7 +919,7 @@ func _handle_camera_input(event) -> bool:
 				drag_start_pos = remaining_point
 				camera_start_pos = camera.position
 		
-		return touch_points.size() > 0 or is_dragging
+		return touch_points.size() > 0
 	
 	# Movimiento táctil
 	if event is InputEventScreenDrag:
@@ -802,9 +929,11 @@ func _handle_camera_input(event) -> bool:
 			# Arrastrar cámara con un dedo
 			var drag_delta = (drag_start_pos - event.position) / camera.zoom.x
 			camera.position = camera_start_pos + drag_delta
+			has_moved_significantly = true  # Marcar que hubo movimiento de cámara
 			return true
 		elif touch_points.size() == 2:
 			# Zoom con pellizco (pinch)
+			has_moved_significantly = true  # Marcar que hubo gesto de zoom
 			var points = touch_points.values()
 			var current_distance = points[0].distance_to(points[1])
 			var zoom_factor = initial_pinch_distance / current_distance
@@ -824,25 +953,33 @@ func _handle_camera_input(event) -> bool:
 				drag_start_pos = event.position
 				camera_start_pos = camera.position
 			else:
+				# NO marcar movimiento aquí - solo se marca durante el drag real
 				is_dragging = false
 			return true
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			camera.zoom *= 1.1
 			camera.zoom.x = clamp(camera.zoom.x, MIN_ZOOM, MAX_ZOOM)
 			camera.zoom.y = clamp(camera.zoom.y, MIN_ZOOM, MAX_ZOOM)
+			has_moved_significantly = true  # Zoom también cuenta como gesto de cámara
 			return true
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			camera.zoom *= 0.9
 			camera.zoom.x = clamp(camera.zoom.x, MIN_ZOOM, MAX_ZOOM)
 			camera.zoom.y = clamp(camera.zoom.y, MIN_ZOOM, MAX_ZOOM)
+			has_moved_significantly = true  # Zoom también cuenta como gesto de cámara
 			return true
 	
 	if event is InputEventMouseMotion and is_dragging:
 		var drag_delta = (drag_start_pos - event.position) / camera.zoom.x
 		camera.position = camera_start_pos + drag_delta
+		has_moved_significantly = true  # Marcar que hubo movimiento de cámara
 		return true
 	
 	return false
+
+func _reset_movement_flag():
+	"""Helper para resetear el flag de movimiento de forma diferida"""
+	has_moved_significantly = false
 
 func _handle_hex_clicked(hex: Vector2i):
 	if not hex_grid.is_valid_hex(hex):
@@ -853,7 +990,7 @@ func _handle_hex_clicked(hex: Vector2i):
 		_handle_deployment_click(hex)
 		return
 	
-	print("[DEBUG] _handle_hex_clicked: hex=%s, current_state=%d" % [hex, current_state])
+	# print("[DEBUG] _handle_hex_clicked: hex=%s, current_state=%d" % [hex, current_state])
 	
 	match current_state:
 		GameEnums.GameState.MOVING:
@@ -957,8 +1094,11 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 	selected_unit.start_movement(movement_type)
 	
 	
-	# Actualizar hexágonos alcanzables según el tipo de movimiento
-	reachable_hexes = hex_grid.get_reachable_hexes(selected_unit.hex_position, selected_unit.current_movement)
+	# Actualizar hexagonos alcanzables segun el tipo de movimiento usando MovementSystem
+	if movement_type == GameEnums.MovementType.JUMP:
+		reachable_hexes = MovementSystem.get_jump_hexes(selected_unit.hex_position, selected_unit.current_movement, hex_grid, selected_unit)
+	else:
+		reachable_hexes = MovementSystem.get_reachable_hexes(selected_unit.hex_position, selected_unit.current_movement, movement_type, hex_grid, selected_unit)
 	
 	
 	var movement_names = ["None", "Walk", "Run", "Jump"]
@@ -1000,8 +1140,16 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 		unit.move_to_hex(hex, movement_cost)
 		hex_grid.set_unit(hex, unit)
 		
+		# Actualizar facing automaticamente basado en la direccion del movimiento
+		if old_pos != hex:
+			var new_facing = FacingSystem.get_facing_to_hex(old_pos, hex)
+			unit.facing = new_facing
+		
 		# ACTUALIZAR POSICIÓN VISUAL DEL MECH
 		unit.update_visual_position(hex_grid)
+		
+		# Actualizar visibilidad de todos los mechs tras movimiento
+		update_mech_visibility()
 		
 		# Log de movimiento con tipo
 		if ui:
@@ -1080,21 +1228,21 @@ func _handle_physical_targeting_click(hex: Vector2i):
 		_show_physical_attack_menu(target)
 
 func _handle_weapon_attack_click(hex: Vector2i):
-	print("[DEBUG] _handle_weapon_attack_click called: hex=%s" % hex)
+	# print("[DEBUG] _handle_weapon_attack_click called: hex=%s" % hex)
 	# Manejar selección de objetivo para ataque con armas
 	if selected_unit == null or selected_unit not in player_mechs:
-		print("[DEBUG] No selected_unit or not player mech")
+		# print("[DEBUG] No selected_unit or not player mech")
 		return
 	
 	var target = hex_grid.get_unit(hex)
-	print("[DEBUG] Target at hex: %s, is_enemy=%s" % [target.mech_name if target else "null", target in enemy_mechs if target else false])
+	# print("[DEBUG] Target at hex: %s, is_enemy=%s" % [target.mech_name if target else "null", target in enemy_mechs if target else false])
 	
 	# Verificar que hay un enemigo en el hex
 	if target != null and target in enemy_mechs:
 		var range_hexes = hex_grid.hex_distance(selected_unit.hex_position, target.hex_position)
 		current_attack_target = target
 		
-		print("[DEBUG] Showing weapon selector for target %s at range %d" % [target.mech_name, range_hexes])
+		# print("[DEBUG] Showing weapon selector for target %s at range %d" % [target.mech_name, range_hexes])
 		# Mostrar selector de armas
 		if ui:
 			ui.show_weapon_selector(selected_unit, target, range_hexes)
@@ -1320,7 +1468,7 @@ func _on_initiative_result(data: Dictionary):
 	_on_initiative_rolled(data)
 
 func _on_phase_changed(phase: String):
-	print("[DEBUG] _on_phase_changed: %s" % phase)
+	# print("[DEBUG] _on_phase_changed: %s" % phase)
 	
 	# Limpiar hexágonos de objetivos al cambiar de fase
 	physical_target_hexes.clear()
@@ -1332,7 +1480,7 @@ func _on_phase_changed(phase: String):
 	match phase:
 		"Movement":
 			current_state = GameEnums.GameState.MOVING
-			print("[DEBUG] Set current_state to MOVING (%d)" % current_state)
+			# print("[DEBUG] Set current_state to MOVING (%d)" % current_state)
 		"Weapon Attack":
 			current_state = GameEnums.GameState.WEAPON_ATTACK
 		"Physical Attack":
@@ -1352,16 +1500,17 @@ func _on_phase_changed(phase: String):
 
 func _on_unit_activated(unit):
 	selected_unit = unit
-	print("[DEBUG] _on_unit_activated: %s, current_state=%d, is_player=%s" % [
-		unit.mech_name, 
-		current_state,
-		unit in player_mechs
-	])
+	# print("[DEBUG] _on_unit_activated: %s, current_state=%d, is_player=%s" % [
+	# 	unit.mech_name, 
+	# 	current_state,
+	# 	unit in player_mechs
+	# ])
 	if typeof(unit.weapons) == TYPE_ARRAY:
-		print("[DEBUG]   Weapons count: %d" % unit.weapons.size())
-		for i in range(unit.weapons.size()):
-			print("[DEBUG]     Weapon %d: %s" % [i, unit.weapons[i].get("name", "Unknown")])
-	print("[DEBUG] selected_unit id: %s, unit id: %s" % [str(selected_unit), str(unit)])
+		pass
+		# print("[DEBUG]   Weapons count: %d" % unit.weapons.size())
+		# for i in range(unit.weapons.size()):
+		# 	print("[DEBUG]     Weapon %d: %s" % [i, unit.weapons[i].get("name", "Unknown")])
+	# print("[DEBUG] selected_unit id: %s, unit id: %s" % [str(selected_unit), str(unit)])
 	
 	# Resetear flag de ataque físico al inicio de cada activación
 	unit.has_performed_physical_attack = false
@@ -1397,6 +1546,14 @@ func _on_unit_activated(unit):
 				turn_manager.complete_unit_activation()
 				return
 			
+			# Verificar si hay enemigos adyacentes
+			if not has_adjacent_enemies(unit):
+				# No hay enemigos adyacentes - saltar automáticamente
+				if ui:
+					ui.add_combat_message("%s: No adjacent enemies - skipping physical attack" % unit.mech_name, Color.GRAY)
+				turn_manager.complete_unit_activation()
+				return
+			
 			# Mostrar enemigos adyacentes para ataque físico
 			physical_target_hexes.clear()
 			for enemy in enemy_mechs:
@@ -1412,12 +1569,29 @@ func _on_unit_activated(unit):
 		elif current_state == GameEnums.GameState.TARGETING or current_state == GameEnums.GameState.WEAPON_ATTACK:
 			# Cambiar al modo de selección de objetivo para armas
 			current_state = GameEnums.GameState.WEAPON_ATTACK
-			# Mostrar todos los enemigos como objetivos potenciales
+			
+			# Verificar si hay enemigos en LoS
+			if not has_enemies_in_los(unit):
+				# No hay enemigos en LoS - saltar automáticamente
+				if ui:
+					ui.add_combat_message("%s: No enemies in line of sight - skipping weapon attack" % unit.mech_name, Color.GRAY)
+				turn_manager.complete_unit_activation()
+				return
+			
+			# Mostrar enemigos visibles y con LoS como objetivos potenciales
 			for enemy in enemy_mechs:
-				if not enemy.is_destroyed:
-					target_hexes.append(enemy.hex_position)
+				if not enemy.is_destroyed and enemy.is_visible_to_player:
+					# Verificar Line of Sight desde la unidad actual
+					var has_los = LineOfSight.can_shoot(hex_grid, unit.hex_position, enemy.hex_position)
+					if has_los:
+						target_hexes.append(enemy.hex_position)
 			if ui:
-				ui.add_combat_message("Your turn: Select target for %s to fire weapons" % unit.mech_name, Color.ORANGE)
+				var los_count = target_hexes.size()
+				var total_enemies = enemy_mechs.filter(func(e): return not e.is_destroyed).size()
+				var message = "Your turn: Select target for %s to fire weapons" % unit.mech_name
+				if los_count < total_enemies:
+					message += " (%d/%d in LoS)" % [los_count, total_enemies]
+				ui.add_combat_message(message, Color.ORANGE)
 				# Mostrar mensaje de ayuda solo en fases de ataque (Weapon Attack y Physical Attack)
 				if turn_manager and (turn_manager.current_phase == GameEnums.TurnPhase.WEAPON_ATTACK or turn_manager.current_phase == GameEnums.TurnPhase.PHYSICAL_ATTACK):
 					ui.set_help_text("Click on an enemy to select weapons")
@@ -1429,104 +1603,17 @@ func _on_unit_activated(unit):
 		await get_tree().create_timer(0.5).timeout
 		_ai_turn(unit)
 	
+	# Actualizar visibilidad después de cada acción
+	update_mech_visibility()
 	update_overlays()
 
 func _ai_turn(unit):
-	# IA ESCALABLE: Busca entre TODOS los mechs del jugador (1-4+)
-	# Selecciona el objetivo más cercano/apropiado automáticamente
-	if current_state == GameEnums.GameState.MOVING:
-		# IA: Decidir tipo de movimiento (simple: correr si está lejos, caminar si está cerca)
-		var closest_player = null
-		var min_distance = INF
-		
-		# Buscar el jugador más cercano entre TODOS los jugadores disponibles
-		for player in player_mechs:
-			if not player.is_destroyed:
-				var dist = hex_grid.hex_distance(unit.hex_position, player.hex_position)
-				if dist < min_distance:
-					min_distance = dist
-					closest_player = player
-		
-		if closest_player:
-			# Elegir movimiento basado en distancia
-			var movement_type = Mech.MovementType.WALK
-			if min_distance > 8:
-				movement_type = Mech.MovementType.RUN  # Correr si está lejos
-			
-			unit.start_movement(movement_type)
-			
-			# Intentar moverse hacia el jugador
-			var reachable = hex_grid.get_reachable_hexes(unit.hex_position, unit.current_movement)
-			
-			var best_hex = unit.hex_position
-			var best_distance = min_distance
-			
-			for hex in reachable:
-				var dist = hex_grid.hex_distance(hex, closest_player.hex_position)
-				if dist < best_distance:
-					best_distance = dist
-					best_hex = hex
-			
-			if best_hex != unit.hex_position:
-				await get_tree().create_timer(0.3).timeout
-				_move_unit_to_hex(unit, best_hex)
-			else:
-				# No puede moverse, terminar activación
-				turn_manager.complete_unit_activation()
-		else:
-			turn_manager.complete_unit_activation()
-	
-	elif current_state == GameEnums.GameState.TARGETING or current_state == GameEnums.GameState.WEAPON_ATTACK:
-		# IA: Disparar al jugador más cercano en rango
-		var closest_player = null
-		var min_distance = INF
-		
-		for player in player_mechs:
-			if not player.is_destroyed:
-				var dist = hex_grid.hex_distance(unit.hex_position, player.hex_position)
-				if dist < min_distance:
-					min_distance = dist
-					closest_player = player
-		
-		if closest_player:
-			await get_tree().create_timer(0.5).timeout
-			
-			# La IA dispara todas las armas que están en rango
-			var weapon_indices = []
-			for i in range(unit.weapons.size()):
-				var weapon = unit.weapons[i]
-				var long_range = weapon.get("long_range", 9)
-				if min_distance <= long_range:
-					weapon_indices.append(i)
-			
-			if weapon_indices.size() > 0:
-				execute_weapon_attack(unit, closest_player, weapon_indices, min_distance)
-			else:
-				# No hay armas en rango
-				if ui:
-					ui.add_combat_message("%s has no weapons in range" % unit.mech_name, Color.GRAY)
-				_end_weapon_attack_phase()
-		else:
-			_end_weapon_attack_phase()
-	
-	elif current_state == GameEnums.GameState.PHYSICAL_TARGETING:
-		# Ataque físico al jugador más cercano (si está adyacente)
-		var closest_player = null
-		var min_distance = INF
-		
-		for player in player_mechs:
-			if not player.is_destroyed:
-				var dist = hex_grid.hex_distance(unit.hex_position, player.hex_position)
-				if dist <= 1 and dist < min_distance:
-					min_distance = dist
-					closest_player = player
-		
-		if closest_player:
-			await get_tree().create_timer(0.3).timeout
-			# IA elige puñetazo como ataque por defecto
-			_perform_physical_attack(unit, closest_player, "punch_right")
-		else:
-			turn_manager.complete_unit_activation()
+	# Usar el sistema de IA mejorado
+	if battle_ai and turn_manager:
+		await battle_ai.execute_ai_turn(unit, turn_manager.current_phase)
+	else:
+		# Fallback si no hay IA configurada
+		turn_manager.complete_unit_activation()
 
 func _draw():
 	# Esta función ya no es necesaria, los overlays se dibujan en overlay_layer

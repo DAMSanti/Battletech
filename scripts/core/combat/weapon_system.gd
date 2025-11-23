@@ -4,8 +4,16 @@ extends RefCounted
 ## Sistema de armas - Maneja disparo, cálculo de golpe y daño
 ## Responsabilidad única: Gestión de armas y combate a distancia
 
-static func calculate_to_hit(attacker, target, weapon: Dictionary, range_in_hexes: int, target_terrain = null) -> int:
+static func calculate_to_hit(attacker, target, weapon: Dictionary, range_in_hexes: int, target_terrain = null, hex_grid = null, attacker_hex: Vector2i = Vector2i.ZERO, target_hex: Vector2i = Vector2i.ZERO) -> int:
 	var base_gunnery = attacker.pilot_gunnery
+	
+	# NUEVO: Verificar Line of Sight
+	if hex_grid != null and attacker_hex != Vector2i.ZERO and target_hex != Vector2i.ZERO:
+		var los_data = LineOfSight.calculate_los(hex_grid, attacker_hex, target_hex)
+		
+		# Si la LoS está bloqueada, imposible disparar
+		if los_data.result == LineOfSight.Result.BLOCKED:
+			return -1  # No se puede disparar
 	
 	# Modificador por rango
 	var range_mod = 0
@@ -53,7 +61,17 @@ static func calculate_to_hit(attacker, target, weapon: Dictionary, range_in_hexe
 	if target_terrain != null:
 		terrain_mod = TerrainType.get_to_hit_modifier(target_terrain)
 	
-	var target_number = base_gunnery + range_mod + attacker_movement_mod + target_movement_mod + heat_mod + prone_mod + terrain_mod
+	# NUEVO: Modificador por Line of Sight (cobertura)
+	var los_mod = 0
+	if hex_grid != null and attacker_hex != Vector2i.ZERO and target_hex != Vector2i.ZERO:
+		var los_data = LineOfSight.calculate_los(hex_grid, attacker_hex, target_hex)
+		los_mod = los_data.to_hit_modifier
+		
+		# Modificador de altura
+		var height_mod = LineOfSight.calculate_height_modifier(hex_grid, attacker_hex, target_hex)
+		los_mod += height_mod
+	
+	var target_number = base_gunnery + range_mod + attacker_movement_mod + target_movement_mod + heat_mod + prone_mod + terrain_mod + los_mod
 	
 	return target_number
 

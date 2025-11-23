@@ -26,12 +26,50 @@ const HIT_LOCATION_TABLE = {
 	12: "head"           # Cabeza
 }
 
-static func calculate_to_hit(attacker, target, weapon, range_hexes: int, terrain_modifier: int = 0) -> Dictionary:
+static func calculate_to_hit(attacker, target, weapon, range_hexes: int, terrain_modifier: int = 0, hex_grid = null) -> Dictionary:
 	# Calcula el número objetivo y modificadores para impactar según BattleTech Total Warfare
 	# Retorna: { "target_number": int, "modifiers": Dictionary, "breakdown": String }
 	
 	var modifiers = {}
 	var breakdown_lines = []
+	
+	# 0. NUEVO: Verificar Line of Sight
+	if hex_grid != null and "hex_position" in attacker and "hex_position" in target:
+		var attacker_hex = attacker.hex_position
+		var target_hex = target.hex_position
+		var los_data = LineOfSight.calculate_los(hex_grid, attacker_hex, target_hex)
+		
+		# Si está bloqueado, imposible disparar
+		if los_data.result == LineOfSight.Result.BLOCKED:
+			modifiers["los_blocked"] = true
+			breakdown_lines.append("LINE OF SIGHT BLOCKED")
+			breakdown_lines.append(los_data.message)
+			return {
+				"target_number": 999,
+				"modifiers": modifiers,
+				"breakdown": "\n".join(breakdown_lines),
+				"can_shoot": false,
+				"los_message": los_data.message
+			}
+		
+		# Aplicar modificadores de LoS (cobertura)
+		if los_data.to_hit_modifier > 0:
+			modifiers["los_cover"] = los_data.to_hit_modifier
+			breakdown_lines.append("Cover/Woods: +%d" % los_data.to_hit_modifier)
+		
+		# Aplicar modificador de altura
+		var height_mod = LineOfSight.calculate_height_modifier(hex_grid, attacker_hex, target_hex)
+		if height_mod != 0:
+			modifiers["height"] = height_mod
+			if height_mod < 0:
+				breakdown_lines.append("Height Advantage: %d" % height_mod)
+			else:
+				breakdown_lines.append("Height Disadvantage: +%d" % height_mod)
+		
+		# Advertencia si solo puede golpear partes superiores
+		if not los_data.can_hit_all_locations:
+			modifiers["hull_down"] = true
+			breakdown_lines.append("(Target hull-down: upper locations only)")
 	
 	# 1. Gunnery Skill del piloto (base)
 	var gunnery_skill = attacker.pilot_skill if "pilot_skill" in attacker else 4
@@ -107,6 +145,12 @@ static func calculate_to_hit(attacker, target, weapon, range_hexes: int, terrain
 	if ecm_bap_mods.has("bap_bonus"):
 		target_number += ecm_bap_mods["bap_bonus"]  # Será negativo para mejorar
 	
+	# NUEVO: Aplicar modificadores de LoS
+	if modifiers.has("los_cover"):
+		target_number += modifiers["los_cover"]
+	if modifiers.has("height"):
+		target_number += modifiers["height"]
+	
 	# Crear línea de resumen
 	var breakdown = "\n".join(breakdown_lines)
 	breakdown += "\n─────────────────"
@@ -116,7 +160,8 @@ static func calculate_to_hit(attacker, target, weapon, range_hexes: int, terrain
 	return {
 		"target_number": target_number,
 		"modifiers": modifiers,
-		"breakdown": breakdown
+		"breakdown": breakdown,
+		"can_shoot": true
 	}
 
 static func _calculate_target_movement_modifier(target) -> int:

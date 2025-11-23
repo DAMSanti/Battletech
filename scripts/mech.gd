@@ -11,8 +11,9 @@ var current_movement: int = 3
 
 # Tipo de movimiento usado este turno
 enum MovementType { NONE, WALK, RUN, JUMP }
-var movement_type_used: MovementType = MovementType.NONE
+var movement_type_used: int = GameEnums.MovementType.NONE
 var hexes_moved_this_turn: int = 0
+var last_movement_type: int = GameEnums.MovementType.NONE  # Para modificadores de combate
 
 # Sistema de armadura por localización
 var armor: Dictionary = {
@@ -55,12 +56,18 @@ var destroyed_by: String = ""  # Nombre del mech que lo destruyó
 var pilot_name: String = "Pilot"
 var pilot_skill: int = 4  # Gunnery/Piloting skill
 
+# Sistema de visibilidad (Line of Sight / Fog of War)
+var is_visible_to_player: bool = true  # Controlado por sistema de LoS
+var is_player_controlled: bool = false  # True si es del jugador
+
 # Posición en el mapa
 var hex_position: Vector2i = Vector2i(0, 0)
-var facing: int = 0  # 0-5 para las 6 direcciones hexagonales
+var facing: int = 0  # 0-5 para las 6 direcciones hexagonales (FacingSystem.Facing)
+var torso_facing: int = 0  # Para torso twist (opcional)
 
 # Modificadores de combate basados en movimiento
 var target_movement_modifier: int = 0  # Modificador al ser atacado
+var attacker_movement_modifier: int = 0  # Modificador al atacar
 
 # Ataques físicos
 var can_punch_left: bool = true
@@ -99,7 +106,6 @@ func _draw():
 	var facing_angle = deg_to_rad(facing * 60 - 90)  # -90 para que apunte hacia arriba
 	var facing_point = Vector2(cos(facing_angle), sin(facing_angle)) * radius * 0.5
 	draw_line(Vector2.ZERO, facing_point, Color.YELLOW, 3.0)
-	draw_circle(facing_point, 4, Color.YELLOW)
 	
 	# Nombre del mech (centrado sobre el sprite)
 	var font = ThemeDB.fallback_font
@@ -155,12 +161,27 @@ func get_available_movement(movement_type: MovementType) -> int:
 	var heat_penalty = get_heat_movement_penalty()
 	return max(1, base_mp - heat_penalty)  # Mínimo 1 MP
 
-func start_movement(movement_type: MovementType):
+func start_movement(movement_type: int):  # GameEnums.MovementType
 	# Inicia un movimiento del tipo especificado
 	movement_type_used = movement_type
+	last_movement_type = movement_type
 	hexes_moved_this_turn = 0
-	current_movement = get_available_movement(movement_type)
 	has_performed_physical_attack = false  # Reset flag de ataque físico al inicio del turno
+	
+	# Calcular MPs disponibles según tipo usando el nuevo sistema
+	match movement_type:
+		GameEnums.MovementType.WALK:
+			current_movement = MovementSystem.calculate_walk_distance(self)
+			attacker_movement_modifier = 1  # +1 to-hit al disparar caminando
+		GameEnums.MovementType.RUN:
+			current_movement = MovementSystem.calculate_run_distance(self)
+			attacker_movement_modifier = 2  # +2 to-hit al disparar corriendo
+		GameEnums.MovementType.JUMP:
+			current_movement = MovementSystem.calculate_jump_distance(self)
+			attacker_movement_modifier = 3  # +3 to-hit al disparar saltando
+		_:
+			current_movement = 0
+			attacker_movement_modifier = 0
 
 func move_to_hex(new_hex: Vector2i, cost: int):
 	# Registra un movimiento a un nuevo hexágono
@@ -195,7 +216,7 @@ func _calculate_target_movement_modifier():
 		tmm = 0
 	
 	# Bonus adicional por salto
-	if movement_type_used == MovementType.JUMP:
+	if movement_type_used == GameEnums.MovementType.JUMP:
 		tmm += 1
 	
 	target_movement_modifier = tmm
@@ -206,11 +227,11 @@ func get_attacker_movement_modifier() -> int:
 	# Walked: +1, Ran: +2, Jumped: +3
 	var movement_mod = 0
 	match movement_type_used:
-		MovementType.WALK:
+		GameEnums.MovementType.WALK:
 			movement_mod = 1  # +1 al caminar
-		MovementType.RUN:
+		GameEnums.MovementType.RUN:
 			movement_mod = 2  # +2 al correr
-		MovementType.JUMP:
+		GameEnums.MovementType.JUMP:
 			movement_mod = 3  # +3 al saltar
 		_:
 			movement_mod = 0  # No se movió
@@ -228,15 +249,22 @@ func change_facing(new_facing: int, is_jump: bool=false):
 	# Caminar/correr: cada giro cuesta 1 MP
 	# Saltar: giros gratis
 	if is_jump:
-		facing = new_facing % 8
+		facing = new_facing % 6  # Hexagonal tiene 6 direcciones
 	elif can_change_facing(new_facing):
-		facing = new_facing % 8
+		facing = new_facing % 6
 		current_movement -= 1
 	
 	# Actualizar sprite con la nueva orientación
 	_update_sprite()
 
 func _update_sprite():
+	# Ocultar mech si no es visible al jugador
+	if not is_player_controlled and not is_visible_to_player:
+		visible = false
+		return
+	else:
+		visible = true
+	
 	if sprite_manager:
 		# Obtener el sprite correcto según tonelaje y orientación
 		sprite.texture = sprite_manager.get_sprite_for_mech(tonnage, facing)
@@ -254,20 +282,22 @@ func _update_sprite():
 
 func reset_movement():
 	# Resetea el movimiento al inicio del turno
-	movement_type_used = MovementType.NONE
+	movement_type_used = GameEnums.MovementType.NONE
+	last_movement_type = GameEnums.MovementType.NONE
 	hexes_moved_this_turn = 0
 	target_movement_modifier = 0
+	attacker_movement_modifier = 0
 	current_movement = walk_mp  # Por defecto, capacidad de caminar
 
 func finalize_movement():
 	# Aplica efectos del movimiento (calor) al finalizar
 	var movement_heat = 0
 	match movement_type_used:
-		MovementType.WALK:
+		GameEnums.MovementType.WALK:
 			movement_heat = 1
-		MovementType.RUN:
+		GameEnums.MovementType.RUN:
 			movement_heat = 2
-		MovementType.JUMP:
+		GameEnums.MovementType.JUMP:
 			movement_heat = hexes_moved_this_turn  # 1 por hex saltado
 	if movement_heat > 0:
 		add_heat(movement_heat)
@@ -739,3 +769,8 @@ func get_armor_data_for_ui() -> Dictionary:
 		result[location + "_structure_max"] = structure[location]["max"]
 	
 	return result
+
+func set_visibility(visible_state: bool):
+	"""Actualiza la visibilidad del mech según LoS"""
+	is_visible_to_player = visible_state
+	_update_sprite()

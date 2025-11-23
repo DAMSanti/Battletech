@@ -28,9 +28,40 @@ enum TurnPhase {
 ## Tipos de movimiento disponibles para mechs
 enum MovementType {
 	NONE,   # Sin movimiento
-	WALK,   # Caminar (sin penalizaciones)
-	RUN,    # Correr (+1 defensa, +2 atacar)
-	JUMP    # Saltar (+2 defensa, +3 atacar)
+	WALK,   # Caminar (1 MP por hex) - Penaliza -1 a impactar
+	RUN,    # Correr (2 MP por hex) - Penaliza -2 a impactar tú, +2 te impactan
+	JUMP    # Saltar (1 MP por hex) - Ignora terreno, penalizadores más altos
+}
+
+## Tipos de terreno detallados según BattleTech
+enum TerrainSubtype {
+	# Terrestres básicos
+	CLEAR_FLAT,          # Terreno despejado (coste +0)
+	LIGHT_WOODS,         # Bosque ligero (coste +1, da cobertura)
+	HEAVY_WOODS,         # Bosque denso (coste +2, mucha cobertura)
+	
+	# Colinas por nivel
+	HILL_LEVEL_1,        # Colina nivel +1 (coste +1 al subir)
+	HILL_LEVEL_2,        # Colina nivel +2 (coste +1 por nivel)
+	
+	# Acuáticos
+	WATER_DEPTH_1,       # Agua poco profunda (coste +1)
+	WATER_DEPTH_2,       # Agua profunda (no accesible caminando)
+	
+	# Difíciles
+	ROUGH_TERRAIN,       # Terreno difícil (coste +1, prohíbe correr)
+	BOG_SWAMP,           # Pantanoso (coste +1 + chequeo pilotaje)
+	RUBBLE,              # Escombros (coste +2 + chequeo)
+	
+	# Urbano
+	ROAD,                # Carretera (coste -1, mínimo 1)
+	PAVEMENT,            # Pavimento (coste base)
+	BUILDING,            # Edificio (coste +1 + chequeo)
+	
+	# Prohibidos
+	CLIFF,               # Acantilado (no transitable)
+	ABYSS,               # Abismo (no transitable)
+	OUT_OF_BOUNDS        # Fuera del mapa
 }
 
 ## Tipos de ataque físico

@@ -50,8 +50,8 @@ func _ready():
 	# Simple debug to verify shader loaded
 	if occlusion_shader == null:
 		print("[ERROR] occlusion_shader failed to load!")
-	else:
-		print("[OK] occlusion_shader loaded successfully")
+	# else:
+		# print("[OK] occlusion_shader loaded successfully")
 	
 	# Create depth viewport and roots
 	depth_viewport = SubViewport.new()
@@ -71,7 +71,7 @@ func _ready():
 	# Convert to integer size for the SubViewport (size property is Vector2i)
 	depth_viewport.size = Vector2i(int(vp_size.x), int(vp_size.y))
 	
-	print_debug("SubViewport size: %s" % depth_viewport.size)
+	# print_debug("SubViewport size: %s" % depth_viewport.size)
 	# Input is not used by the offscreen SubViewport in this renderer; avoid
 	# assigning `disable_input` which does not exist on SubViewport in this
 	# engine/exposure. We'll keep the SubViewport non-interactive by design.
@@ -196,7 +196,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		if typeof(s) == TYPE_DICTIONARY and s.has("elevation"):
 			max_elev = max(max_elev, int(s["elevation"]))
 
-	print_debug("[ELEV] base_elevation=%d, max_elev=%d, range=%d" % [base_elevation, max_elev, max_elev - base_elevation])
+	# print_debug("[ELEV] base_elevation=%d, max_elev=%d, range=%d" % [base_elevation, max_elev, max_elev - base_elevation])
 
 	# Cull surfaces and collect visible list
 	var visible_surfaces: Array = []
@@ -237,7 +237,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	_ensure_pool_count(main_pool, total, main_root)
 	_ensure_border_pool_count(total)
 	
-	print_debug("HexSurfaceRenderer: total=%d depth_pool_size=%d" % [total, depth_pool.size()])
+	# print_debug("HexSurfaceRenderer: total=%d depth_pool_size=%d" % [total, depth_pool.size()])
 
 	var idx = 0
 	var stats_processed = 0
@@ -386,22 +386,16 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	var depth_uv_scale = Vector2(fit_scale / viewport_size.x, fit_scale / viewport_size.y)
 	var depth_uv_offset = Vector2(-bounds_min.x * depth_uv_scale.x, -bounds_min.y * depth_uv_scale.y)
 	
-	print_debug("Bounds: %s to %s, scale: %f" % [bounds_min, bounds_max, fit_scale])
-	print_debug("Depth viewport: %s, depth_root children: %d, pools: depth=%d main=%d" % [depth_viewport.size, depth_root.get_child_count(), depth_pool.size(), main_pool.size()])
-	print_debug("[RENDER ORDER] Total entries: %d" % surf_entries.size())
+	# print_debug("Bounds: %s to %s, scale: %f" % [bounds_min, bounds_max, fit_scale])
+	# print_debug("Depth viewport: %s, depth_root children: %d, pools: depth=%d main=%d" % [depth_viewport.size, depth_root.get_child_count(), depth_pool.size(), main_pool.size()])
 	
 	var overlay_idx = 0  # Separate counter for overlay pools
-	var render_order = 0  # Debug counter
 	for s_entry in surf_entries:
 		# Check if this is an overlay (not a tile)
 		if s_entry.get("is_overlay", false):
 			# Render overlay
-			var o_depth = s_entry.get("depth", 0.0)
-			var o_hex = s_entry.get("hex", Vector2i(0, 0))
-			print_debug("  [%d] OVERLAY hex=%s depth=%.2f z_index=%d" % [render_order, o_hex, o_depth, int(o_depth)])
 			_render_single_overlay(s_entry, overlay_idx, bounds_min, bounds_max, bounds_size, fit_scale, depth_uv_scale, depth_uv_offset)
 			overlay_idx += 1
-			render_order += 1
 			continue
 		
 		var s = s_entry["surf"]
@@ -468,13 +462,6 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		# Make the depth-pass follow the same painter order so the depth texture
 		# contains the top-most depth per pixel (last drawn wins).
 		depth_poly.z_index = zidx
-		
-		# DEBUG: Print tile info
-		var tile_type = s.get("type", "unknown")
-		var tile_hex = s.get("hex", Vector2i(-1, -1))
-		if tile_type == "top":
-			print_debug("  [%d] TILE hex=%s type=%s depth=%.2f z_index=%d" % [render_order, tile_hex, tile_type, depth, zidx])
-		render_order += 1
 
 		# Extract color directly from surface
 		var surface_color = Color(0.2, 1.0, 0.2, 1.0)  # Bright green default
@@ -511,7 +498,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 				
 				# texture_scale: how many times the texture repeats across the hexagon
 				# 1.0 = texture shown once, 2.0 = texture repeats 2 times, 0.5 = only half texture visible
-				var texture_scale = 200.0
+				var texture_scale = 1000.0
 				
 				var uv_array = PackedVector2Array()
 				for p in poly_points:
@@ -527,14 +514,16 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 				main_poly.uv = uv_array
 				
 				if idx < 3:
-					print_debug("[TEXTURE] Loaded: %s (tex_size: %s, scale: %.2f)" % [texture_path, tex.get_size(), texture_scale])
-					print_debug("  BBox: %s to %s (size: %s)" % [min_point, max_point, bbox_size])
-					print_debug("  UV[0]: %s (normalized from %s)" % [uv_array[0], poly_points[0]])
+					pass
+					# print_debug("[TEXTURE] Loaded: %s (tex_size: %s, scale: %.2f)" % [texture_path, tex.get_size(), texture_scale])
+					# print_debug("  BBox: %s to %s (size: %s)" % [min_point, max_point, bbox_size])
+					# print_debug("  UV[0]: %s (normalized from %s)" % [uv_array[0], poly_points[0]])
 			else:
 				main_poly.texture = null
 				main_poly.color = surface_color
 				if idx < 3:
-					print_debug("[TEXTURE] FAILED to load: %s" % texture_path)
+					pass
+					# print_debug("[TEXTURE] FAILED to load: %s" % texture_path)
 		else:
 			# No texture - use solid color
 			main_poly.texture = null
@@ -588,11 +577,13 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 				mat.set_shader_parameter("normal_map", normal_tex)
 				mat.set_shader_parameter("use_normal_map", true)
 				if idx < 3:
-					print_debug("[NORMAL MAP] Loaded: %s" % normal_map_path)
+					pass
+					# print_debug("[NORMAL MAP] Loaded: %s" % normal_map_path)
 			else:
 				mat.set_shader_parameter("use_normal_map", false)
 				if idx < 3:
-					print_debug("[NORMAL MAP] FAILED to load: %s" % normal_map_path)
+					pass
+					# print_debug("[NORMAL MAP] FAILED to load: %s" % normal_map_path)
 		else:
 			mat.set_shader_parameter("use_normal_map", false)
 		

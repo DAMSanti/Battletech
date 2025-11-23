@@ -1089,7 +1089,7 @@ func _get_terrain_colors(terrain: TerrainType.Type, elevation: int) -> Dictionar
 func _get_terrain_texture_path(terrain: TerrainType.Type) -> String:
 	match terrain:
 		TerrainType.Type.CLEAR:
-			return "res://assets/textures/terrain/clear_albedo.jpeg"
+			return "res://assets/textures/terrain/clear_albedo.png"
 		TerrainType.Type.FOREST:
 			return "res://assets/textures/terrain/forest_albedo.png"
 		TerrainType.Type.WATER:
@@ -1099,13 +1099,13 @@ func _get_terrain_texture_path(terrain: TerrainType.Type) -> String:
 		TerrainType.Type.PAVEMENT:
 			return "res://assets/textures/terrain/pavement_albedo.png"
 		TerrainType.Type.SAND:
-			return "res://assets/textures/terrain/sand_albedo.png"  # Placeholder
+			return "res://assets/textures/terrain/sand_albedo.png"
 		TerrainType.Type.ICE:
-			return "res://assets/textures/terrain/ice_albedo.png"  # Placeholder
+			return "res://assets/textures/terrain/ice_albedo.png"
 		TerrainType.Type.BUILDING:
-			return "res://assets/textures/terrain/clear_albedo.png"  # Placeholder
+			return "res://assets/textures/terrain/building_albedo.png"
 		TerrainType.Type.HILL:
-			return "res://assets/textures/terrain/clear_albedo.jpeg"  # Similar to rough
+			return "res://assets/textures/terrain/hill_albedo.png"  # Similar to rough
 		_:
 			return ""  # No texture
 

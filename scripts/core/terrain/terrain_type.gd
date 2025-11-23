@@ -13,7 +13,12 @@ enum Type {
 	SAND,       # Arena - dificulta movimiento moderadamente
 	ICE,        # Hielo - muy resbaladizo
 	BUILDING,   # Edificio - cobertura total, dificulta movimiento
-	HILL        # Colina - ventaja de altura
+	HILL,       # Colina - ventaja de altura
+	LIGHT_WOODS, # Bosque ligero (menor coste que FOREST)
+	HEAVY_WOODS, # Bosque denso (mayor coste que FOREST)
+	BOG,         # Pantano
+	ROAD,        # Carretera (reduce coste)
+	RUBBLE       # Escombros
 }
 
 # Propiedades de cada terreno
@@ -22,6 +27,9 @@ const TERRAIN_DATA = {
 		"name": "Clear",
 		"name_es": "Despejado",
 		"movement_cost": 1,
+		"walk_cost": 1,      # BattleTech: 1 MP caminando
+		"run_cost": 2,       # BattleTech: 2 MP corriendo
+		"jump_cost": 1,      # BattleTech: 1 MP saltando
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
 		"blocks_los": false,
@@ -30,46 +38,146 @@ const TERRAIN_DATA = {
 		"icon": "",  # Sin icono para terreno despejado
 		"description": "Terreno abierto sin obstáculos"
 	},
+	Type.LIGHT_WOODS: {
+		"name": "Light Woods",
+		"name_es": "Bosque Ligero",
+		"movement_cost": 2,
+		"walk_cost": 2,      # 1 base + 1 terreno
+		"run_cost": 4,       # 2 base + 1 terreno
+		"jump_cost": 1,      # Saltar ignora terreno
+		"defense_bonus": 1,
+		"to_hit_modifier": 1,  # +1 por cada hex atravesado
+		"blocks_los": false,
+		"reduces_los": true,
+		"los_height": 1,     # Añade 1 nivel de altura para LoS
+		"color": Color(0.3, 0.6, 0.3),  # Verde medio
+		"symbol": "♠",
+		"icon": "res://assets/sprites/terrain/tree.svg",
+		"description": "Bosque ligero - +1 por cada hex atravesado"
+	},
+	Type.HEAVY_WOODS: {
+		"name": "Heavy Woods",
+		"name_es": "Bosque Denso",
+		"movement_cost": 3,
+		"walk_cost": 3,      # 1 base + 2 terreno
+		"run_cost": 5,       # 2 base + 2 terreno
+		"jump_cost": 1,      # Saltar ignora terreno
+		"defense_bonus": 2,
+		"to_hit_modifier": 2,  # +2 si atraviesa 1 hex, bloquea si 2+
+		"blocks_los": false,  # No bloquea directamente (ver reglas especiales)
+		"reduces_los": true,
+		"los_height": 2,     # Añade 2 niveles de altura para LoS
+		"blocks_after_count": 2,  # Bloquea si atraviesas 2+ hexes
+		"prohibits_running": false,
+		"color": Color(0.2, 0.5, 0.2),  # Verde oscuro
+		"symbol": "♣",
+		"icon": "res://assets/sprites/terrain/tree.svg",
+		"description": "Bosque denso - +2 si atraviesa 1 hex, bloquea si 2+"
+	},
 	Type.FOREST: {
 		"name": "Forest",
 		"name_es": "Bosque",
 		"movement_cost": 2,
+		"walk_cost": 2,
+		"run_cost": 4,
+		"jump_cost": 1,
 		"defense_bonus": 1,
-		"to_hit_modifier": 1,
+		"to_hit_modifier": 2,  # Tratado como Heavy Woods
 		"blocks_los": false,
+		"los_height": 2,     # Añade 2 niveles como Heavy Woods
+		"blocks_after_count": 2,  # Bloquea si atraviesas 2+ hexes
 		"color": Color(0.2, 0.5, 0.2),  # Verde oscuro
 		"symbol": "♣",
 		"icon": "res://assets/sprites/terrain/tree.svg",
-		"description": "Bosque denso que dificulta el movimiento y proporciona cobertura"
+		"description": "Bosque denso - +2 si atraviesa 1 hex, bloquea si 2+"
 	},
 	Type.WATER: {
 		"name": "Water",
 		"name_es": "Agua",
-		"movement_cost": 4,
+		"movement_cost": 2,
+		"walk_cost": 2,      # Agua poco profunda: 1 base + 1 terreno
+		"run_cost": 4,       # 2 base + 1 terreno
+		"jump_cost": 1,      # Saltar ignora terreno
+		"depth": 1,          # Profundidad en niveles
 		"defense_bonus": 0,
-		"to_hit_modifier": 2,
+		"to_hit_modifier": 1,
 		"blocks_los": false,
 		"color": Color(0.2, 0.4, 0.8),  # Azul
 		"symbol": "≈",
 		"icon": "res://assets/sprites/terrain/water.svg",
-		"description": "Agua profunda que ralentiza mucho el movimiento"
+		"description": "Agua poco profunda - Mechs pueden entrar, vehículos a veces no"
 	},
 	Type.ROUGH: {
 		"name": "Rough",
 		"name_es": "Difícil",
 		"movement_cost": 2,
+		"walk_cost": 2,      # 1 base + 1 terreno
+		"run_cost": 4,       # 2 base + 1 terreno (algunas reglas prohíben correr)
+		"jump_cost": 1,      # Saltar ignora terreno
+		"prohibits_running": true,  # Según edición
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
 		"blocks_los": false,
 		"color": Color(0.5, 0.4, 0.3),  # Marrón
 		"symbol": "◆",
 		"icon": "res://assets/sprites/terrain/mountain.svg",
-		"description": "Terreno irregular con rocas y escombros"
+		"description": "Terreno irregular - puede prohibir correr"
+	},
+	Type.BOG: {
+		"name": "Bog/Swamp",
+		"name_es": "Pantano",
+		"movement_cost": 2,
+		"walk_cost": 2,      # 1 base + 1 terreno
+		"run_cost": 4,       # 2 base + 1 terreno
+		"jump_cost": 1,      # Saltar ignora terreno
+		"defense_bonus": 0,
+		"to_hit_modifier": 0,
+		"requires_piloting_check": true,  # Riesgo de atascarse
+		"blocks_los": false,
+		"color": Color(0.4, 0.5, 0.3),  # Verde pantanoso
+		"symbol": "≋",
+		"icon": "res://assets/sprites/terrain/water.svg",
+		"description": "Pantano - requiere chequeo de pilotaje o te atascas"
+	},
+	Type.RUBBLE: {
+		"name": "Rubble",
+		"name_es": "Escombros",
+		"movement_cost": 3,
+		"walk_cost": 3,      # 1 base + 2 terreno
+		"run_cost": 5,       # 2 base + 2 terreno
+		"jump_cost": 1,      # Saltar ignora terreno
+		"requires_piloting_check": true,
+		"defense_bonus": 1,
+		"to_hit_modifier": 0,
+		"blocks_los": false,
+		"color": Color(0.5, 0.5, 0.5),  # Gris
+		"symbol": "▒",
+		"icon": "res://assets/sprites/terrain/mountain.svg",
+		"description": "Escombros - coste +2 y chequeo de pilotaje"
+	},
+	Type.ROAD: {
+		"name": "Road",
+		"name_es": "Carretera",
+		"movement_cost": 1,
+		"walk_cost": 0,      # -1 al coste (mínimo 1 total)
+		"run_cost": 1,       # -1 al coste (mínimo 1 total)
+		"jump_cost": 1,      # Saltar no beneficia de carretera
+		"cost_modifier": -1, # Reduce coste en 1 (mínimo 1)
+		"defense_bonus": 0,
+		"to_hit_modifier": 0,
+		"blocks_los": false,
+		"color": Color(0.3, 0.3, 0.3),  # Gris oscuro
+		"symbol": "═",
+		"icon": "res://assets/sprites/terrain/pavement.svg",
+		"description": "Carretera - reduce coste de movimiento (mínimo 1)"
 	},
 	Type.PAVEMENT: {
 		"name": "Pavement",
 		"name_es": "Pavimento",
 		"movement_cost": 1,
+		"walk_cost": 1,
+		"run_cost": 2,
+		"jump_cost": 1,
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
 		"blocks_los": false,
@@ -82,6 +190,9 @@ const TERRAIN_DATA = {
 		"name": "Sand",
 		"name_es": "Arena",
 		"movement_cost": 2,
+		"walk_cost": 2,
+		"run_cost": 4,
+		"jump_cost": 1,
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
 		"blocks_los": false,
@@ -94,6 +205,9 @@ const TERRAIN_DATA = {
 		"name": "Ice",
 		"name_es": "Hielo",
 		"movement_cost": 1,
+		"walk_cost": 1,
+		"run_cost": 2,
+		"jump_cost": 1,
 		"defense_bonus": 0,
 		"to_hit_modifier": 0,
 		"blocks_los": false,
@@ -106,32 +220,72 @@ const TERRAIN_DATA = {
 	Type.BUILDING: {
 		"name": "Building",
 		"name_es": "Edificio",
-		"movement_cost": 3,
+		"movement_cost": 2,
+		"walk_cost": 2,      # 1 base + 1 entrada
+		"run_cost": 4,       # 2 base + 1 entrada
+		"jump_cost": 1,      # Saltar a edificio (según altura)
+		"requires_piloting_check": true,
 		"defense_bonus": 2,
 		"to_hit_modifier": 2,
-		"blocks_los": true,
+		"blocks_los": true,  # Bloquea si es más alto que la línea
+		"los_height": 3,     # Añade 3 niveles base (más elevación)
 		"color": Color(0.6, 0.6, 0.6),  # Gris oscuro
 		"symbol": "■",
 		"icon": "res://assets/sprites/terrain/building.svg",
-		"description": "Edificio que proporciona cobertura pesada"
+		"description": "Edificio - bloquea LoS si más alto que línea de visión"
 	},
 	Type.HILL: {
 		"name": "Hill",
 		"name_es": "Colina",
 		"movement_cost": 2,
+		"walk_cost": 1,      # +1 por cada nivel ascendido (bajar=0)
+		"run_cost": 2,       # +1 por cada nivel ascendido (bajar=0)
+		"jump_cost": 1,      # Saltar ignora coste de elevación
+		"elevation_cost_per_level": 1,  # +1 MP por nivel al subir
 		"defense_bonus": 0,
 		"to_hit_modifier": -1,
 		"blocks_los": false,
 		"color": Color(0.6, 0.5, 0.3),  # Marrón claro
 		"symbol": "▴",
 		"icon": "res://assets/sprites/terrain/hill.svg",
-		"description": "Elevación que proporciona ventaja de altura",
+		"description": "Elevación - coste +1 MP por nivel al subir (bajar gratis)",
 		"special": "height_advantage"
 	}
 }
 
 static func get_movement_cost(terrain_type: Type) -> int:
 	return TERRAIN_DATA[terrain_type]["movement_cost"]
+
+## Obtener coste de movimiento según el tipo (walk, run, jump)
+static func get_movement_cost_by_type(terrain_type: Type, movement_type: int) -> int:
+	var data = TERRAIN_DATA[terrain_type]
+	
+	# movement_type: 1=WALK, 2=RUN, 3=JUMP (desde GameEnums.MovementType)
+	match movement_type:
+		1:  # WALK
+			return data.get("walk_cost", data["movement_cost"])
+		2:  # RUN
+			return data.get("run_cost", data["movement_cost"] * 2)
+		3:  # JUMP
+			return data.get("jump_cost", 1)
+		_:
+			return data["movement_cost"]
+
+## Verificar si el terreno requiere chequeo de pilotaje
+static func requires_piloting_check(terrain_type: Type) -> bool:
+	return TERRAIN_DATA[terrain_type].get("requires_piloting_check", false)
+
+## Verificar si el terreno prohíbe correr
+static func prohibits_running(terrain_type: Type) -> bool:
+	return TERRAIN_DATA[terrain_type].get("prohibits_running", false)
+
+## Obtener modificador de coste (para carreteras = -1)
+static func get_cost_modifier(terrain_type: Type) -> int:
+	return TERRAIN_DATA[terrain_type].get("cost_modifier", 0)
+
+## Obtener profundidad del agua
+static func get_water_depth(terrain_type: Type) -> int:
+	return TERRAIN_DATA[terrain_type].get("depth", 0)
 
 static func get_defense_bonus(terrain_type: Type) -> int:
 	return TERRAIN_DATA[terrain_type]["defense_bonus"]
@@ -166,3 +320,15 @@ static func get_special_rule(terrain_type: Type) -> String:
 
 static func get_icon(terrain_type: Type) -> String:
 	return TERRAIN_DATA[terrain_type]["icon"]
+
+## Obtener altura LoS del terreno (para cálculo de visibilidad)
+static func get_los_height(terrain_type: Type) -> int:
+	return TERRAIN_DATA[terrain_type].get("los_height", 0)
+
+## Verificar si reduce LoS (bosques)
+static func reduces_los(terrain_type: Type) -> bool:
+	return TERRAIN_DATA[terrain_type].get("reduces_los", false)
+
+## Obtener cuenta de bloqueo (cuántos hexes antes de bloquear)
+static func get_blocks_after_count(terrain_type: Type) -> int:
+	return TERRAIN_DATA[terrain_type].get("blocks_after_count", 1)

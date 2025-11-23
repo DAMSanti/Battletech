@@ -29,12 +29,12 @@ const SPRITE_PATHS = {
 
 # Debug info
 func _init():
-	print("[MechSpriteManager] Initialized")
-	print("[MechSpriteManager] Base path: ", BASE_PATH)
+	# print("[MechSpriteManager] Initialized")
+	# print("[MechSpriteManager] Base path: ", BASE_PATH)
 	# Verificar que los directorios existen
 	for mech_class in SPRITE_PATHS.keys():
-		var dir = SPRITE_PATHS[mech_class]
-		print("[MechSpriteManager] Checking directory: ", dir)
+		var _dir = SPRITE_PATHS[mech_class]
+		# print("[MechSpriteManager] Checking directory: ", dir)
 
 # Mapping de facing hexagonal (6 direcciones) a índice de sprite (8 direcciones)
 # Facing hexagonal: 0=N, 1=NE, 2=SE, 3=S, 4=SW, 5=NW

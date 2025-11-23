@@ -128,7 +128,7 @@ func _calculate_rotation_cost(from_facing: int, to_facing: int) -> int:
 	return min(clockwise, counter_clockwise)
 
 func _on_facing_button_pressed(facing: int):
-	print("[FACING_SELECTOR] Selected facing: %d" % facing)
+	# print("[FACING_SELECTOR] Selected facing: %d" % facing)
 	facing_selected.emit(facing)
 	visible = false
 

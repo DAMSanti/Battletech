@@ -847,14 +847,14 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 	weapon_selector_panel.set_meta("range", range_hexes)
 	
 	# Debug: verificar qué mech y cuántas armas tiene
-	print("[DEBUG] show_weapon_selector - Attacker: %s, Weapons count: %d" % [attacker.mech_name, attacker.weapons.size()])
+	# print("[DEBUG] show_weapon_selector - Attacker: %s, Weapons count: %d" % [attacker.mech_name, attacker.weapons.size()])
 	
 	# Crear filas para cada arma con label clickeable + checkbox separados
 	var y_pos = 50
 	var weapon_index = 0
 	
 	for weapon in attacker.weapons:
-		print("[DEBUG] Processing weapon: %s" % weapon.get("name", "Unknown"))
+		# print("[DEBUG] Processing weapon: %s" % weapon.get("name", "Unknown"))
 		# Calcular modificadores de impacto para esta arma
 		var weapon_attack_sys = preload("res://scripts/core/combat/weapon_attack_system.gd")
 		var to_hit_data = weapon_attack_sys.calculate_to_hit(attacker, target, weapon, range_hexes)

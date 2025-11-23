@@ -39,6 +39,8 @@ var is_shutdown: bool = false
 var moved_this_turn: bool = false
 var ran_this_turn: bool = false
 var fired_this_turn: bool = false
+var is_visible_to_player: bool = true  # Controlado por sistema de LoS
+var is_player_controlled: bool = false  # True si es del jugador
 
 # Estructura del mech
 var armor_locations: Dictionary = {
@@ -90,6 +92,13 @@ func initialize(hex_pos: Vector2i, team: String):
 	name = mech_name + "_" + team
 
 func update_visual():
+	# Ocultar mech si no es visible al jugador
+	if not is_player_controlled and not is_visible_to_player:
+		visible = false
+		return
+	else:
+		visible = true
+	
 	# Actualizar sprite según orientación y estado
 	var texture = sprite_manager.get_sprite_for_mech(tonnage, facing)
 	if texture:
@@ -278,3 +287,8 @@ func reset_turn_state():
 	moved_this_turn = false
 	ran_this_turn = false
 	fired_this_turn = false
+
+func set_visibility(visible_state: bool):
+	"""Actualiza la visibilidad del mech según LoS"""
+	is_visible_to_player = visible_state
+	update_visual()
