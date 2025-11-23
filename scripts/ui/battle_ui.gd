@@ -531,6 +531,10 @@ func _add_message_to_log(message: String, color: Color):
 						if tmm_start != -1 and tmm_end != -1:
 							tmm = " (TMM " + rest.substr(tmm_start, tmm_end - tmm_start) + ")"
 					final_message = name_and_type + " → " + destination + tmm
+		elif "Moved" in msg and "hexes" in msg and "Cost:" in msg:
+			return  # Ocultar detalles de movimiento (hexágonos y coste)
+		elif "MPs remaining:" in msg and "TMM:" in msg:
+			return  # Ocultar MPs restantes y TMM en modo short
 		elif "Movement heat generated" in msg:
 			return
 		elif "Movimiento realizado" in msg:

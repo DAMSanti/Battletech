@@ -287,7 +287,8 @@ func reset_movement():
 	hexes_moved_this_turn = 0
 	target_movement_modifier = 0
 	attacker_movement_modifier = 0
-	current_movement = walk_mp  # Por defecto, capacidad de caminar
+	# Calcular walk_mp con penalizaciones (daño en piernas, calor, etc.)
+	current_movement = MovementSystem.calculate_walk_distance(self)
 
 func finalize_movement():
 	# Aplica efectos del movimiento (calor) al finalizar

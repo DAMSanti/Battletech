@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://5wpob2dm022b"
-path="res://.godot/imported/water_normal.png-682ebddcf76c52581e46916bfbce612e.ctex"
+uid="uid://clprvh2nnj5a0"
+path="res://.godot/imported/_water_albedo.jpeg-b24b97de1644ed4f52e1c16b622c45eb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/textures/terrain/water_normal.png"
-dest_files=["res://.godot/imported/water_normal.png-682ebddcf76c52581e46916bfbce612e.ctex"]
+source_file="res://assets/textures/terrain/_water_albedo.jpeg"
+dest_files=["res://.godot/imported/_water_albedo.jpeg-b24b97de1644ed4f52e1c16b622c45eb.ctex"]
 
 [params]
 

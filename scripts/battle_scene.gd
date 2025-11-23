@@ -1093,6 +1093,27 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 	
 	selected_unit.start_movement(movement_type)
 	
+	var movement_names = ["None", "Walk", "Run", "Jump"]
+	
+	# Verificar si hay MPs disponibles
+	if selected_unit.current_movement <= 0:
+		if ui:
+			ui.add_combat_message("%s: Cannot move (%s) - 0 MP available" % [selected_unit.mech_name, movement_names[movement_type]], Color.RED)
+			var penalties = []
+			# Verificar penalizaciones
+			if selected_unit.heat > 0:
+				var heat_penalty = selected_unit.get_heat_movement_penalty()
+				if heat_penalty > 0:
+					penalties.append("Heat: -%d MP" % heat_penalty)
+			if selected_unit.armor["left_leg"]["current"] <= 0 or selected_unit.armor["right_leg"]["current"] <= 0:
+				penalties.append("Leg damage")
+			if penalties.size() > 0:
+				ui.add_combat_message("  Penalties: %s" % ", ".join(penalties), Color.YELLOW)
+			ui.add_combat_message("  Skipping movement phase...", Color.GRAY)
+		# Auto-completar activación si no hay movimiento posible
+		await get_tree().create_timer(1.0).timeout
+		turn_manager.complete_unit_activation()
+		return
 	
 	# Actualizar hexagonos alcanzables segun el tipo de movimiento usando MovementSystem
 	if movement_type == GameEnums.MovementType.JUMP:
@@ -1100,10 +1121,17 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 	else:
 		reachable_hexes = MovementSystem.get_reachable_hexes(selected_unit.hex_position, selected_unit.current_movement, movement_type, hex_grid, selected_unit)
 	
-	
-	var movement_names = ["None", "Walk", "Run", "Jump"]
+	# Verificar si se encontraron hexágonos alcanzables
 	if ui:
-		ui.add_combat_message("%s selected: %s (%d MP)" % [selected_unit.mech_name, movement_names[movement_type], selected_unit.current_movement], Color.CYAN)
+		if reachable_hexes.size() == 0 and selected_unit.current_movement > 0:
+			ui.add_combat_message("%s: No reachable hexes (%s, %d MP)" % [selected_unit.mech_name, movement_names[movement_type], selected_unit.current_movement], Color.ORANGE)
+			ui.add_combat_message("  Surrounded or blocked. Skipping movement...", Color.GRAY)
+			# Auto-completar si está bloqueado
+			await get_tree().create_timer(1.0).timeout
+			turn_manager.complete_unit_activation()
+			return
+		else:
+			ui.add_combat_message("%s selected: %s (%d MP, %d hexes)" % [selected_unit.mech_name, movement_names[movement_type], selected_unit.current_movement, reachable_hexes.size()], Color.CYAN)
 	
 	update_overlays()
 
@@ -1129,8 +1157,13 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 	var path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
 	
 	if path.size() > 0:
-		# Calcular coste de movimiento
-		var movement_cost = path.size() - 1
+		# Calcular coste REAL de movimiento recorriendo el path
+		var movement_cost = 0
+		for i in range(1, path.size()):  # Empezar desde 1 (el 0 es la posición actual)
+			var from_hex = path[i - 1]
+			var to_hex = path[i]
+			var step_cost = MovementSystem.calculate_movement_cost(from_hex, to_hex, unit.movement_type_used, hex_grid)
+			movement_cost += step_cost
 		
 		# Actualizar posición en el grid
 		hex_grid.set_unit(unit.hex_position, null)
@@ -1155,10 +1188,32 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 		if ui:
 			var movement_names = ["", "Walking", "Running", "Jumping"]
 			var move_type_str = movement_names[unit.movement_type_used]
-			ui.add_combat_message("%s %s from [%d,%d] to [%d,%d] (TMM: +%d)" % [
-				unit.mech_name, move_type_str, old_pos.x, old_pos.y, hex.x, hex.y, unit.target_movement_modifier
+			
+			# Calcular distancia en hexágonos
+			var hex_distance = path.size() - 1
+			
+			# Calcular cambio de elevación
+			var old_elevation = hex_grid.get_elevation(old_pos)
+			var new_elevation = hex_grid.get_elevation(hex)
+			var elevation_change = new_elevation - old_elevation
+			
+			# Mensaje principal de movimiento
+			ui.add_combat_message("%s %s from [%d,%d] to [%d,%d]" % [
+				unit.mech_name, move_type_str, old_pos.x, old_pos.y, hex.x, hex.y
 			], Color.WHITE)
-			ui.add_combat_message("  → MPs remaining: %d" % unit.current_movement, Color.CYAN)
+			
+			# Detalles del movimiento
+			var details = "  → Moved %d hex%s, Cost: %d MP" % [
+				hex_distance, 
+				"es" if hex_distance != 1 else "",
+				movement_cost
+			]
+			if elevation_change != 0:
+				var elev_sign = "+" if elevation_change > 0 else ""
+				details += " (Elev: %s%d)" % [elev_sign, elevation_change]
+			ui.add_combat_message(details, Color.CYAN)
+			
+			ui.add_combat_message("  → MPs remaining: %d, TMM: +%d" % [unit.current_movement, unit.target_movement_modifier], Color.CYAN)
 			
 			# Registrar calor del movimiento (no aplicar aún, se procesará en fase de calor)
 			var movement_heat = unit.finalize_movement()
@@ -1171,11 +1226,9 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 		if unit in player_mechs:
 			reachable_hexes.clear()
 			
-			if unit.current_movement > 0:
-				# Hay MPs restantes, permitir rotación
-				if ui:
-					ui.add_combat_message("Select final facing (costs 1 MP per rotation)", Color.YELLOW)
-				
+			# Verificar si tiene al menos 1 MP para rotar (incluso si current_movement quedó en 0)
+			# El selector mostrará correctamente cuántos MPs tiene disponibles
+			if ui and ui.has_method("show_facing_selector_with_current"):
 				# Mostrar selector de facing
 				selected_hex = hex  # Guardar posición actual
 				var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
@@ -1183,16 +1236,28 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 				if camera:
 					screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
 				
-				if ui and ui.has_method("show_facing_selector_with_current"):
-					ui.show_facing_selector_with_current(screen_pos, unit.facing, unit.current_movement)
-				elif ui and ui.has_method("show_facing_selector"):
-					ui.show_facing_selector(screen_pos)
+				# Siempre mostrar el selector, que internamente manejará si hay MPs o no
+				ui.show_facing_selector_with_current(screen_pos, unit.facing, unit.current_movement)
 			else:
-				# No hay MPs, finalizar
-				if ui:
-					ui.add_combat_message("No MPs remaining. Movement complete.", Color.YELLOW)
-				await get_tree().create_timer(0.5).timeout
-				turn_manager.complete_unit_activation()
+				# Fallback si no hay método mejorado
+				if unit.current_movement > 0:
+					if ui:
+						ui.add_combat_message("Select final facing (costs 1 MP per rotation)", Color.YELLOW)
+					
+					selected_hex = hex
+					var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
+					var screen_pos = hex_pixel
+					if camera:
+						screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
+					
+					if ui and ui.has_method("show_facing_selector"):
+						ui.show_facing_selector(screen_pos)
+				else:
+					# No hay MPs, finalizar
+					if ui:
+						ui.add_combat_message("No MPs remaining. Movement complete.", Color.YELLOW)
+					await get_tree().create_timer(0.5).timeout
+					turn_manager.complete_unit_activation()
 		else:
 			# Para enemigos: también completar activación después de moverse
 			reachable_hexes.clear()

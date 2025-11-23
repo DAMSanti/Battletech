@@ -7,3 +7,10 @@ res://scripts/core/terrain/terrain_type.gd
 res://scripts/entities/mech_entity.gd
 res://scripts/ui/los_visualizer.gd
 res://scripts/managers/battle_ai.gd
+res://scripts/ui/battle_ui.gd
+res://scripts/hex_grid.gd
+res://scripts/core/terrain/terrain_generator.gd
+res://scripts/core/terrain/terrain_decoration.gd
+res://scripts/core/movement/movement_system.gd
+res://scripts/core/terrain/procedural_map_generator.gd
+res://scripts/test_procedural_generator.gd

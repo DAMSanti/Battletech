@@ -4,9 +4,6 @@ class_name BattleAI
 ## Sistema de IA mejorado para unidades enemigas
 ## Maneja la lógica de decisiones de los mechs enemigos con evaluación táctica
 
-const WeaponAttackSystem = preload("res://scripts/core/combat/weapon_attack_system.gd")
-const PhysicalAttackSystem = preload("res://scripts/core/combat/physical_attack_system.gd")
-
 var hex_grid: HexGrid
 var player_mechs: Array = []
 var battle_scene: Node = null

@@ -38,7 +38,10 @@ func _ready():
 	# Generar seed aleatorio para esta partida
 	terrain_seed = randi()
 	_preload_terrain_icons()
-	_initialize_grid()
+	
+	# Generar mapa procedural
+	_generate_procedural_map()
+	
 	queue_redraw()  # Forzar redibujado con los nuevos terrenos
 	# Ensure we watch for inspector changes in editor / runtime
 	_prev_debug_draw_surfaces = debug_draw_surfaces
@@ -64,367 +67,11 @@ func _preload_terrain_icons():
 			if texture:
 				terrain_icons[terrain_type] = texture
 
-func _initialize_grid():
-	# Decidir tipo de mapa (50% urbano, 50% natural)
-	var is_urban_map = randf() < 0.5
-	
-	# FASE 1: Generar terreno base con ruido
-	_generate_base_terrain()
-	
-	if is_urban_map:
-		# FASE 2: Generar zona urbana (solo en mapas urbanos)
-		_generate_urban_zone()
-		
-		# FASE 3: Aplanar terreno urbano ANTES de generar elevaciones
-		_flatten_urban_area()
-		
-		# FASE 4: Generar carreteras que conectan edificios
-		_generate_roads()
-	else:
-		# En mapas naturales, generar bosques más abundantes
-		_generate_forest_patches(true)  # Modo abundante
-	
-	# FASE 5: Generar bosques coherentes (si no es urbano o poco si es urbano)
-	if not is_urban_map:
-		_generate_forest_patches(false)
-	
-	# FASE 6: Generar elevación coherente
-	_generate_all_elevations()
-	
-	# FASE 7: Marcar hexágonos transitables
-	_mark_walkable_hexes()
-
-# FASE 1: Terreno base con ruido (solo terrenos naturales)
-func _generate_base_terrain():
-	for q in range(grid_width):
-		for r in range(grid_height):
-			var pos = Vector2i(q, r)
-			var noise_value = _simple_noise(q, r)
-			
-			var terrain_type: TerrainType.Type
-			
-			# Solo terrenos naturales en esta fase
-			if noise_value < 0.05:
-				terrain_type = TerrainType.Type.WATER
-			elif noise_value < 0.15:
-				terrain_type = TerrainType.Type.SAND
-			elif noise_value < 0.40:
-				terrain_type = TerrainType.Type.CLEAR
-			elif noise_value < 0.60:
-				terrain_type = TerrainType.Type.ROUGH
-			elif noise_value < 0.80:
-				terrain_type = TerrainType.Type.HILL
-			else:
-				terrain_type = TerrainType.Type.CLEAR  # Placeholder para bosques
-			
-			hex_data[pos] = {
-				"terrain": terrain_type,
-				"elevation": 0,  # Se calculará después
-				"unit": null,
-				"walkable": true
-			}
-
-# FASE 2: Generar zona urbana coherente (máximo 50% del mapa, centrada)
-func _generate_urban_zone():
-	# Calcular centro del mapa
-	var center_q = int(grid_width / 2.0)
-	var center_r = int(grid_height / 2.0)
-	var center = Vector2i(center_q, center_r)
-	
-	# Calcular área máxima urbana (50% del mapa)
-	var total_tiles = grid_width * grid_height
-	var max_urban_tiles = total_tiles * 0.5
-	
-	# Número de edificios (15-25% del área urbana)
-	var num_buildings = int(max_urban_tiles * randf_range(0.15, 0.25))
-	
-	# Radio máximo desde el centro
-	var max_radius = min(grid_width, grid_height) / 2
-	
-	# Colocar edificios en el área central
-	var buildings_placed = 0
-	var attempts = 0
-	var max_attempts = num_buildings * 10
-	
-	while buildings_placed < num_buildings and attempts < max_attempts:
-		attempts += 1
-		
-		# Generar posición cerca del centro (distribución gaussiana)
-		var angle = randf() * TAU
-		var distance = randf() * randf() * max_radius  # randf() * randf() sesga hacia el centro
-		
-		var offset_q = int(cos(angle) * distance)
-		var offset_r = int(sin(angle) * distance)
-		var pos = Vector2i(center.x + offset_q, center.y + offset_r)
-		
-		if not is_valid_hex(pos):
-			continue
-		
-		# No colocar edificios en agua
-		if hex_data[pos]["terrain"] == TerrainType.Type.WATER:
-			continue
-		
-		# Verificar que no haya edificio muy cerca (mínimo 2 tiles de distancia)
-		var too_close = false
-		for neighbor in get_neighbors(pos):
-			if hex_data[neighbor]["terrain"] == TerrainType.Type.BUILDING:
-				too_close = true
-				break
-			# Verificar también vecinos de segundo nivel
-			for second_neighbor in get_neighbors(neighbor):
-				if hex_data[second_neighbor]["terrain"] == TerrainType.Type.BUILDING:
-					too_close = true
-					break
-			if too_close:
-				break
-		
-		if too_close:
-			continue
-		
-		# Colocar edificio
-		hex_data[pos]["terrain"] = TerrainType.Type.BUILDING
-		buildings_placed += 1
-
-# FASE 3: Aplanar área urbana (edificios y alrededores)
-func _flatten_urban_area():
-	# Encontrar todos los edificios y marcar área urbana
-	var urban_tiles = []
-	
-	for pos in hex_data.keys():
-		if hex_data[pos]["terrain"] == TerrainType.Type.BUILDING:
-			# El edificio mismo
-			urban_tiles.append(pos)
-			
-			# Aplanar vecinos inmediatos (para carreteras)
-			for neighbor in get_neighbors(pos):
-				if hex_data[neighbor]["terrain"] != TerrainType.Type.WATER:
-					if not urban_tiles.has(neighbor):
-						urban_tiles.append(neighbor)
-	
-	# Calcular elevación base urbana (nivel 0-1)
-	var base_urban_elevation = randi_range(0, 1)
-	
-	# Aplanar todos los tiles urbanos al mismo nivel
-	for tile in urban_tiles:
-		if hex_data[tile]["terrain"] == TerrainType.Type.BUILDING:
-			# Los edificios se elevarán después, por ahora marcarlos
-			hex_data[tile]["elevation"] = base_urban_elevation
-		else:
-			# El resto del área urbana (futuras carreteras) nivel plano
-			hex_data[tile]["elevation"] = base_urban_elevation
-
-# FASE 4: Generar carreteras conectando edificios (sin ensanchar cruces)
-func _generate_roads():
-	# Encontrar todos los edificios
-	var buildings = []
-	for pos in hex_data.keys():
-		if hex_data[pos]["terrain"] == TerrainType.Type.BUILDING:
-			buildings.append(pos)
-	
-	if buildings.size() < 2:
-		return
-	
-	# Crear árbol de expansión mínimo (conectar todos los edificios con caminos mínimos)
-	var connected = [buildings[0]]
-	var unconnected = buildings.slice(1)
-	
-	while unconnected.size() > 0:
-		var best_pair = null
-		var best_distance = INF
-		
-		# Encontrar el par más cercano entre conectados y no conectados
-		for conn in connected:
-			for unconn in unconnected:
-				var dist = hex_distance(conn, unconn)
-				if dist < best_distance and dist <= 8:  # Máximo 8 tiles
-					best_distance = dist
-					best_pair = [conn, unconn]
-		
-		if best_pair == null:
-			# No se puede conectar más edificios, tomar el siguiente sin conectar
-			if unconnected.size() > 0:
-				connected.append(unconnected[0])
-				unconnected.remove_at(0)
-			break
-		
-		# Crear carretera entre el par
-		_create_road_between(best_pair[0], best_pair[1])
-		
-		connected.append(best_pair[1])
-		unconnected.erase(best_pair[1])
-
-# Crear carretera entre dos puntos (1 tile de ancho, sin ensanchar cruces)
-func _create_road_between(start: Vector2i, end: Vector2i):
-	# Pathfinding simple para crear camino
-	var current = start
-	var visited = {}
-	
-	while current != end:
-		visited[current] = true
-		
-		# Encontrar vecino más cercano al objetivo
-		var best_neighbor = null
-		var best_distance = INF
-		
-		for neighbor in get_neighbors(current):
-			if visited.has(neighbor):
-				continue
-			
-			var dist = hex_distance(neighbor, end)
-			if dist < best_distance:
-				best_distance = dist
-				best_neighbor = neighbor
-		
-		if best_neighbor == null:
-			break
-		
-		# Colocar pavimento si no es edificio o agua
-		if best_neighbor != end and best_neighbor != start:
-			if hex_data[best_neighbor]["terrain"] != TerrainType.Type.BUILDING and \
-			   hex_data[best_neighbor]["terrain"] != TerrainType.Type.WATER:
-				hex_data[best_neighbor]["terrain"] = TerrainType.Type.PAVEMENT
-		
-		current = best_neighbor
-		
-		# Evitar bucles infinitos
-		if visited.size() > 20:
-			break
-
-# FASE 4: Generar parches coherentes de bosque
-func _generate_forest_patches(abundant: bool = false):
-	var num_patches = randi_range(6, 10) if abundant else randi_range(2, 4)
-	
-	for i in range(num_patches):
-		# Centro del parche
-		var center_q = randi_range(1, grid_width - 2)
-		var center_r = randi_range(1, grid_height - 2)
-		var center = Vector2i(center_q, center_r)
-		
-		# No colocar bosque sobre urbano o agua
-		if hex_data[center]["terrain"] == TerrainType.Type.BUILDING or \
-		   hex_data[center]["terrain"] == TerrainType.Type.PAVEMENT or \
-		   hex_data[center]["terrain"] == TerrainType.Type.WATER:
-			continue
-		
-		# Tamaño del parche
-		var patch_size = randi_range(4, 10) if abundant else randi_range(3, 6)
-		
-		# Expansión desde el centro
-		var forest_tiles = [center]
-		hex_data[center]["terrain"] = TerrainType.Type.FOREST
-		
-		for j in range(patch_size):
-			if forest_tiles.is_empty():
-				break
-			
-			var random_tile = forest_tiles[randi() % forest_tiles.size()]
-			
-			for neighbor in get_neighbors(random_tile):
-				# 60% probabilidad de expandir a vecino
-				if randf() > 0.6:
-					continue
-				
-				# No expandir sobre urbano o agua
-				if hex_data[neighbor]["terrain"] == TerrainType.Type.BUILDING or \
-				   hex_data[neighbor]["terrain"] == TerrainType.Type.PAVEMENT or \
-				   hex_data[neighbor]["terrain"] == TerrainType.Type.WATER:
-					continue
-				
-				hex_data[neighbor]["terrain"] = TerrainType.Type.FOREST
-				forest_tiles.append(neighbor)
-
-# FASE 5: Generar elevaciones coherentes
-func _generate_all_elevations():
-	# PASO 1: Asignar elevación inicial basada en terreno
-	for pos in hex_data.keys():
-		var terrain = hex_data[pos]["terrain"]
-		
-		# Los edificios y pavimento ya tienen su elevación base de _flatten_urban_area
-		if terrain != TerrainType.Type.BUILDING and terrain != TerrainType.Type.PAVEMENT:
-			var elevation = _generate_elevation(pos.x, pos.y, terrain)
-			hex_data[pos]["elevation"] = elevation
-	
-	# PASO 2: Suavizar elevaciones para evitar cambios bruscos
-	_smooth_elevations(3)  # 3 pasadas de suavizado
-	
-	# PASO 3: Elevar edificios (DESPUÉS del suavizado para que sobresalgan)
-	_elevate_buildings()
-
-# Suavizar elevaciones para coherencia entre vecinos
-func _smooth_elevations(passes: int):
-	for _pass in range(passes):
-		var new_elevations = {}
-		
-		for pos in hex_data.keys():
-			var _terrain = hex_data[pos]["terrain"]
-			var current_elevation = hex_data[pos]["elevation"]
-			
-			# Obtener elevaciones de vecinos
-			var neighbor_elevations = []
-			for neighbor in get_neighbors(pos):
-				neighbor_elevations.append(hex_data[neighbor]["elevation"])
-			
-			if neighbor_elevations.is_empty():
-				new_elevations[pos] = current_elevation
-				continue
-			
-			# Calcular promedio de vecinos
-			var _avg_elevation = 0.0
-			for elev in neighbor_elevations:
-				_avg_elevation += elev
-			_avg_elevation /= neighbor_elevations.size()
-			
-			# Determinar cambio máximo permitido según tipo de terreno
-			var max_change = 3  # Por defecto
-			match _terrain:
-				TerrainType.Type.HILL:
-					max_change = 2  # Colinas cambian máximo 2 niveles
-				TerrainType.Type.ROUGH:
-					max_change = 3  # Montañas cambian máximo 3 niveles
-				TerrainType.Type.WATER:
-					max_change = 1  # Agua muy plana
-				TerrainType.Type.PAVEMENT, TerrainType.Type.BUILDING:
-					max_change = 1  # Urbano es plano
-				_:
-					max_change = 2  # Resto moderado
-			
-			# Ajustar elevación para que no exceda el cambio máximo con vecinos
-			var max_neighbor = -999
-			var min_neighbor = 999
-			for elev in neighbor_elevations:
-				if elev > max_neighbor:
-					max_neighbor = elev
-				if elev < min_neighbor:
-					min_neighbor = elev
-			
-			# Limitar la elevación actual
-			var adjusted_elevation = current_elevation
-			if current_elevation > max_neighbor + max_change:
-				adjusted_elevation = max_neighbor + max_change
-			elif current_elevation < min_neighbor - max_change:
-				adjusted_elevation = min_neighbor - max_change
-			
-			new_elevations[pos] = adjusted_elevation
-		
-		# Aplicar nuevas elevaciones
-		for pos in new_elevations.keys():
-			hex_data[pos]["elevation"] = new_elevations[pos]
-
-# Elevar edificios sobre el terreno base (mínimo 3 niveles)
-func _elevate_buildings():
-	for pos in hex_data.keys():
-		if hex_data[pos]["terrain"] == TerrainType.Type.BUILDING:
-			# El edificio se eleva entre 3-5 niveles sobre su base
-			var building_base_elevation = hex_data[pos]["elevation"]
-			var building_height = randi_range(3, 5)
-			hex_data[pos]["elevation"] = building_base_elevation + building_height
-
-# FASE 6: Marcar hexágonos transitables
-func _mark_walkable_hexes():
-	for pos in hex_data.keys():
-		var terrain = hex_data[pos]["terrain"]
-		var is_walkable = (terrain != TerrainType.Type.WATER)
-		hex_data[pos]["walkable"] = is_walkable
+## Generar mapa usando el generador procedural (reglas oficiales BattleTech)
+func _generate_procedural_map():
+	var generator = ProceduralMapGenerator.new(grid_width, grid_height, terrain_seed)
+	hex_data = generator.generate_map()
+	print("Mapa procedural generado con seed: ", terrain_seed)
 
 # Convertir coordenadas hexagonales a píxeles (CENTRO del hexágono)
 func hex_to_pixel(hex: Vector2i, include_elevation: bool = false) -> Vector2:
@@ -600,81 +247,6 @@ func get_unit(hex: Vector2i):
 	if is_valid_hex(hex):
 		return hex_data[hex]["unit"]
 	return null
-
-# Línea de visión
-# Generar terreno proceduralmente
-# Ruido simple basado en funciones matemáticas
-func _simple_noise(x: int, y: int) -> float:
-	var n = x + y * 57 + terrain_seed * 131  # Usar el seed de la partida
-	n = (n << 13) ^ n
-	var nn = (n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff
-	# Normalizar correctamente entre 0.0 y 1.0
-	return float(nn) / 2147483647.0
-
-# Generar elevación procedural coherente
-func _generate_elevation(q: int, r: int, terrain: TerrainType.Type) -> int:
-	# Usar ruido con escala más grande para elevación (más suave)
-	var elevation_noise = _layered_noise(q, r, 3)
-	
-	# Diferentes terrenos tienen diferentes rangos de elevación
-	match terrain:
-		TerrainType.Type.WATER:
-			return -1  # Agua está por debajo del nivel del mar
-		TerrainType.Type.SAND:
-			return 0   # Playa al nivel del mar
-		TerrainType.Type.CLEAR:
-			# Terreno claro: 0-1 niveles
-			return 1 if elevation_noise > 0.6 else 0
-		TerrainType.Type.ROUGH:
-			# Terreno accidentado: 0-2 niveles
-			if elevation_noise > 0.7:
-				return 2
-			elif elevation_noise > 0.4:
-				return 1
-			else:
-				return 0
-		TerrainType.Type.FOREST:
-			# Bosque: 0-2 niveles (árboles dan cobertura pero no elevan tanto)
-			if elevation_noise > 0.65:
-				return 2
-			elif elevation_noise > 0.35:
-				return 1
-			else:
-				return 0
-		TerrainType.Type.HILL:
-			# Colinas: 2-4 niveles (más altas)
-			if elevation_noise > 0.8:
-				return 4
-			elif elevation_noise > 0.6:
-				return 3
-			else:
-				return 2
-		TerrainType.Type.BUILDING:
-			# Los edificios ya tienen su elevación base establecida en _flatten_urban_area
-			# Aquí NO se modifica, se eleva en post-procesamiento
-			return 0  # Placeholder, se ajustará después
-		TerrainType.Type.PAVEMENT:
-			# Pavimento: mantiene la elevación del área urbana
-			return 0  # Placeholder, se ajustará después
-		_:
-			return 0
-
-# Ruido en capas para mayor coherencia
-func _layered_noise(x: int, y: int, octaves: int = 3) -> float:
-	var value = 0.0
-	var amplitude = 1.0
-	var frequency = 1.0
-	var max_value = 0.0
-	
-	for i in range(octaves):
-		var sample_x = x * frequency
-		var sample_y = y * frequency
-		value += _simple_noise(int(sample_x), int(sample_y)) * amplitude
-		max_value += amplitude
-		amplitude *= 0.5
-		frequency *= 2.0
-	
-	return value / max_value
 
 # Obtener costo de movimiento considerando terreno
 func get_terrain_cost(hex: Vector2i) -> int:
@@ -1059,6 +631,12 @@ func get_occlusion_edge(hex: Vector2i, observer_hex: Vector2i) -> Array:
 func _get_terrain_colors(terrain: TerrainType.Type, elevation: int) -> Dictionary:
 	var base_color = TerrainType.get_color(terrain)
 	
+	# Diferenciar entre light woods y heavy woods
+	if terrain == TerrainType.Type.LIGHT_WOODS:
+		base_color = base_color.lightened(0.15)  # Light woods más claro
+	elif terrain == TerrainType.Type.HEAVY_WOODS:
+		base_color = base_color.darkened(0.15)  # Heavy woods más oscuro
+	
 	# Modificar según elevación (más alto = más claro)
 	var elevation_brightness = 1.0 + (elevation * 0.12)
 	
@@ -1090,10 +668,12 @@ func _get_terrain_texture_path(terrain: TerrainType.Type) -> String:
 	match terrain:
 		TerrainType.Type.CLEAR:
 			return "res://assets/textures/terrain/clear_albedo.png"
-		TerrainType.Type.FOREST:
+		TerrainType.Type.LIGHT_WOODS:
+			return "res://assets/textures/terrain/forest_albedo.png"
+		TerrainType.Type.HEAVY_WOODS:
 			return "res://assets/textures/terrain/forest_albedo.png"
 		TerrainType.Type.WATER:
-			return "res://assets/textures/terrain/water_albedo.jpeg"
+			return "res://assets/textures/terrain/water_albedo.png"
 		TerrainType.Type.ROUGH:
 			return "res://assets/textures/terrain/rough_albedo.png"
 		TerrainType.Type.PAVEMENT:
@@ -1113,7 +693,9 @@ func _get_terrain_normal_map_path(terrain: TerrainType.Type) -> String:
 	match terrain:
 		TerrainType.Type.CLEAR:
 			return "res://assets/textures/terrain/clear_normal.png"
-		TerrainType.Type.FOREST:
+		TerrainType.Type.LIGHT_WOODS:
+			return "res://assets/textures/terrain/forest_normal.png"
+		TerrainType.Type.HEAVY_WOODS:
 			return "res://assets/textures/terrain/forest_normal.png"
 		TerrainType.Type.WATER:
 			return "res://assets/textures/terrain/water_normal.png"
