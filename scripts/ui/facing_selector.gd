@@ -15,6 +15,8 @@ var title_label: Label
 var info_label: Label
 var target_hex: Vector2i = Vector2i(-1, -1)  # Hex al que está anclado el diálogo
 var battle_scene = null  # Referencia a la escena de batalla para obtener posición del hex
+var _last_screen_pos: Vector2 = Vector2.ZERO
+var _position_check_counter: int = 0
 
 func _ready():
 	# Ocultar por defecto
@@ -30,7 +32,10 @@ func _ready():
 	background_panel = Panel.new()
 	background_panel.custom_minimum_size = Vector2(300, 300)
 	background_panel.size = Vector2(300, 300)
+	# El panel debe capturar eventos para que no pasen al mapa debajo
 	background_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Añadir un área invisible que cierre el diálogo si se hace clic fuera de los botones
+	background_panel.gui_input.connect(_on_background_clicked)
 	
 	# Estilo del panel principal - diseño terminal militar
 	var style = StyleBoxFlat.new()
@@ -90,6 +95,8 @@ func _ready():
 		button.custom_minimum_size = Vector2(90, 55)
 		button.flat = true
 		button.modulate = Color(1, 1, 1, 0.01)  # Casi invisible pero clickeable
+		# IMPORTANTE: Asegurar que funcione en móvil
+		button.mouse_filter = Control.MOUSE_FILTER_STOP
 		
 		# Crear flecha visual usando Polygon2D
 		# La flecha debe apuntar en la dirección del facing (hacia donde mirará el mech)
@@ -142,6 +149,8 @@ func _ready():
 	cancel_button.custom_minimum_size = Vector2(60, 60)
 	cancel_button.flat = true
 	cancel_button.modulate = Color(1, 1, 1, 0.01)
+	# IMPORTANTE: Habilitar eventos táctiles para móvil
+	cancel_button.mouse_filter = Control.MOUSE_FILTER_STOP
 	
 	# Crear X usando dos Line2D
 	var x_line1 = Line2D.new()
@@ -262,10 +271,19 @@ func show_at_position(pos: Vector2, facing: int = -1, mp: int = 99):
 func _process(_delta):
 	"""Actualizar posición cada frame para seguir el hex cuando la cámara se mueve"""
 	if visible and battle_scene and target_hex != Vector2i(-1, -1):
+		# Optimización: Solo verificar posición cada 3 frames
+		_position_check_counter += 1
+		if _position_check_counter < 3:
+			return
+		_position_check_counter = 0
+		
 		# Obtener posición actual del hex en pantalla
 		if battle_scene.has_method("get_screen_position_for_hex"):
 			var screen_pos = battle_scene.get_screen_position_for_hex(target_hex)
-			_update_panel_position(screen_pos)
+			# Solo actualizar si la posición cambió significativamente (>2 pixels)
+			if _last_screen_pos.distance_to(screen_pos) > 2.0:
+				_last_screen_pos = screen_pos
+				_update_panel_position(screen_pos)
 
 func _update_panel_position(pos: Vector2):
 	"""Actualiza la posición del panel centrado en pos"""
@@ -352,10 +370,24 @@ func _on_facing_button_pressed(facing: int):
 	# print("[FACING_SELECTOR] Selected facing: %d" % facing)
 	facing_selected.emit(facing)
 	visible = false
+	# Resetear estado para evitar que se vuelva a mostrar
+	_position_check_counter = 0
+	_last_screen_pos = Vector2.ZERO
+	target_hex = Vector2i(-1, -1)
 
 func _on_cancel_pressed():
 	"""Cancela la selección de facing"""
+	print("[FACING_SELECTOR] Cancel button pressed - hiding selector")
 	visible = false
+	# Asegurar que se resetea el estado
+	_position_check_counter = 0
+	_last_screen_pos = Vector2.ZERO
+
+func _on_background_clicked(_event: InputEvent):
+	"""Detecta clics/toques en el fondo (fuera de botones) - no hacer nada para evitar cerrar accidentalmente"""
+	# Nota: Los botones tienen mayor prioridad y capturarán sus propios eventos
+	# Este método solo se llama si se hace clic en el fondo del panel
+	pass
 
 func _on_confirm_pressed():
 	"""Confirma el facing actual (no cambiar)"""

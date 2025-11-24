@@ -265,13 +265,18 @@ func _process(delta):
 	
 	# Procesar timer de tap largo
 	if long_press_active:
+		var prev_timer = long_press_timer
 		long_press_timer += delta
 		
-		# Actualizar indicador visual
+		# Actualizar indicador visual solo si cambió el progreso visual (cada 5%)
 		if long_press_indicator:
 			long_press_indicator.visible = true
 			long_press_indicator.global_position = long_press_start_pos
-			long_press_indicator.queue_redraw()
+			# Optimización: Solo redibujar si cambió visualmente
+			var prev_percent = int(prev_timer / LONG_PRESS_DURATION * 20)
+			var curr_percent = int(long_press_timer / LONG_PRESS_DURATION * 20)
+			if prev_percent != curr_percent:
+				long_press_indicator.queue_redraw()
 		
 		if long_press_timer >= LONG_PRESS_DURATION:
 			# Tap largo completado - inspeccionar mech
@@ -1187,15 +1192,31 @@ func _handle_deployment_click(hex: Vector2i):
 		# Ajustar por la posición de la cámara
 		screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
 	
-	if ui and ui.has_method("show_facing_selector"):
+	# IMPORTANTE: Solo mostrar si no está ya visible
+	if ui and ui.has_method("show_facing_selector") and not ui.is_facing_selector_visible():
 		ui.show_facing_selector(screen_pos, hex)
+
+var _cached_hex_screen_pos: Dictionary = {}
+var _camera_last_pos: Vector2 = Vector2.ZERO
 
 func get_screen_position_for_hex(hex: Vector2i) -> Vector2:
 	"""Convierte una posición hex a coordenadas de pantalla"""
+	# Optimización: Cachear si la cámara no se movió
+	var current_cam_pos = camera.position if camera else Vector2.ZERO
+	if current_cam_pos != _camera_last_pos:
+		_cached_hex_screen_pos.clear()
+		_camera_last_pos = current_cam_pos
+	
+	var cache_key = str(hex)
+	if _cached_hex_screen_pos.has(cache_key):
+		return _cached_hex_screen_pos[cache_key]
+	
 	var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
 	var screen_pos = hex_pixel
 	if camera:
 		screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
+	
+	_cached_hex_screen_pos[cache_key] = screen_pos
 	return screen_pos
 
 func on_facing_selected(facing: int):
@@ -1205,6 +1226,13 @@ func on_facing_selected(facing: int):
 		# Estamos en fase de despliegue
 		_place_mech(current_deploying_mech, selected_hex, facing)
 		selected_hex = Vector2i(-1, -1)  # Reset
+		
+		# Asegurar que el selector se cierre antes de continuar
+		if ui and ui.has_method("hide_facing_selector"):
+			ui.hide_facing_selector()
+		
+		# Pequeño delay para asegurar que el selector se cerró completamente
+		await get_tree().create_timer(0.1).timeout
 		
 		# Siguiente mech
 		_deploy_next_mech()
@@ -1668,7 +1696,8 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 			
 			# Verificar si tiene al menos 1 MP para rotar (incluso si current_movement quedó en 0)
 			# El selector mostrará correctamente cuántos MPs tiene disponibles
-			if ui and ui.has_method("show_facing_selector_with_current"):
+			# IMPORTANTE: Solo mostrar si el selector NO está ya visible (evita doble-apertura)
+			if ui and ui.has_method("show_facing_selector_with_current") and not ui.is_facing_selector_visible():
 				# Mostrar selector de facing
 				selected_hex = hex  # Guardar posición actual
 				var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
