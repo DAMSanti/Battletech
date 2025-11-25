@@ -86,30 +86,36 @@ static func get_opposite_facing(facing: int) -> int:
 ## Calcular facing hacia un hex objetivo
 static func get_facing_to_hex(from_hex: Vector2i, to_hex: Vector2i) -> int:
 	var delta = to_hex - from_hex
-	
-	# Convertir delta a facing de hexágono flat-top
-	# Basado en las direcciones HEX_DIRECTIONS del hex_grid
-	
-	# Vertical
+
+	# Explicit mapping for flat-top axial neighbor deltas used by HexGrid
+	# HexGrid.HEX_DIRECTIONS (flat-top) used in this project:
+	# 0: ( 0,-1) -> NORTH
+	# 1: ( 1,-1) -> NORTHEAST
+	# 2: (-1, 0) -> NORTHWEST
+	# 3: ( 0, 1) -> SOUTH
+	# 4: (-1, 1) -> SOUTHWEST
+	# 5: ( 1, 0) -> SOUTHEAST
+
+	if delta == Vector2i(0, -1):
+		return Facing.NORTH
+	elif delta == Vector2i(1, -1):
+		return Facing.NORTHEAST
+	elif delta == Vector2i(1, 0):
+		return Facing.SOUTHEAST
+	elif delta == Vector2i(0, 1):
+		return Facing.SOUTH
+	elif delta == Vector2i(-1, 1):
+		return Facing.SOUTHWEST
+	elif delta == Vector2i(-1, 0):
+		return Facing.NORTHWEST
+
+	# Fallback: calculate by sign heuristics for non-adjacent deltas
 	if delta.x == 0:
-		if delta.y < 0:
-			return Facing.NORTH  # Norte
-		else:
-			return Facing.SOUTH  # Sur
-	
-	# Diagonal derecha
+		return Facing.NORTH if delta.y < 0 else Facing.SOUTH
 	elif delta.x > 0:
-		if delta.y < 0:
-			return Facing.NORTHEAST  # Noreste
-		else:
-			return Facing.SOUTHEAST  # Sureste
-	
-	# Diagonal izquierda
-	else:  # delta.x < 0
-		if delta.y < 0:
-			return Facing.NORTHWEST  # Noroeste
-		else:
-			return Facing.SOUTHWEST  # Suroeste
+		return Facing.NORTHEAST if delta.y < 0 else Facing.SOUTHEAST
+	else:
+		return Facing.NORTHWEST if delta.y < 0 else Facing.SOUTHWEST
 
 ## Verificar si un hex está en el arco frontal del mech
 ## Frontal = facing ± 1 faceta (3 facetas frontales en total)

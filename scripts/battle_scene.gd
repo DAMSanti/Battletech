@@ -1159,6 +1159,8 @@ func _handle_hex_clicked(hex: Vector2i):
 	if deployment_phase:
 		_handle_deployment_click(hex)
 		return
+
+# (helper debouncer implemented once above with await)
 	
 	# print("[DEBUG] _handle_hex_clicked: hex=%s, current_state=%d" % [hex, current_state])
 	
