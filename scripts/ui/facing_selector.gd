@@ -7,7 +7,9 @@ signal facing_selected(facing: int)
 
 var hex_buttons: Array = []
 var center_pos: Vector2
-const RADIUS = 70.0  # Radio del círculo de botones (reducido para juntar más)
+const BASE_SIZE = Vector2(300, 300)
+const BASE_RADIUS = 70.0  # Radio del círculo de botones en tamaño base
+var _local_scale: float = 1.0
 var current_facing: int = -1
 var available_mp: int = 99
 var background_panel: Panel
@@ -30,8 +32,13 @@ func _ready():
 	
 	# Crear panel de fondo (solo detrás del diálogo, no fullscreen)
 	background_panel = Panel.new()
-	background_panel.custom_minimum_size = Vector2(300, 300)
-	background_panel.size = Vector2(300, 300)
+	# Respetar el tamaño que este Control tenga asignado; si no, usar BASE_SIZE
+	if size.x > 0.0:
+		_local_scale = size.x / BASE_SIZE.x
+	else:
+		_local_scale = 1.0
+	background_panel.custom_minimum_size = BASE_SIZE * _local_scale
+	background_panel.size = BASE_SIZE * _local_scale
 	# El panel debe capturar eventos para que no pasen al mapa debajo
 	background_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	# Añadir un área invisible que cierre el diálogo si se hace clic fuera de los botones
@@ -59,9 +66,9 @@ func _ready():
 	title_label = Label.new()
 	title_label.text = "⚙ SELECT FACING ⚙"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_label.position = Vector2(0, 10)
-	title_label.size = Vector2(300, 25)
-	title_label.add_theme_font_size_override("font_size", 18)
+	title_label.position = Vector2(0, 10 * _local_scale)
+	title_label.size = Vector2(background_panel.size.x, 25 * _local_scale)
+	title_label.add_theme_font_size_override("font_size", int(18 * _local_scale))
 	title_label.add_theme_color_override("font_color", Color(0.3, 0.7, 1.0))  # Cyan
 	background_panel.add_child(title_label)
 	
@@ -69,30 +76,30 @@ func _ready():
 	info_label = Label.new()
 	info_label.text = "Available MPs: --"
 	info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info_label.position = Vector2(0, 35)
-	info_label.size = Vector2(300, 20)
-	info_label.add_theme_font_size_override("font_size", 12)
+	info_label.position = Vector2(0, 35 * _local_scale)
+	info_label.size = Vector2(background_panel.size.x, 20 * _local_scale)
+	info_label.add_theme_font_size_override("font_size", int(12 * _local_scale))
 	info_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2))  # Naranja
 	background_panel.add_child(info_label)
 	
-	# Calcular centro del panel
-	center_pos = Vector2(150, 160)  # Centro del panel de 300x300, offset por título
+	# Calcular centro del panel (ajustado por scale)
+	center_pos = Vector2(background_panel.size.x * 0.5, background_panel.size.y * 0.5 + 10 * _local_scale)
 	
 	# Crear 6 botones en forma de hexágono con estilo BattleTech
 	for i in range(6):
 		# Crear contenedor para el botón de dirección
 		var button_container = Control.new()
-		button_container.custom_minimum_size = Vector2(90, 55)
+		button_container.custom_minimum_size = Vector2(90, 55) * _local_scale
 		
 		# Calcular posición del botón
 		var angle_deg = 60 * i - 90  # -90 para que 0 esté arriba (norte)
 		var angle_rad = deg_to_rad(angle_deg)
-		var pos = center_pos + Vector2(cos(angle_rad), sin(angle_rad)) * RADIUS
+		var pos = center_pos + Vector2(cos(angle_rad), sin(angle_rad)) * BASE_RADIUS * _local_scale
 		button_container.position = pos - button_container.custom_minimum_size / 2
 		
 		# Crear botón invisible para detectar clics
 		var button = Button.new()
-		button.custom_minimum_size = Vector2(90, 55)
+		button.custom_minimum_size = Vector2(90, 55) * _local_scale
 		button.flat = true
 		button.modulate = Color(1, 1, 1, 0.01)  # Casi invisible pero clickeable
 		# IMPORTANTE: Asegurar que funcione en móvil
@@ -106,7 +113,8 @@ func _ready():
 		var arrow_points = _create_arrow_shape(arrow_angle)
 		arrow.polygon = arrow_points
 		arrow.color = Color(0.3, 0.6, 1.0, 0.9)  # Cyan
-		arrow.position = Vector2(45, 27.5)  # Centro del botón
+		# Centrar la flecha en el contenedor
+		arrow.position = button_container.custom_minimum_size / 2
 		
 		# Añadir borde a la flecha
 		var arrow_border = Line2D.new()
@@ -115,14 +123,14 @@ func _ready():
 		arrow_border.points = border_points
 		arrow_border.default_color = Color(0.5, 0.8, 1.0, 1.0)
 		arrow_border.width = 2
-		arrow_border.position = Vector2(45, 27.5)
+		arrow_border.position = button_container.custom_minimum_size / 2
 		
 		# Label para mostrar info (MPs, etc)
 		var info_label_btn = Label.new()
 		info_label_btn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		info_label_btn.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-		info_label_btn.position = Vector2(0, 35)
-		info_label_btn.size = Vector2(90, 20)
+		info_label_btn.position = Vector2(0, 35) * _local_scale
+		info_label_btn.size = Vector2(90, 20) * _local_scale
 		info_label_btn.add_theme_font_size_override("font_size", 12)
 		info_label_btn.add_theme_color_override("font_color", Color(0.7, 0.85, 1.0))
 		
@@ -142,11 +150,11 @@ func _ready():
 	
 	# Botón de cancelar en el centro con forma de X
 	var cancel_container = Control.new()
-	cancel_container.custom_minimum_size = Vector2(60, 60)
-	cancel_container.position = center_pos - Vector2(30, 30)
+	cancel_container.custom_minimum_size = Vector2(60, 60) * _local_scale
+	cancel_container.position = center_pos - cancel_container.custom_minimum_size / 2
 	
 	var cancel_button = Button.new()
-	cancel_button.custom_minimum_size = Vector2(60, 60)
+	cancel_button.custom_minimum_size = Vector2(60, 60) * _local_scale
 	cancel_button.flat = true
 	cancel_button.modulate = Color(1, 1, 1, 0.01)
 	# IMPORTANTE: Habilitar eventos táctiles para móvil
@@ -154,12 +162,18 @@ func _ready():
 	
 	# Crear X usando dos Line2D
 	var x_line1 = Line2D.new()
-	x_line1.points = PackedVector2Array([Vector2(15, 15), Vector2(45, 45)])
+	var x_tmp = PackedVector2Array()
+	x_tmp.append(Vector2(15,15) * _local_scale)
+	x_tmp.append(Vector2(45,45) * _local_scale)
+	x_line1.points = x_tmp
 	x_line1.default_color = Color(1.0, 0.3, 0.3, 0.9)  # Rojo
 	x_line1.width = 4
 	
 	var x_line2 = Line2D.new()
-	x_line2.points = PackedVector2Array([Vector2(45, 15), Vector2(15, 45)])
+	var x_tmp2 = PackedVector2Array()
+	x_tmp2.append(Vector2(45,15) * _local_scale)
+	x_tmp2.append(Vector2(15,45) * _local_scale)
+	x_line2.points = x_tmp2
 	x_line2.default_color = Color(1.0, 0.3, 0.3, 0.9)  # Rojo
 	x_line2.width = 4
 	
@@ -168,7 +182,7 @@ func _ready():
 	var circle_points = PackedVector2Array()
 	for angle_i in range(32):
 		var circle_angle = deg_to_rad(angle_i * 360.0 / 32)
-		circle_points.append(Vector2(30, 30) + Vector2(cos(circle_angle), sin(circle_angle)) * 25)
+		circle_points.append(Vector2(30, 30) * _local_scale + Vector2(cos(circle_angle), sin(circle_angle)) * 25 * _local_scale)
 	x_circle.polygon = circle_points
 	x_circle.color = Color(0.2, 0.05, 0.05, 0.9)  # Rojo oscuro
 	
@@ -192,7 +206,7 @@ func _ready():
 	
 	background_panel.add_child(cancel_container)
 
-func _create_arrow_shape(rotation_deg: float) -> PackedVector2Array:
+func _create_arrow_shape(rotation_deg: float, scl: float = 1.0) -> PackedVector2Array:
 	"""Crea una forma de flecha apuntando hacia arriba, rotada según rotation_deg"""
 	# Flecha básica apuntando arriba
 	var points = PackedVector2Array([
@@ -211,7 +225,7 @@ func _create_arrow_shape(rotation_deg: float) -> PackedVector2Array:
 	for p in points:
 		var x = p.x * cos(rad) - p.y * sin(rad)
 		var y = p.x * sin(rad) + p.y * cos(rad)
-		rotated.append(Vector2(x, y))
+		rotated.append(Vector2(x, y) * scl)
 	
 	return rotated
 
@@ -220,11 +234,11 @@ func _on_arrow_hover(arrow: Polygon2D, border: Line2D, is_hovering: bool):
 	if is_hovering:
 		arrow.color = Color(0.4, 0.7, 1.0, 1.0)  # Más brillante
 		border.default_color = Color(0.6, 0.9, 1.0, 1.0)
-		border.width = 3
+		border.width = 3 * _local_scale
 	else:
 		arrow.color = Color(0.3, 0.6, 1.0, 0.9)
 		border.default_color = Color(0.5, 0.8, 1.0, 1.0)
-		border.width = 2
+		border.width = 2 * _local_scale
 
 func _on_x_hover(line1: Line2D, line2: Line2D, border: Line2D, is_hovering: bool):
 	"""Feedback visual al pasar el mouse sobre la X"""
@@ -232,12 +246,12 @@ func _on_x_hover(line1: Line2D, line2: Line2D, border: Line2D, is_hovering: bool
 		line1.default_color = Color(1.0, 0.5, 0.5, 1.0)
 		line2.default_color = Color(1.0, 0.5, 0.5, 1.0)
 		border.default_color = Color(1.0, 0.6, 0.6, 1.0)
-		border.width = 3
+		border.width = 3 * _local_scale
 	else:
 		line1.default_color = Color(1.0, 0.3, 0.3, 0.9)
 		line2.default_color = Color(1.0, 0.3, 0.3, 0.9)
 		border.default_color = Color(1.0, 0.4, 0.4, 1.0)
-		border.width = 2
+		border.width = 2 * _local_scale
 
 func _get_direction_name(facing: int) -> String:
 	match facing:
@@ -387,10 +401,73 @@ func _on_cancel_pressed():
 	_last_screen_pos = Vector2.ZERO
 	target_hex = Vector2i(-1, -1)
 	facing_selected.emit(-1)
-	# Asegurar que se resetea el estado
-	_position_check_counter = 0
-	_last_screen_pos = Vector2.ZERO
-	target_hex = Vector2i(-1, -1)
+
+	# If later the Control gets resized we should relayout children.
+	set_process(true)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED:
+		_relayout()
+
+func _relayout():
+	# Recompute local scale and reorganize children positions/sizes
+	if size.x > 0.0:
+		_local_scale = size.x / BASE_SIZE.x
+	else:
+		_local_scale = 1.0
+
+	background_panel.custom_minimum_size = BASE_SIZE * _local_scale
+	background_panel.size = BASE_SIZE * _local_scale
+	# Title and info size/position
+	title_label.position = Vector2(0, 10 * _local_scale)
+	title_label.size = Vector2(background_panel.size.x, 25 * _local_scale)
+	title_label.add_theme_font_size_override("font_size", int(18 * _local_scale))
+	info_label.position = Vector2(0, 35 * _local_scale)
+	info_label.size = Vector2(background_panel.size.x, 20 * _local_scale)
+	info_label.add_theme_font_size_override("font_size", int(12 * _local_scale))
+
+	center_pos = Vector2(background_panel.size.x * 0.5, background_panel.size.y * 0.5 + 10 * _local_scale)
+
+	# Recompute buttons and arrows
+	for i in range(hex_buttons.size()):
+		var btn_data = hex_buttons[i]
+		var container = btn_data["container"]
+		container.custom_minimum_size = Vector2(90,55) * _local_scale
+		var angle_rad = deg_to_rad(60 * i - 90)
+		var pos = center_pos + Vector2(cos(angle_rad), sin(angle_rad)) * BASE_RADIUS * _local_scale
+		container.position = pos - container.custom_minimum_size / 2
+
+		var arrow = btn_data["arrow"]
+		var arrow_border = btn_data["border"]
+		var arrow_points = _create_arrow_shape(60 * i, _local_scale)
+		arrow.polygon = arrow_points
+		arrow.position = container.custom_minimum_size / 2
+		arrow_border.points = arrow_points.duplicate()
+		arrow_border.points.append(arrow_points[0])
+		arrow_border.position = container.custom_minimum_size / 2
+		arrow_border.width = 2 * _local_scale
+
+		var label = btn_data["label"]
+		label.position = Vector2(0, 35) * _local_scale
+		label.size = Vector2(90, 20) * _local_scale
+		label.add_theme_font_size_override("font_size", int(12 * _local_scale))
+
+	# Cancel container
+	var cancel_container = null
+	for child in background_panel.get_children():
+		if child is Control and child.custom_minimum_size == Vector2(60,60) * _local_scale:
+			cancel_container = child
+			break
+	if cancel_container:
+		cancel_container.custom_minimum_size = Vector2(60,60) * _local_scale
+		cancel_container.position = center_pos - cancel_container.custom_minimum_size / 2
+		# Update X lines and circle border widths
+		for n in cancel_container.get_children():
+			if n is Line2D:
+				n.width = 4 * _local_scale
+			elif n is Polygon2D:
+				# circle already has scaled points
+				pass
 
 func _on_background_clicked(_event: InputEvent):
 	"""Detecta clics/toques en el fondo (fuera de botones) - no hacer nada para evitar cerrar accidentalmente"""

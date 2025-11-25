@@ -1088,8 +1088,13 @@ func _on_facing_selected(facing: int):
 	"""Maneja la selección de una orientación"""
 	# Evitar que el release del click del botón pase al mapa (causando selección de hex accidental)
 	if battle_scene:
-		# Indica al battle_scene que ignore el siguiente click de mouse/touch
-		battle_scene.ignore_next_click = true
+		# Indica al battle_scene que ignore el siguiente click de mouse/touch.
+		# Preferimos usar un temporizador en la escena (debounce) si existe.
+		if battle_scene.has_method("start_ignore_click_timer"):
+			# 200 ms debounce por defecto
+			battle_scene.start_ignore_click_timer(200)
+		else:
+			battle_scene.ignore_next_click = true
 	# Ocultar selector (se hace inmediatamente para feedback)
 	hide_facing_selector()
 	

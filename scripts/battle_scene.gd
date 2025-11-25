@@ -27,6 +27,8 @@ var physical_target_hexes: Array = []  # Enemigos adyacentes para ataque físico
 var pending_movement_selection: bool = false  # Esperando que el jugador elija Walk/Run/Jump
 var pending_turn_only: bool = false  # Esperando selección de facing para girar sin moverse
 var ignore_next_click: bool = false  # Ignorar el próximo click (usado después de cerrar UI)
+var ignore_until_time: int = 0  # Timestamp (ms) hasta el cual ignorar clicks
+const IGNORE_CLICK_DEBOUNCE_MS: int = 200  # Tiempo para ignorar clicks tras cerrar UI (ms)
 var ui_interaction_cooldown: float = 0.0  # Tiempo de cooldown después de interacción con UI
 
 # Sistema de confirmación de movimiento
@@ -1004,7 +1006,6 @@ func _input(event):
 			
 			# Verificar si debemos ignorar este click
 			if ignore_next_click:
-				ignore_next_click = false
 				return
 			
 			var world_pos = camera.get_global_mouse_position()
@@ -1032,7 +1033,6 @@ func _input(event):
 			
 			# Verificar si debemos ignorar este click
 			if ignore_next_click:
-				ignore_next_click = false
 				return
 			
 			var world_pos = camera.get_global_mouse_position()
@@ -1142,6 +1142,14 @@ func _handle_camera_input(event) -> bool:
 func _reset_movement_flag():
 	"""Helper para resetear el flag de movimiento de forma diferida"""
 	has_moved_significantly = false
+
+
+func start_ignore_click_timer(duration_ms: int = 200) -> void:
+	"""Ignora clicks durante duration_ms milisegundos usando un temporizador asincrónico"""
+	ignore_next_click = true
+	# No bloqueamos la ejecución; el await solo limpia el flag después del timeout
+	await get_tree().create_timer(duration_ms / 1000.0).timeout
+	ignore_next_click = false
 
 func _handle_hex_clicked(hex: Vector2i):
 	if not hex_grid.is_valid_hex(hex):
