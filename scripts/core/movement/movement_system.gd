@@ -139,90 +139,99 @@ static func neighbor_index_to_facing(neighbor_index: int) -> int:
 ## Obtener hexes alcanzables con movimiento Walk/Run
 ## Considera el costo de rotación - girar cuesta MPs
 static func get_reachable_hexes(start_hex: Vector2i, max_distance: int, movement_type: int, hex_grid, mech = null) -> Array:
+	# Backwards-compatible wrapper that returns only the list of hexes.
+	# The heavy lifting is done by get_reachable_hexes_with_details which runs
+	# a Dijkstra/A*-style search across states (hex, facing) and includes
+	# rotation cost + movement cost when exploring.
+	var details = get_reachable_hexes_with_details(start_hex, max_distance, movement_type, hex_grid, mech)
 	var reachable = []
-	# Guardar facing inicial del mech si está disponible
+	for hex_key in details.keys():
+		if not reachable.has(hex_key):
+			reachable.append(hex_key)
+	return reachable
+
+
+## Dijkstra-style reachability search that includes facing / rotation costs
+## Returns a Dictionary mapping Vector2i -> {cost:int, path:Array, end_facing:int}
+static func get_reachable_hexes_with_details(start_hex: Vector2i, max_distance: int, movement_type: int, hex_grid, mech = null) -> Dictionary:
+	var results: Dictionary = {}
+
+	# starting facing if available
 	var initial_facing = -1
 	if mech != null and "facing" in mech:
-		initial_facing = mech.facing
-	
-	# Cada estado incluye: hex, distancia acumulada, facing actual, y path
-	var queue = [{hex = start_hex, distance = 0, facing = initial_facing, path = [start_hex]}]
-	# Visited ahora guarda el MEJOR coste para cada combinación de (hex, facing)
-	var visited = {}
-	if initial_facing >= 0:
-		visited[str(start_hex) + "_" + str(initial_facing)] = 0
-	else:
-		visited[str(start_hex)] = 0
-	
+		initial_facing = int(mech.facing)
+
+	# min-priority queue implemented with a simple sorted array of states
+	# state: {hex: Vector2i, facing: int, cost: int, path: Array}
+	var pq: Array = []
+	pq.append({"hex": start_hex, "facing": initial_facing, "cost": 0, "path": [start_hex]})
+
+	# visited stores best known cost for (hex, facing) pair
+	var visited: Dictionary = {}
+	var start_key = str(start_hex) + "_" + str(initial_facing)
+	visited[start_key] = 0
+
 	var iterations = 0
-	var MAX_ITERATIONS = 10000  # Límite de seguridad para evitar loops infinitos
-	
-	while not queue.is_empty() and iterations < MAX_ITERATIONS:
+	var MAX_ITERATIONS = 100000
+
+	while pq.size() > 0 and iterations < MAX_ITERATIONS:
 		iterations += 1
-		var current = queue.pop_front()
-		var current_hex = current.hex
-		var current_distance = current.distance
-		var current_facing = current.facing
-		
-		# IMPORTANTE: Verificar que el coste actual no exceda el máximo ANTES de procesar
-		if current_distance > max_distance:
+
+		# pop lowest cost state
+		pq.sort_custom(func(a, b):
+			return int(a.get("cost", 0) - b.get("cost", 0))
+		)
+		var current = pq.pop_front()
+		var current_hex: Vector2i = current["hex"]
+		var current_cost: int = int(current["cost"])
+		var current_facing: int = int(current.get("facing", -1))
+		var current_path: Array = current["path"]
+
+		# skip if this state's cost exceeds max
+		if max_distance >= 0 and current_cost > max_distance:
 			continue
-		
-		# Agregar el hex actual a reachable SOLO si está dentro del presupuesto
-		if current_hex != start_hex and current_distance <= max_distance:
-			# Solo agregar si este hex no está ya en reachable o si encontramos un camino mejor
-			if not reachable.has(current_hex):
-				reachable.append(current_hex)
-		
+
+		# Do not include the start hex as a target
+		if current_hex != start_hex:
+			# Only save if we found a better cost for this hex (independent of facing)
+			if not results.has(current_hex) or current_cost < int(results[current_hex]["cost"]):
+				results[current_hex] = {"cost": current_cost, "path": current_path.duplicate(), "end_facing": current_facing}
+
 		var neighbors = hex_grid.get_neighbors(current_hex)
 		for i in range(neighbors.size()):
-			var neighbor = neighbors[i]
-			if not hex_grid.is_valid_hex(neighbor):
+			var nb = neighbors[i]
+			if not hex_grid.is_valid_hex(nb):
 				continue
-			
-			# Verificar si se puede entrar al hex
-			if mech != null and not can_enter_hex(neighbor, movement_type, mech, hex_grid):
+
+			# respect movement restrictions
+			if mech != null and not can_enter_hex(nb, movement_type, mech, hex_grid):
 				continue
-			
-			# Calcular el facing necesario para moverse a este vecino
-			# El mech cambia su facing al moverse (mira hacia donde se mueve)
+
+			# elevation rules (reject impossible climbs for non-jumps)
+			if not MovementRestrictions.is_elevation_change_valid(current_hex, nb, hex_grid, movement_type):
+				continue
+
 			var required_facing = neighbor_index_to_facing(i)
-			
-			# Calcular coste de rotación desde facing actual al requerido
+
 			var rotation_cost = get_rotation_cost(current_facing, required_facing)
-			
-			# Calcular coste de movimiento al hex vecino (INCLUYE ELEVACIÓN)
-			var move_cost = calculate_movement_cost(current_hex, neighbor, movement_type, hex_grid)
-			
-			# Coste total = rotación + movimiento
-			var total_cost = rotation_cost + move_cost
-			var new_distance = current_distance + total_cost
-			
-			# CRÍTICO: No agregar a la cola si excede el máximo de distancia
-			if new_distance > max_distance:
+			var move_cost = calculate_movement_cost(current_hex, nb, movement_type, hex_grid)
+
+			var total_cost = current_cost + rotation_cost + move_cost
+
+			if max_distance >= 0 and total_cost > max_distance:
 				continue
-			
-			# Crear clave para visited que incluye facing si es relevante
-			var visited_key = str(neighbor)
-			if required_facing >= 0:
-				visited_key = str(neighbor) + "_" + str(required_facing)
-			
-			# Solo agregar a la cola si encontramos un camino mejor
-			if not visited.has(visited_key) or new_distance < visited[visited_key]:
-				visited[visited_key] = new_distance
-				var new_path = current.path.duplicate()
-				new_path.append(neighbor)
-				queue.append({
-					hex = neighbor, 
-					distance = new_distance, 
-					facing = required_facing,  # Actualizar facing al llegar
-					path = new_path
-				})
-	
+
+			var visited_key = str(nb) + "_" + str(required_facing)
+			if not visited.has(visited_key) or total_cost < int(visited[visited_key]):
+				visited[visited_key] = total_cost
+				var new_path = current_path.duplicate()
+				new_path.append(nb)
+				pq.append({"hex": nb, "facing": required_facing, "cost": total_cost, "path": new_path})
+
 	if iterations >= MAX_ITERATIONS:
-		push_warning("MovementSystem: get_reachable_hexes alcanzó el límite de iteraciones")
-	
-	return reachable
+		push_warning("MovementSystem: get_reachable_hexes_with_details alcanzó el límite de iteraciones")
+
+	return results
 
 ## Obtener hexes alcanzables saltando (ignora terreno)
 static func get_jump_hexes(start_hex: Vector2i, max_jump: int, hex_grid, mech = null) -> Array:
