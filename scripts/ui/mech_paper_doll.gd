@@ -26,16 +26,22 @@ class_name MechPaperDoll
 @onready var leg_right_armor: TextureRect = $Container/LegRight/Armor
 
 # Colores para diferentes estados de daño
-const COLOR_ARMOR_FULL = Color(0.0, 1.0, 0.0, 0.6)      # Verde brillante con menos opacidad
-const COLOR_ARMOR_MODERATE = Color(1.0, 1.0, 0.0, 0.7)  # Amarillo
-const COLOR_ARMOR_HEAVY = Color(1.0, 0.5, 0.0, 0.8)     # Naranja
-const COLOR_ARMOR_CRITICAL = Color(1.0, 0.0, 0.0, 0.85) # Rojo
-const COLOR_ARMOR_DESTROYED = Color(0.2, 0.2, 0.2, 0.0) # Completamente transparente
+# Make armor more translucent so inner structure details remain visible under the plating
+const COLOR_ARMOR_FULL = Color(0.0, 1.0, 0.0, 0.45)      # Verde brillante (más translúcido)
+const COLOR_ARMOR_MODERATE = Color(1.0, 1.0, 0.0, 0.45)  # Amarillo (más translúcido)
+const COLOR_ARMOR_HEAVY = Color(1.0, 0.5, 0.0, 0.5)     # Naranja
+const COLOR_ARMOR_CRITICAL = Color(1.0, 0.0, 0.0, 0.55) # Rojo
+const COLOR_ARMOR_DESTROYED = Color(1.0, 1.0, 1.0, 0.0) # Completamente transparente
 
-const COLOR_STRUCTURE_INTACT = Color(0.4, 0.4, 0.4, 0.9)     # Gris oscuro
-const COLOR_STRUCTURE_DAMAGED = Color(0.8, 0.6, 0.0, 0.9)    # Dorado
-const COLOR_STRUCTURE_CRITICAL = Color(1.0, 0.2, 0.0, 0.9)   # Rojo anaranjado
-const COLOR_STRUCTURE_DESTROYED = Color(0.1, 0.1, 0.1, 0.5)  # Casi negro
+# Use brighter / fully opaque structure colors so details remain readable under the armor
+const COLOR_STRUCTURE_INTACT = Color(0.85, 0.85, 0.85, 1.0)     # Gris claro, más visible
+const COLOR_STRUCTURE_DAMAGED = Color(1.0, 0.85, 0.4, 1.0)    # Dorado claro
+const COLOR_STRUCTURE_CRITICAL = Color(1.0, 0.5, 0.2, 1.0)   # Rojo anaranjado
+const COLOR_STRUCTURE_DESTROYED = Color(0.15, 0.15, 0.15, 0.9)  # Oscuro pero visible
+
+# For improved blending behavior (avoid fully blocking structure) we'll assign
+# a lightweight CanvasItemMaterial to armor nodes in _ready().
+@onready var _armor_material: CanvasItemMaterial = null
 
 # Umbrales de daño (porcentajes)
 const THRESHOLD_MODERATE = 0.75
@@ -80,6 +86,9 @@ func update_location(location: MechLocation, current_armor: int, max_armor: int,
 	
 	# Actualizar color de armadura (con transparencia para que se vea la estructura debajo)
 	if current_armor > 0:
+		# Apply the material if available (ensures better blending behaviour across platforms)
+		if _armor_material:
+			armor_node.material = _armor_material
 		armor_node.modulate = _get_armor_color(armor_percent)
 		armor_node.visible = true
 	else:
@@ -181,6 +190,21 @@ func _location_name_to_enum(loc_name: String) -> int:
 	return -1
 
 
+func _ready() -> void:
+	# Create a lightweight CanvasItemMaterial for armor overlays so they blend
+	# nicely with structure assets underneath. Using MIX keeps the alpha working
+	# while ensuring underlying lines/details are visible.
+	var mat = CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_MIX
+	_armor_material = mat
+
+	# Apply to all armor nodes that exist already in the scene
+	for armor_node in [head_armor, torso_center_armor, torso_left_armor, torso_right_armor,
+					   arm_left_armor, arm_right_armor, leg_left_armor, leg_right_armor]:
+		if armor_node:
+			armor_node.material = _armor_material
+
+
 ## Aplica un efecto de parpadeo a una ubicación (útil para mostrar daño reciente)
 ## @param location: La ubicación a parpadear
 ## @param duration: Duración del parpadeo en segundos
@@ -200,6 +224,8 @@ func reset_all_colors() -> void:
 		var structure_node = _get_structure_node(location)
 		
 		if armor_node:
+			if _armor_material:
+				armor_node.material = _armor_material
 			armor_node.modulate = COLOR_ARMOR_FULL
 			armor_node.visible = true
 		

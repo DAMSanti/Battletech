@@ -2,3 +2,4 @@ res://scripts/battle_scene.gd
 res://scripts/ui/facing_selector.gd
 res://scripts/ui/battle_ui.gd
 res://scripts/core/movement/facing_system.gd
+res://scripts/ui/mech_paper_doll.gd
