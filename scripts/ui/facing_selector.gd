@@ -263,7 +263,9 @@ func show_at_position(pos: Vector2, facing: int = -1, mp: int = 99):
 		info_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.2))  # Naranja
 	
 	# Posicionar inicialmente
+	# Posicionar inicialmente y evitar salto en el siguiente frame
 	_update_panel_position(pos)
+	_last_screen_pos = pos
 	
 	_update_buttons()
 	visible = true
@@ -367,21 +369,28 @@ func _calculate_rotation_cost(from_facing: int, to_facing: int) -> int:
 	return min(clockwise, counter_clockwise)
 
 func _on_facing_button_pressed(facing: int):
-	# print("[FACING_SELECTOR] Selected facing: %d" % facing)
-	facing_selected.emit(facing)
+	# Esconder y resetear antes de emitir para evitar condiciones de carrera
 	visible = false
 	# Resetear estado para evitar que se vuelva a mostrar
 	_position_check_counter = 0
 	_last_screen_pos = Vector2.ZERO
 	target_hex = Vector2i(-1, -1)
+	facing_selected.emit(facing)
 
 func _on_cancel_pressed():
 	"""Cancela la selección de facing"""
-	print("[FACING_SELECTOR] Cancel button pressed - hiding selector")
+	print("[FACING_SELECTOR] Cancel button pressed - emitting -1")
+	# Ocultar y resetear antes de emitir -1 para indicar cancelación
 	visible = false
 	# Asegurar que se resetea el estado
 	_position_check_counter = 0
 	_last_screen_pos = Vector2.ZERO
+	target_hex = Vector2i(-1, -1)
+	facing_selected.emit(-1)
+	# Asegurar que se resetea el estado
+	_position_check_counter = 0
+	_last_screen_pos = Vector2.ZERO
+	target_hex = Vector2i(-1, -1)
 
 func _on_background_clicked(_event: InputEvent):
 	"""Detecta clics/toques en el fondo (fuera de botones) - no hacer nada para evitar cerrar accidentalmente"""
@@ -393,5 +402,9 @@ func _on_confirm_pressed():
 	"""Confirma el facing actual (no cambiar)"""
 	print("[FACING_SELECTOR] Confirmed current facing")
 	if current_facing >= 0:
+		# Hide/reset first, then emit the chosen facing
+		visible = false
+		_position_check_counter = 0
+		_last_screen_pos = Vector2.ZERO
+		target_hex = Vector2i(-1, -1)
 		facing_selected.emit(current_facing)
-	visible = false

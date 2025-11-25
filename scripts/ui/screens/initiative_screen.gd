@@ -313,7 +313,7 @@ func _on_roll_pressed():
 		animate_dice_3d(enemy_dice[i * 2 + 1], enemy_results[i][1], delay)
 		delay += 0.1
 	
-	await get_tree().create_timer(5.5).timeout
+	await get_tree().create_timer(2.5).timeout  # Optimizado para móvil: 0.4s lanzamiento + 0.7s caída + 0.3s flash + margen
 	show_results()
 
 func animate_dice_3d(dice: Control, final_result: int, delay: float):
@@ -332,138 +332,109 @@ func animate_dice_3d(dice: Control, final_result: int, delay: float):
 	if not is_instance_valid(dice):
 		return
 	
-	# FASE 1: LANZAMIENTO EXPLOSIVO
-	var launch_height = dice_size * 2.5
-	var horizontal_throw = (randf() - 0.5) * dice_size * 0.8
+	# OPTIMIZACIÓN MÓVIL: Reducir altura y efectos
+	var launch_height = dice_size * 1.5  # Reducido aún más
+	var horizontal_throw = (randf() - 0.5) * dice_size * 0.4
 	
+	# FASE 1: LANZAMIENTO (duración reducida, sin bucles await)
 	var launch = create_tween()
 	launch.set_parallel(true)
-	# Movimiento vertical tipo parábola
-	launch.tween_property(dice, "position:y", original_pos.y - launch_height, 0.7) \
+	launch.tween_property(dice, "position:y", original_pos.y - launch_height, 0.4) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	# Movimiento horizontal
-	launch.tween_property(dice, "position:x", original_pos.x + horizontal_throw, 0.7) \
+	launch.tween_property(dice, "position:x", original_pos.x + horizontal_throw, 0.4) \
 		.set_trans(Tween.TRANS_CUBIC)
-	# Rotación RÁPIDA
-	launch.tween_property(dice, "rotation", TAU * 4, 0.7) \
+	# Reducir rotación a TAU (360°)
+	launch.tween_property(dice, "rotation", TAU, 0.4) \
 		.set_trans(Tween.TRANS_LINEAR)
-	# Escala
-	launch.tween_property(dice, "scale", Vector2(1.5, 1.5), 0.35) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	launch.tween_property(dice, "scale", Vector2(1.2, 1.2), 0.2) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	
-	# Cambiar caras MUY RÁPIDO durante el vuelo
-	var time = 0.0
-	while time < 0.7:
-		await get_tree().create_timer(0.03).timeout
-		if not is_instance_valid(dice) or not is_instance_valid(label):
-			return
-		time += 0.03
+	# OPTIMIZACIÓN: Solo 3 cambios de cara durante lanzamiento
+	await get_tree().create_timer(0.13).timeout
+	if is_instance_valid(label):
 		label.text = dice_faces[randi() % 6]
-		# Pulso de brillo
-		if is_instance_valid(panel):
-			var style_temp = panel.get_theme_stylebox("panel")
-			if style_temp:
-				style_temp = style_temp.duplicate()
-				style_temp.shadow_size = 10 + randi() % 20
-				panel.add_theme_stylebox_override("panel", style_temp)
+	await get_tree().create_timer(0.13).timeout
+	if is_instance_valid(label):
+		label.text = dice_faces[randi() % 6]
+	await get_tree().create_timer(0.14).timeout
+	if is_instance_valid(label):
+		label.text = dice_faces[randi() % 6]
 	
-	if not is_instance_valid(dice):
-		return
-	
-	# FASE 2: CAÍDA CON REBOTES MÚLTIPLES
+	# FASE 2: CAÍDA (duración reducida, sin bucles)
 	var fall = create_tween()
 	fall.set_parallel(true)
-	# Caída con rebote realista
-	fall.tween_property(dice, "position:y", original_pos.y, 1.4) \
+	fall.tween_property(dice, "position:y", original_pos.y, 0.7) \
 		.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	# Volver al centro
-	fall.tween_property(dice, "position:x", original_pos.x, 1.2) \
+	fall.tween_property(dice, "position:x", original_pos.x, 0.6) \
 		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
-	# Rotación desacelerando
-	fall.tween_property(dice, "rotation", TAU * 8, 1.4) \
+	# Reducir rotación a TAU * 2 (720°)
+	fall.tween_property(dice, "rotation", TAU * 2, 0.7) \
 		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-	# Escala vuelve a normal
-	fall.tween_property(dice, "scale", Vector2(1.0, 1.0), 1.2) \
+	fall.tween_property(dice, "scale", Vector2(1.0, 1.0), 0.6) \
 		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	
-	# Cambiar caras más lento durante caída
-	time = 0.0
-	while time < 1.0:
-		await get_tree().create_timer(0.06).timeout
-		if not is_instance_valid(dice) or not is_instance_valid(label):
-			return
-		time += 0.06
+	# OPTIMIZACIÓN: Solo 2 cambios de cara durante caída
+	await get_tree().create_timer(0.3).timeout
+	if is_instance_valid(label):
 		label.text = dice_faces[randi() % 6]
-	
-	# Esperar a que termine la animación de caída
-	await fall.finished
+	await get_tree().create_timer(0.4).timeout
+	if is_instance_valid(label):
+		label.text = dice_faces[randi() % 6]
 	
 	if not is_instance_valid(dice) or not is_instance_valid(label):
 		return
 	
-	# FASE 3: RESULTADO FINAL DRAMÁTICO
+	# FASE 3: RESULTADO FINAL
 	dice.rotation = 0
+	label.text = dice_faces[final_result - 1]
 	
-	# FORZAR EL RESULTADO CORRECTO
-	# final_result es un valor de 1-6 (cara del dado)
-	var correct_face = dice_faces[final_result - 1]
-	label.text = correct_face
-	
-	
-	# Bounce épico
-	dice.scale = Vector2(1.8, 1.8)
+	# Bounce final más rápido
+	dice.scale = Vector2(1.3, 1.3)
 	var final_bounce = create_tween()
-	final_bounce.tween_property(dice, "scale", Vector2(1.0, 1.0), 0.6) \
-		.set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	final_bounce.tween_property(dice, "scale", Vector2(1.0, 1.0), 0.3) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	
 	if not is_instance_valid(panel):
 		return
 	
-	# FLASH AMARILLO BRILLANTE
-	var style = panel.get_theme_stylebox("panel")
-	if style == null:
+	# OPTIMIZACIÓN: Flash más simple - solo 1 pulso
+	var original_style = panel.get_theme_stylebox("panel")
+	if original_style == null:
 		return
 	
+	# Cachear valores
 	var border_width = int(dice_size * 0.08)
-	var shadow_large = int(dice_size * 0.22)
-	var shadow_small = int(dice_size * 0.14)
-		
-	style = style.duplicate()
-	style.border_width_top = border_width
-	style.border_width_bottom = border_width
-	style.border_width_left = border_width
-	style.border_width_right = border_width
-	style.border_color = Color.YELLOW
-	style.shadow_color = Color.YELLOW
-	style.shadow_size = shadow_large
-	panel.add_theme_stylebox_override("panel", style)
+	var shadow_size_flash = int(dice_size * 0.16)
 	
-	# Pulsar 3 veces
-	for i in range(3):
-		await get_tree().create_timer(0.15).timeout
-		if not is_instance_valid(panel):
-			return
-		var pulse = style.duplicate()
-		pulse.shadow_size = shadow_large if i % 2 == 0 else shadow_small
-		panel.add_theme_stylebox_override("panel", pulse)
+	# Crear estilo amarillo
+	var yellow_style = original_style.duplicate()
+	yellow_style.border_width_top = border_width
+	yellow_style.border_width_bottom = border_width
+	yellow_style.border_width_left = border_width
+	yellow_style.border_width_right = border_width
+	yellow_style.border_color = Color.YELLOW
+	yellow_style.shadow_color = Color.YELLOW
+	yellow_style.shadow_size = shadow_size_flash
 	
+	# Aplicar flash amarillo
+	panel.add_theme_stylebox_override("panel", yellow_style)
+	
+	# Esperar y volver al color original
 	await get_tree().create_timer(0.3).timeout
 	
 	if not is_instance_valid(panel):
 		return
 	
-	# Volver al color original
-	var border_normal = int(dice_size * 0.04)
-	var shadow_normal = int(dice_size * 0.14)
-	style = style.duplicate()
-	style.border_width_top = border_normal
-	style.border_width_bottom = border_normal
-	style.border_width_left = border_normal
-	style.border_width_right = border_normal
-	style.border_color = glow_color
-	style.shadow_color = glow_color
-	style.shadow_size = shadow_normal
-	panel.add_theme_stylebox_override("panel", style)
+	# Restaurar estilo original con color del equipo
+	var final_style = original_style.duplicate()
+	final_style.border_width_top = int(dice_size * 0.04)
+	final_style.border_width_bottom = int(dice_size * 0.04)
+	final_style.border_width_left = int(dice_size * 0.04)
+	final_style.border_width_right = int(dice_size * 0.04)
+	final_style.border_color = glow_color
+	final_style.shadow_color = glow_color
+	final_style.shadow_size = int(dice_size * 0.14)
+	panel.add_theme_stylebox_override("panel", final_style)
 
 func show_results():
 	subtitle_label.text = "Initiative determined!"

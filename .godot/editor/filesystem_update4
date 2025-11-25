@@ -1,7 +1,3 @@
-res://scripts/ui/battle_ui.gd
-res://scripts/ui/mech_paper_doll.gd
-res://scripts/mech.gd
-res://scripts/hex_surface_renderer.gd
-res://scripts/core/movement/movement_system.gd
 res://scripts/battle_scene.gd
 res://scripts/ui/facing_selector.gd
+res://scripts/ui/battle_ui.gd

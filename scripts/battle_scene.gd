@@ -1222,6 +1222,15 @@ func get_screen_position_for_hex(hex: Vector2i) -> Vector2:
 func on_facing_selected(facing: int):
 	"""Llamado cuando el jugador selecciona una orientación"""
 	
+	# Manejar cancelación (facing = -1)
+	if facing == -1:
+		print("[BATTLE] Facing selection cancelled")
+		selected_hex = Vector2i(-1, -1)
+		if ui and ui.has_method("hide_facing_selector"):
+			ui.hide_facing_selector()
+		# En deployment, no hacer nada más - permitir que el jugador elija otro hex
+		return
+	
 	if deployment_phase and current_deploying_mech and selected_hex != Vector2i(-1, -1):
 		# Estamos en fase de despliegue
 		_place_mech(current_deploying_mech, selected_hex, facing)
@@ -1603,7 +1612,7 @@ func _execute_movement(unit, hex: Vector2i, path: Array):
 	# Después del movimiento, mostrar selector de facing para ajustar orientación final (sin costo)
 	if ui and unit and unit in player_mechs:
 		print("[BATTLE] Showing post-movement facing selector")
-		var mech_screen_pos = hex_grid.hex_to_pixel(unit.hex_position, true) + hex_grid.position
+		var mech_screen_pos = hex_grid.hex_to_pixel(unit.hex_position, true) + hex_grid.global_position
 		ui.add_combat_message("Adjust final facing (free rotation)", Color.YELLOW)
 		
 		# Guardar el hex actual para el callback de facing

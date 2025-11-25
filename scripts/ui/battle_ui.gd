@@ -1086,6 +1086,11 @@ func is_facing_selector_visible() -> bool:
 
 func _on_facing_selected(facing: int):
 	"""Maneja la selección de una orientación"""
+	# Evitar que el release del click del botón pase al mapa (causando selección de hex accidental)
+	if battle_scene:
+		# Indica al battle_scene que ignore el siguiente click de mouse/touch
+		battle_scene.ignore_next_click = true
+	# Ocultar selector (se hace inmediatamente para feedback)
 	hide_facing_selector()
 	
 	# Pequeño delay para evitar clics accidentales
