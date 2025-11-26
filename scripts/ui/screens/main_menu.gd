@@ -1,6 +1,12 @@
 extends Control
 
 func _ready():
+	# Si estamos en modo headless (servidor dedicado), cambiar a escena de servidor
+	if DisplayServer.get_name() == "headless" or OS.has_feature("dedicated_server"):
+		print("[MAIN_MENU] Detected headless/server mode, switching to server scene...")
+		get_tree().change_scene_to_file("res://scenes/server_main.tscn")
+		return
+	
 	# TEMPORAL: Regenerar hangar para limpiar datos corruptos
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
 	if mech_bay_manager and mech_bay_manager.force_regenerate_hangar:

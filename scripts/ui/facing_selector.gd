@@ -142,8 +142,8 @@ func _ready():
 		# Conectar señal
 		var facing_index = i
 		button.pressed.connect(func(): _on_facing_button_pressed(facing_index))
-		button.mouse_entered.connect(func(): _on_arrow_hover(arrow, arrow_border, true))
-		button.mouse_exited.connect(func(): _on_arrow_hover(arrow, arrow_border, false))
+		button.mouse_entered.connect(func(): _on_arrow_hover(facing_index, true))
+		button.mouse_exited.connect(func(): _on_arrow_hover(facing_index, false))
 		
 		background_panel.add_child(button_container)
 		hex_buttons.append({"button": button, "arrow": arrow, "border": arrow_border, "label": info_label_btn, "container": button_container})
@@ -229,16 +229,44 @@ func _create_arrow_shape(rotation_deg: float, scl: float = 1.0) -> PackedVector2
 	
 	return rotated
 
-func _on_arrow_hover(arrow: Polygon2D, border: Line2D, is_hovering: bool):
+func _on_arrow_hover(button_index: int, is_hovering: bool):
 	"""Feedback visual al pasar el mouse sobre una flecha"""
+	if button_index < 0 or button_index >= hex_buttons.size():
+		return
+	
+	var btn_data = hex_buttons[button_index]
+	var button = btn_data["button"]
+	var arrow = btn_data["arrow"]
+	var border = btn_data["border"]
+	var _container = btn_data["container"]
+	
+	# Si el botón está deshabilitado, no cambiar nada o mostrar hover sutil
+	if button.disabled:
+		if is_hovering:
+			# Hover muy sutil para indicar que no está disponible
+			arrow.color = Color(0.25, 0.25, 0.3, 0.6)
+			border.default_color = Color(0.35, 0.35, 0.4, 0.6)
+		else:
+			# Volver al estado deshabilitado normal
+			arrow.color = Color(0.2, 0.2, 0.2, 0.5)
+			border.default_color = Color(0.3, 0.3, 0.3, 0.5)
+		return
+	
+	# Botón habilitado - hover normal
 	if is_hovering:
 		arrow.color = Color(0.4, 0.7, 1.0, 1.0)  # Más brillante
 		border.default_color = Color(0.6, 0.9, 1.0, 1.0)
 		border.width = 3 * _local_scale
 	else:
-		arrow.color = Color(0.3, 0.6, 1.0, 0.9)
-		border.default_color = Color(0.5, 0.8, 1.0, 1.0)
-		border.width = 2 * _local_scale
+		# Restaurar según si es el facing actual o no
+		if button_index == current_facing:
+			arrow.color = Color(0.3, 1.0, 0.3, 1.0)  # Verde
+			border.default_color = Color(0.5, 1.0, 0.5, 1.0)
+			border.width = 3 * _local_scale
+		else:
+			arrow.color = Color(0.3, 0.6, 1.0, 0.9)  # Cyan normal
+			border.default_color = Color(0.5, 0.8, 1.0, 1.0)
+			border.width = 2 * _local_scale
 
 func _on_x_hover(line1: Line2D, line2: Line2D, border: Line2D, is_hovering: bool):
 	"""Feedback visual al pasar el mouse sobre la X"""

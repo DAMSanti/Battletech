@@ -3,9 +3,7 @@ extends Node
 ## ServerMain - Punto de entrada para el servidor dedicado headless
 ## Ejecutar con: godot --headless --main-pack BattleTech_Server.pck
 
-const NetworkManager = preload("res://scripts/network/network_manager.gd")
-
-var network_manager: NetworkManager
+var network_manager: Node  # Referencia al autoload NetworkManager
 var server_battle_manager: Node
 
 func _ready():
@@ -18,10 +16,12 @@ func _ready():
 	var args = _parse_arguments()
 	var port = args.get("port", 7777)
 	
-	# Crear e inicializar NetworkManager
-	network_manager = NetworkManager.new()
-	network_manager.name = "NetworkManager"
-	add_child(network_manager)
+	# Usar el NetworkManager autoload en lugar de crear una instancia nueva
+	network_manager = get_node_or_null("/root/NetworkManager")
+	if not network_manager:
+		push_error("[SERVER] NetworkManager autoload not found!")
+		get_tree().quit(1)
+		return
 	
 	# Crear ServerBattleManager
 	server_battle_manager = preload("res://scripts/network/server_battle_manager.gd").new()
@@ -66,9 +66,13 @@ func _on_match_ready(player1_id: int, player2_id: int):
 	print("[SERVER] Match starting: %d vs %d" % [player1_id, player2_id])
 	print("[SERVER] Active matches: %d" % network_manager.get_active_match_count())
 	
-	# Iniciar la batalla en el ServerBattleManager
+	# Obtener el match_id y map_seed del NetworkManager
+	var match_id = network_manager.connected_players[player1_id]["match_id"]
+	var map_seed = network_manager.active_matches[match_id]["map_seed"]
+	
+	# Iniciar la batalla en el ServerBattleManager con el MISMO match_id
 	if server_battle_manager.has_method("start_match"):
-		server_battle_manager.start_match(player1_id, player2_id)
+		server_battle_manager.start_match(player1_id, player2_id, match_id, map_seed)
 
 func _on_peer_disconnected(peer_id: int):
 	print("[SERVER] Player disconnected: %d" % peer_id)

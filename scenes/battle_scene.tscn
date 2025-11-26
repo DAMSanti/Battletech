@@ -1,7 +1,8 @@
-[gd_scene load_steps=4 format=3 uid="uid://bquqshv3tglg8"]
+[gd_scene load_steps=5 format=3 uid="uid://bquqshv3tglg8"]
 
 [ext_resource type="Script" uid="uid://b1p3n14u7q3io" path="res://scripts/battle_scene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bgykjlbw56ccy" path="res://scripts/hex_grid.gd" id="2_hexgrid"]
+[ext_resource type="Script" uid="uid://dn0p6hxdbpd70" path="res://scripts/managers/turn_manager.gd" id="3_turnmanager"]
 
 [sub_resource type="GDScript" id="GDScript_ui_v2"]
 script/source = "extends CanvasLayer
@@ -138,7 +139,7 @@ func _setup_dice_animation():
 	style.corner_radius_top_right = 10
 	style.corner_radius_bottom_left = 10
 	style.corner_radius_bottom_right = 10
-	style.border_width_all = 3
+	style.set_border_width_all(3)
 	style.border_color = Color.GOLD
 	dice_panel.add_theme_stylebox_override(\"panel\", style)
 	add_child(dice_panel)
@@ -179,7 +180,7 @@ func _setup_dice_animation():
 		dice_style.corner_radius_top_right = 15
 		dice_style.corner_radius_bottom_left = 15
 		dice_style.corner_radius_bottom_right = 15
-		dice_style.border_width_all = 5
+		dice_style.set_border_width_all(5)
 		dice_style.border_color = Color(0.3, 0.3, 0.3)
 		dice_style.shadow_color = Color(0, 0, 0, 0.5)
 		dice_style.shadow_size = 10
@@ -227,10 +228,9 @@ func _setup_dice_animation():
 		dice_style.corner_radius_top_right = 15
 		dice_style.corner_radius_bottom_left = 15
 		dice_style.corner_radius_bottom_right = 15
-		dice_style.border_width_all = 5
+		dice_style.set_border_width_all(5)
 		dice_style.border_color = Color(0.3, 0.3, 0.3)
 		dice_style.shadow_color = Color(0, 0, 0, 0.5)
-		dice_style.shadow_size = 10
 		dice_bg.add_theme_stylebox_override(\"panel\", dice_style)
 		dice_panel.add_child(dice_bg)
 		
@@ -297,7 +297,7 @@ func update_unit_info(unit):
 	var info = \"%s\\n\" % unit.mech_name
 	info += \"Pilot: %s\\n\" % unit.pilot_name
 	info += \"Heat: %d/%d\\n\" % [unit.heat, unit.heat_capacity]
-	info += \"Movement: %d/%d\\n\" % [unit.current_movement, unit.movement_points]
+	info += \"Movement: %d/%d\\n\" % [unit.current_movement, unit.walk_mp]
 	
 	# Calcular armadura total
 	var total_armor = 0
@@ -322,10 +322,11 @@ func add_combat_message(message: String, color: Color = Color.WHITE):
 	combat_log.append_text(\"[color=#%s]%s[/color]\\n\" % [color_hex, formatted_message])
 
 func _on_end_turn_pressed():
-	if battle_scene and battle_scene.turn_manager:
+	if battle_scene:
 		# Solo permitir si es turno del jugador
 		if battle_scene.selected_unit and battle_scene.selected_unit in battle_scene.player_mechs:
-			battle_scene.turn_manager.complete_unit_activation()
+			# Usar el método centralizado que maneja tanto singleplayer como multiplayer
+			battle_scene.end_current_activation()
 			add_combat_message(\"Activation ended\", Color.GRAY)
 
 func _on_turn_changed(team: String, turn: int):
@@ -484,6 +485,7 @@ position = Vector2(100, 200)
 script = ExtResource("2_hexgrid")
 
 [node name="TurnManager" type="Node" parent="."]
+script = ExtResource("3_turnmanager")
 
 [node name="UI" type="CanvasLayer" parent="."]
 script = SubResource("GDScript_ui_v2")

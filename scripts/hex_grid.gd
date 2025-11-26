@@ -35,8 +35,16 @@ var hex_data: Dictionary = {}  # Posición -> datos (terreno, elevación, unidad
 
 func _ready():
 	z_index = 0  # Grid en el fondo
-	# Generar seed aleatorio para esta partida
-	terrain_seed = randi()
+	
+	# En multiplayer, usar la semilla del servidor; en singleplayer, generar aleatoria
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager and network_manager.is_in_match() and network_manager.current_map_seed != 0:
+		terrain_seed = network_manager.current_map_seed
+		print("[HEX_GRID] Using server map seed: %d" % terrain_seed)
+	else:
+		terrain_seed = randi()
+		print("[HEX_GRID] Using random map seed: %d" % terrain_seed)
+	
 	_preload_terrain_icons()
 	
 	# Generar mapa procedural

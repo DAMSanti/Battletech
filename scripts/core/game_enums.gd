@@ -17,6 +17,7 @@ enum GameState {
 
 ## Fases del turno en Battletech
 enum TurnPhase {
+	DEPLOYMENT,       # Fase de despliegue inicial
 	INITIATIVE,       # Tirada de iniciativa
 	MOVEMENT,         # Fase de movimiento
 	WEAPON_ATTACK,    # Fase de ataque con armas

@@ -20,8 +20,8 @@ const MAX_CLIENTS: int = 32  # Múltiples partidas simultáneas
 # CONFIGURACIÓN DEL SERVIDOR DE PRODUCCIÓN
 # ============================================================
 # Cambia esta IP por la de tu Droplet en DigitalOcean
-const PRODUCTION_SERVER_IP: String = "127.0.0.1"  # TODO: Cambiar a IP de DigitalOcean
-const USE_PRODUCTION_SERVER: bool = false  # Cambiar a true para usar servidor remoto
+const PRODUCTION_SERVER_IP: String = "159.65.94.179"
+const USE_PRODUCTION_SERVER: bool = true  # Cambiar a true para usar servidor remoto
 
 # Estados de conexión
 enum ConnectionState {
@@ -36,6 +36,11 @@ var connection_state: ConnectionState = ConnectionState.DISCONNECTED
 var is_server: bool = false
 var local_player_name: String = "Player"
 var server_peer_id: int = 1  # El servidor siempre es peer 1
+
+# Datos del cliente en partida (solo válidos en cliente)
+var current_match_id: int = -1
+var current_team: String = ""  # "player" o "enemy"
+var opponent_name: String = ""
 
 # Mapeo de peers a datos de jugador
 var connected_players: Dictionary = {}  # peer_id -> { "name": String, "team": String, "match_id": int }
@@ -195,11 +200,15 @@ func _try_matchmake():
 		connected_players[player2_id]["team"] = "enemy"
 		connected_players[player2_id]["state"] = "in_match"
 		
-		print("[SERVER] Match %d created: Player %d vs Player %d" % [match_id, player1_id, player2_id])
+		# Generar semilla del mapa compartida
+		var map_seed = randi()
+		active_matches[match_id]["map_seed"] = map_seed
 		
-		# Notificar a ambos jugadores
-		rpc_id(player1_id, "client_match_found", match_id, "player", connected_players[player2_id]["name"])
-		rpc_id(player2_id, "client_match_found", match_id, "enemy", connected_players[player1_id]["name"])
+		print("[SERVER] Match %d created: Player %d vs Player %d (seed: %d)" % [match_id, player1_id, player2_id, map_seed])
+		
+		# Notificar a ambos jugadores con la semilla del mapa
+		rpc_id(player1_id, "client_match_found", match_id, "player", connected_players[player2_id]["name"], map_seed)
+		rpc_id(player2_id, "client_match_found", match_id, "enemy", connected_players[player1_id]["name"], map_seed)
 		
 		match_ready.emit(player1_id, player2_id)
 
@@ -311,11 +320,15 @@ func client_lobby_update(lobby_info: Array):
 	lobby_updated.emit(lobby_info)
 
 @rpc("authority", "reliable")
-func client_match_found(match_id: int, my_team: String, opponent_name: String):
+func client_match_found(p_match_id: int, p_team: String, p_opponent_name: String, p_map_seed: int):
 	"""Servidor notifica que se encontró partida"""
 	connection_state = ConnectionState.IN_MATCH
-	print("[CLIENT] Match found! ID: %d, Team: %s, Opponent: %s" % [match_id, my_team, opponent_name])
-	match_ready.emit(match_id, my_team)
+	current_match_id = p_match_id
+	current_team = p_team
+	opponent_name = p_opponent_name
+	current_map_seed = p_map_seed  # Guardar semilla para hex_grid
+	print("[CLIENT] Match found! ID: %d, Team: %s, Opponent: %s, MapSeed: %d" % [p_match_id, p_team, p_opponent_name, p_map_seed])
+	match_ready.emit(p_match_id, p_team)
 
 # ============================================================
 # CALLBACKS DE CONEXIÓN
@@ -392,7 +405,197 @@ func _on_server_disconnected():
 func client_opponent_disconnected():
 	"""Servidor notifica que el oponente se desconectó"""
 	print("[CLIENT] Opponent disconnected!")
-	# Aquí el cliente debería mostrar un mensaje y volver al menú
+	battle_opponent_disconnected.emit()
+
+# ============================================================
+# BATTLE RPCS - Servidor -> Cliente
+# Estos RPCs son llamados por el ServerBattleManager y recibidos aquí
+# Luego se reenvían a través de señales al NetworkBattleClient
+# ============================================================
+
+signal battle_deployment_started(match_id: int, team: String)
+signal battle_mech_deployed(mech_id: int, mech_data: Dictionary, hex_pos: Array, facing: int, team: String)
+signal battle_initiative_result(result: Dictionary)
+signal battle_phase_changed(phase: String, turn: int)
+signal battle_unit_activated(mech_id: int, is_mine: bool)
+signal battle_mech_moved(result: Dictionary)
+signal battle_mech_rotated(result: Dictionary)
+signal battle_weapons_fired(result: Dictionary)
+signal battle_physical_result(result: Dictionary)
+signal battle_heat_result(results: Array)
+signal battle_ended(winner_team: String, reason: String)
+signal battle_action_rejected(reason: String)
+signal battle_opponent_disconnected()
+
+# Variable para guardar la semilla del mapa (usada por hex_grid)
+var current_map_seed: int = 0
+
+@rpc("authority", "reliable")
+func client_start_deployment(match_id: int, team: String, map_seed: int):
+	"""Servidor indica inicio de fase de despliegue con semilla del mapa"""
+	print("[CLIENT] Deployment started - Match: %d, Team: %s, MapSeed: %d" % [match_id, team, map_seed])
+	current_map_seed = map_seed
+	battle_deployment_started.emit(match_id, team)
+
+@rpc("authority", "reliable")
+func client_mech_deployed(mech_id: int, mech_data: Dictionary, hex_pos: Array, facing: int, team: String):
+	"""Servidor confirma despliegue de mech"""
+	print("[CLIENT] Mech deployed: %s at %s" % [mech_data.get("name", "Unknown"), hex_pos])
+	battle_mech_deployed.emit(mech_id, mech_data, hex_pos, facing, team)
+
+@rpc("authority", "reliable")
+func client_initiative_result(result: Dictionary):
+	"""Servidor envía resultado de iniciativa"""
+	print("[CLIENT] Initiative result received")
+	battle_initiative_result.emit(result)
+
+@rpc("authority", "reliable")
+func client_phase_changed(phase: String, turn: int):
+	"""Servidor indica cambio de fase"""
+	print("[CLIENT] Phase changed to: %s (Turn %d)" % [phase, turn])
+	battle_phase_changed.emit(phase, turn)
+
+@rpc("authority", "reliable")
+func client_unit_activated(mech_id: int, is_mine: bool):
+	"""Servidor indica qué unidad se activa"""
+	print("[CLIENT] Unit activated: %d (mine: %s)" % [mech_id, is_mine])
+	battle_unit_activated.emit(mech_id, is_mine)
+
+@rpc("authority", "reliable")
+func client_mech_moved(result: Dictionary):
+	"""Servidor confirma movimiento"""
+	print("[CLIENT] Mech moved")
+	battle_mech_moved.emit(result)
+
+@rpc("authority", "reliable")
+func client_mech_rotated(result: Dictionary):
+	"""Servidor confirma rotación"""
+	print("[CLIENT] Mech rotated")
+	battle_mech_rotated.emit(result)
+
+@rpc("authority", "reliable")
+func client_weapons_fired(result: Dictionary):
+	"""Servidor envía resultados de disparo"""
+	print("[CLIENT] Weapons fired")
+	battle_weapons_fired.emit(result)
+
+@rpc("authority", "reliable")
+func client_physical_attack_result(result: Dictionary):
+	"""Servidor envía resultado de ataque físico"""
+	print("[CLIENT] Physical attack result")
+	battle_physical_result.emit(result)
+
+@rpc("authority", "reliable")
+func client_heat_phase_result(results: Array):
+	"""Servidor envía resultados de fase de calor"""
+	print("[CLIENT] Heat phase result")
+	battle_heat_result.emit(results)
+
+@rpc("authority", "reliable")
+func client_battle_ended(winner_team: String, reason: String):
+	"""Servidor indica fin de batalla"""
+	print("[CLIENT] Battle ended: %s wins - %s" % [winner_team, reason])
+	battle_ended.emit(winner_team, reason)
+
+@rpc("authority", "reliable")
+func client_action_rejected(reason: String):
+	"""Servidor rechaza una acción"""
+	print("[CLIENT] Action rejected: %s" % reason)
+	battle_action_rejected.emit(reason)
+
+# ============================================================
+# BATTLE RPCS - Cliente -> Servidor (para forwarding al ServerBattleManager)
+# ============================================================
+
+@rpc("any_peer", "reliable")
+func server_request_deploy_mech(match_id: int, mech_data: Dictionary, hex_pos: Array, facing: int):
+	"""Cliente solicita desplegar un mech - forwarded al ServerBattleManager"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle and server_battle.has_method("server_request_deploy_mech"):
+		# Re-llamar el método como si fuera el sender original
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_deploy_request(sender, match_id, mech_data, hex_pos, facing)
+
+@rpc("any_peer", "reliable")
+func server_request_move(match_id: int, mech_id: int, target_hex: Array, movement_type: int):
+	"""Cliente solicita mover un mech"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_move_request(sender, match_id, mech_id, target_hex, movement_type)
+
+@rpc("any_peer", "reliable")
+func server_request_rotate(match_id: int, mech_id: int, new_facing: int):
+	"""Cliente solicita rotar un mech"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_rotate_request(sender, match_id, mech_id, new_facing)
+
+@rpc("any_peer", "reliable")
+func server_request_fire(match_id: int, attacker_id: int, target_id: int, weapon_indices: Array):
+	"""Cliente solicita disparar armas"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_fire_request(sender, match_id, attacker_id, target_id, weapon_indices)
+
+@rpc("any_peer", "reliable")
+func server_request_physical_attack(match_id: int, attacker_id: int, target_id: int, attack_type: String):
+	"""Cliente solicita ataque físico"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_physical_request(sender, match_id, attacker_id, target_id, attack_type)
+
+@rpc("any_peer", "reliable")
+func server_request_end_activation(match_id: int, mech_id: int):
+	"""Cliente indica fin de activación"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_end_activation(sender, match_id, mech_id)
+
+@rpc("any_peer", "reliable")
+func server_deployment_complete(match_id: int):
+	"""Cliente indica que terminó de desplegar todos sus mechs"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_deployment_complete(sender, match_id)
+
+@rpc("any_peer", "reliable")
+func server_client_ready(match_id: int):
+	"""Cliente notifica que está listo en la escena de batalla"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_client_ready(sender, match_id)
+
+# Señal para notificar que ambos jugadores desplegaron
+signal battle_all_deployed()
+
+@rpc("authority", "reliable")
+func client_all_deployed():
+	"""Servidor notifica que ambos jugadores terminaron de desplegar"""
+	print("[CLIENT] Both players deployed!")
+	battle_all_deployed.emit()
 
 # ============================================================
 # UTILIDADES
@@ -409,6 +612,18 @@ func is_connected_to_server() -> bool:
 
 func is_in_match() -> bool:
 	return connection_state == ConnectionState.IN_MATCH
+
+func get_current_match_id() -> int:
+	"""Obtiene el ID de la partida actual (solo cliente)"""
+	return current_match_id
+
+func get_current_team() -> String:
+	"""Obtiene el equipo asignado al cliente"""
+	return current_team
+
+func get_opponent_name() -> String:
+	"""Obtiene el nombre del oponente"""
+	return opponent_name
 
 func get_player_count() -> int:
 	return connected_players.size()

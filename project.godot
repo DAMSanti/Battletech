@@ -15,6 +15,7 @@ config/description="Tactical Mech Combat Game"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.5", "Mobile")
 config/icon="res://icon.svg"
+run/main_scene_dedicated_server="res://scenes/server_main.tscn"
 
 [autoload]
 

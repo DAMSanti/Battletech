@@ -6,12 +6,33 @@ const heat_sys = preload("res://scripts/core/combat/heat_system.gd")
 const physical_attack_sys = preload("res://scripts/core/combat/physical_attack_system.gd")
 const component_db = preload("res://scripts/core/component_database.gd")
 
+# Nuevo sistema de batalla unificado
+const BattleSceneAdapterClass = preload("res://scripts/core/battle/battle_scene_adapter.gd")
+const LocalBattleManagerClass = preload("res://scripts/core/battle/local_battle_manager.gd")
+const NetworkBattleManagerClass = preload("res://scripts/core/battle/network_battle_manager.gd")
+
 # Referencias (sin @onready porque necesitamos esperar)
 var hex_grid
 var turn_manager
 var ui
 var overlay_layer  # Capa para dibujar hexágonos alcanzables ENCIMA del terreno
 var battle_ai: BattleAI  # Sistema de IA mejorado
+
+# ============================================================
+# SISTEMA UNIFICADO DE BATALLA
+# ============================================================
+var battle_adapter: Node = null  # BattleSceneAdapter para el nuevo sistema
+var use_unified_system: bool = false  # Flag para activar gradualmente el nuevo sistema
+
+# ============================================================
+# SISTEMA MULTIPLAYER
+# ============================================================
+var is_multiplayer_mode: bool = false
+var network_battle_client: Node = null
+var my_team: String = ""  # "player" o "enemy"
+var match_id: int = -1
+var is_my_turn: bool = false
+var waiting_for_server: bool = false  # Esperando respuesta del servidor
 
 var player_mechs: Array = []
 var enemy_mechs: Array = []
@@ -217,9 +238,44 @@ func _ready():
 	# Obtener referencias a los nodos
 	hex_grid = $HexGrid
 	turn_manager = $TurnManager
-	ui = $BattleUI
+	# La UI puede llamarse "UI" o "BattleUI" dependiendo de cómo se cargue
+	ui = get_node_or_null("UI")
+	if not ui:
+		ui = get_node_or_null("BattleUI")
 	
 	print("[BATTLE] Got references - hex_grid: %s, turn_manager: %s, ui: %s" % [hex_grid != null, turn_manager != null, ui != null])
+	if ui:
+		print("[BATTLE] UI node name: %s, class: %s" % [ui.name, ui.get_class()])
+		print("[BATTLE] UI has add_combat_message: %s" % ui.has_method("add_combat_message"))
+		print("[BATTLE] UI has show_facing_selector: %s" % ui.has_method("show_facing_selector"))
+	
+	# ============================================================
+	# DETECTAR MODO MULTIPLAYER Y CONFIGURAR SISTEMA UNIFICADO
+	# ============================================================
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager and network_manager.is_in_match():
+		is_multiplayer_mode = true
+		use_unified_system = true  # Usar sistema unificado para multiplayer
+		my_team = network_manager.get_current_team()
+		match_id = network_manager.get_current_match_id()
+		print("[BATTLE] MULTIPLAYER MODE - Team: %s, Match: %d, Opponent: %s" % [my_team, match_id, network_manager.get_opponent_name()])
+		
+		# Crear NetworkBattleClient
+		network_battle_client = preload("res://scripts/network/network_battle_client.gd").new()
+		network_battle_client.name = "NetworkBattleClient"
+		add_child(network_battle_client)
+		network_battle_client.setup(match_id, my_team)
+		
+		# Conectar señales del cliente de red (legacy)
+		_connect_network_signals()
+		
+		# Crear adaptador de batalla unificado
+		_setup_unified_battle_system()
+	else:
+		print("[BATTLE] SINGLEPLAYER MODE")
+		# Para singleplayer, opcionalmente usar el sistema unificado
+		# use_unified_system = true
+		# _setup_unified_battle_system()
 	
 	# Crear y configurar cámara
 	camera = Camera2D.new()
@@ -253,12 +309,157 @@ func _ready():
 	turn_manager.phase_changed.connect(_on_phase_changed)
 	turn_manager.unit_activated.connect(_on_unit_activated)
 	
-	# Inicializar sistema de IA mejorado
-	battle_ai = BattleAI.new()
-	add_child(battle_ai)
+	# Inicializar sistema de IA (solo en singleplayer)
+	if not is_multiplayer_mode:
+		battle_ai = BattleAI.new()
+		add_child(battle_ai)
+	
+	# Crear FacingSelector si la UI no lo tiene (ej: UI inline de battle_scene.tscn)
+	if ui and not ui.has_method("show_facing_selector"):
+		print("[BATTLE] UI doesn't have facing_selector, creating one...")
+		_create_facing_selector_for_ui()
 	
 	# Iniciar la batalla con fase de despliegue
 	_setup_battle()
+
+# Variable para facing_selector creado por battle_scene (cuando UI no lo tiene)
+var _local_facing_selector = null
+
+func _create_facing_selector_for_ui():
+	"""Crea un FacingSelector y añade los métodos necesarios a la UI"""
+	var FacingSelectorScript = preload("res://scripts/ui/facing_selector.gd")
+	_local_facing_selector = Control.new()
+	_local_facing_selector.set_script(FacingSelectorScript)
+	_local_facing_selector.name = "FacingSelector"
+	ui.add_child(_local_facing_selector)
+	
+	# Conectar la señal del facing selector
+	_local_facing_selector.facing_selected.connect(_on_local_facing_selected)
+	
+	# Añadir métodos wrapper a la UI usando un script extension
+	ui.set_meta("facing_selector", _local_facing_selector)
+	ui.set_meta("battle_scene_ref", self)
+	
+	print("[BATTLE] FacingSelector created and added to UI")
+
+func _on_local_facing_selected(facing: int):
+	"""Maneja selección de facing desde el selector local"""
+	on_facing_selected(facing)
+
+func _ui_show_facing_selector(screen_pos: Vector2, hex: Vector2i = Vector2i(-1, -1)):
+	"""Muestra el facing selector (wrapper)"""
+	if _local_facing_selector:
+		if hex != Vector2i(-1, -1):
+			_local_facing_selector.set_target_hex(hex, self)
+		_local_facing_selector.show_at_position(screen_pos, -1, 99)
+
+func _ui_show_facing_selector_with_current(screen_pos: Vector2, current_facing: int, available_mp: int, hex: Vector2i = Vector2i(-1, -1)):
+	"""Muestra el facing selector con facing actual (wrapper)"""
+	if _local_facing_selector:
+		if hex != Vector2i(-1, -1):
+			_local_facing_selector.set_target_hex(hex, self)
+		_local_facing_selector.show_at_position(screen_pos, current_facing, available_mp)
+
+func _ui_hide_facing_selector():
+	"""Oculta el facing selector (wrapper)"""
+	if _local_facing_selector:
+		_local_facing_selector.visible = false
+
+func _ui_is_facing_selector_visible() -> bool:
+	"""Verifica si el facing selector está visible (wrapper)"""
+	return _local_facing_selector and _local_facing_selector.visible
+
+# ============================================================
+# SISTEMA UNIFICADO DE BATALLA
+# ============================================================
+
+func _setup_unified_battle_system():
+	"""Configura el sistema de batalla unificado"""
+	print("[BATTLE] Setting up unified battle system...")
+	
+	battle_adapter = BattleSceneAdapterClass.new()
+	battle_adapter.name = "BattleAdapter"
+	add_child(battle_adapter)
+	
+	var config = {
+		"map_size": Vector2i(hex_grid.grid_width, hex_grid.grid_height)
+	}
+	
+	if is_multiplayer_mode:
+		config["battle_client"] = network_battle_client
+		config["match_id"] = match_id
+		config["local_peer_id"] = multiplayer.get_unique_id()
+		config["local_team"] = my_team
+	
+	var success = battle_adapter.setup(self, is_multiplayer_mode, config)
+	if success:
+		print("[BATTLE] Unified battle system initialized successfully")
+		_connect_unified_signals()
+	else:
+		push_error("[BATTLE] Failed to initialize unified battle system")
+		use_unified_system = false
+
+func _connect_unified_signals():
+	"""Conecta las señales del sistema unificado"""
+	if not battle_adapter:
+		return
+	
+	battle_adapter.deployment_phase_started.connect(_on_unified_deployment_started)
+	battle_adapter.deployment_complete.connect(_on_unified_deployment_complete)
+	battle_adapter.initiative_rolled.connect(_on_unified_initiative_rolled)
+	battle_adapter.movement_phase_started.connect(_on_unified_movement_started)
+	battle_adapter.turn_ended.connect(_on_unified_turn_ended)
+
+func _on_unified_deployment_started():
+	"""Despliegue iniciado desde sistema unificado"""
+	print("[UNIFIED] Deployment phase started")
+	deployment_phase = true
+	if is_multiplayer_mode:
+		valid_deployment_hexes = battle_adapter.get_deployment_zone(my_team)
+	update_overlays()
+
+func _on_unified_deployment_complete():
+	"""Despliegue completado desde sistema unificado"""
+	print("[UNIFIED] Deployment complete")
+	deployment_phase = false
+	valid_deployment_hexes.clear()
+	update_overlays()
+
+func _on_unified_initiative_rolled(player_roll: int, enemy_roll: int, winner: String):
+	"""Iniciativa tirada desde sistema unificado"""
+	print("[UNIFIED] Initiative: Player %d vs Enemy %d - %s wins" % [player_roll, enemy_roll, winner])
+	initiative_data_stored = {
+		"player_total": player_roll,
+		"enemy_total": enemy_roll,
+		"winner": winner
+	}
+
+func _on_unified_movement_started(mech_node):
+	"""Movimiento iniciado para un mech desde sistema unificado"""
+	print("[UNIFIED] Movement started for: %s" % mech_node.mech_name)
+	selected_unit = mech_node
+	is_my_turn = (mech_node in player_mechs) if not is_multiplayer_mode else (battle_adapter.get_local_team() == mech_node.get_meta("team", ""))
+	
+	if is_my_turn:
+		_show_active_mech_indicator(mech_node)
+		# Calcular hexes alcanzables
+		var move_type = GameEnums.MovementType.WALK
+		reachable_hexes = MovementSystem.get_reachable_hexes(mech_node.hex_position, mech_node.walk_mp, move_type, hex_grid, mech_node)
+		if ui and ui.has_method("show_unit_info"):
+			ui.show_unit_info(mech_node)
+		update_overlays()
+
+func _on_unified_turn_ended():
+	"""Turno terminado desde sistema unificado"""
+	print("[UNIFIED] Turn ended")
+
+## Registra un mech con el sistema unificado (llamar después de crear el mech)
+func _register_mech_with_unified_system(mech: Mech, team: String):
+	"""Registra un mech node con el sistema de batalla unificado"""
+	if use_unified_system and battle_adapter:
+		var state_id = battle_adapter.register_mech(mech, team)
+		mech.set_meta("battle_state_id", state_id)
+		print("[UNIFIED] Registered mech %s with state ID: %s" % [mech.mech_name, state_id])
 
 func _process(delta):
 	# Decrementar cooldown de interacción con UI
@@ -324,6 +525,63 @@ func show_initiative_screen():
 	
 	# Conectar señal (usar CONNECT_ONE_SHOT para que se desconecte automáticamente)
 	initiative_screen.initiative_complete.connect(_on_initiative_screen_complete, CONNECT_ONE_SHOT)
+
+func show_initiative_screen_multiplayer(server_result: Dictionary):
+	"""Muestra la pantalla de iniciativa con los resultados del servidor"""
+	# Ocultar el UI principal durante la iniciativa
+	if ui and ui.has_method("hide_main_ui"):
+		ui.hide_main_ui()
+	
+	var initiative_screen = initiative_screen_scene.instantiate()
+	initiative_screen.layer = 100
+	add_child(initiative_screen)
+	
+	# Pasar los nombres de los mechs
+	initiative_screen.player_mech_names = []
+	for mech in player_mechs:
+		initiative_screen.player_mech_names.append(mech.mech_name)
+	
+	initiative_screen.enemy_mech_names = []
+	for mech in enemy_mechs:
+		initiative_screen.enemy_mech_names.append(mech.mech_name)
+	
+	# Configurar para modo servidor (sin tirar dados)
+	initiative_screen.set_meta("server_mode", true)
+	initiative_screen.set_meta("server_result", server_result)
+	
+	# Conectar señal
+	initiative_screen.initiative_complete.connect(_on_initiative_screen_complete_multiplayer.bind(server_result), CONNECT_ONE_SHOT)
+
+func _on_initiative_screen_complete_multiplayer(_data: Dictionary, server_result: Dictionary):
+	"""Completada la iniciativa en modo multijugador"""
+	if ui and ui.has_method("show_main_ui"):
+		ui.show_main_ui()
+	
+	# Usar los datos del servidor, no los locales
+	initiative_data_stored = server_result
+	
+	# Mostrar resultados en el log
+	if ui:
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("╔═══════════════════════════════╗", Color.GOLD)
+		ui.add_combat_message("║     INITIATIVE RESULTS        ║", Color.GOLD)
+		ui.add_combat_message("╚═══════════════════════════════╝", Color.GOLD)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("Player: %d (%s wins!)" % [server_result.get("player_total", 0), server_result.get("winner", "?")], Color.CYAN)
+		ui.add_combat_message("Enemy: %d" % server_result.get("enemy_total", 0), Color.RED)
+		ui.add_combat_message("", Color.WHITE)
+	
+	# En multijugador, el servidor controla la batalla
+	# Solo necesitamos marcar que la batalla ha comenzado
+	if not battle_started:
+		battle_started = true
+		
+		# Configurar el sistema de IA si existe
+		if battle_ai:
+			battle_ai.setup(hex_grid, player_mechs, self)
+		
+		# Actualizar visibilidad
+		update_mech_visibility()
 
 func _on_initiative_screen_complete(data: Dictionary):
 	# Mostrar el UI principal de nuevo
@@ -409,6 +667,19 @@ func _setup_battle():
 			elif y < 4:
 				deployment_zones["enemy"].append(hex_pos)
 	
+	# En multiplayer, determinar qué lance crea este cliente
+	var should_create_player_mechs = true
+	var should_create_enemy_mechs = true
+	
+	if is_multiplayer_mode:
+		# En multiplayer, cada cliente solo crea los mechs de SU equipo
+		# El servidor sincronizará los del oponente
+		print("[SETUP_BATTLE] Multiplayer mode - my_team: %s" % my_team)
+		if my_team == "player":
+			should_create_enemy_mechs = false  # No crear enemigos, vendrán del servidor
+		elif my_team == "enemy":
+			should_create_player_mechs = false  # No crear jugador, vendrán del servidor
+	
 	# Crear 4 mechs para el jugador
 	var loadout_manager = get_node_or_null("/root/SelectedLoadoutManager")
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
@@ -455,9 +726,10 @@ func _setup_battle():
 			player_mechs_data = player_lance_configs.duplicate()
 	
 	# Crear todos los mechs del jugador para despliegue
-	for mech_data in player_mechs_data:
-		var player_mech = _create_mech_for_deployment(mech_data, "player")
-		mechs_to_deploy.append(player_mech)
+	if should_create_player_mechs:
+		for mech_data in player_mechs_data:
+			var player_mech = _create_mech_for_deployment(mech_data, "player")
+			mechs_to_deploy.append(player_mech)
 	
 	# Crear 4 mechs para el enemigo
 	var enemy_mechs_data: Array = []
@@ -470,25 +742,47 @@ func _setup_battle():
 		{"name": "Kit Fox", "tonnage": 30, "walk_mp": 8, "run_mp": 12, "jump_mp": 0}
 	]
 	
-	if mech_bay_manager:
-		for config in enemy_lance_configs:
-			var mech_data = mech_bay_manager.get_mech_data(config["name"], "")
-			if mech_data:
-				enemy_mechs_data.append(mech_data)
-			else:
-				enemy_mechs_data.append(config)
-	else:
-		# Fallback: usar configuración básica
-		print("[INFO] Using default enemy lance (4 mechs)")
-		enemy_mechs_data = enemy_lance_configs.duplicate()
-	
-	# Crear todos los mechs enemigos para despliegue
-	for mech_data in enemy_mechs_data:
-		var enemy_mech = _create_mech_for_deployment(mech_data, "enemy")
-		mechs_to_deploy.append(enemy_mech)
+	if should_create_enemy_mechs:
+		if mech_bay_manager:
+			for config in enemy_lance_configs:
+				var mech_data = mech_bay_manager.get_mech_data(config["name"], "")
+				if mech_data:
+					enemy_mechs_data.append(mech_data)
+				else:
+					enemy_mechs_data.append(config)
+		else:
+			# Fallback: usar configuración básica
+			print("[INFO] Using default enemy lance (4 mechs)")
+			enemy_mechs_data = enemy_lance_configs.duplicate()
+		
+		# Crear todos los mechs enemigos para despliegue
+		for mech_data in enemy_mechs_data:
+			var enemy_mech = _create_mech_for_deployment(mech_data, "enemy")
+			mechs_to_deploy.append(enemy_mech)
 	
 	# Iniciar fase de despliegue
-	_start_deployment_phase()
+	# En multiplayer, ESPERAR a que el servidor envíe client_start_deployment
+	if is_multiplayer_mode:
+		print("[SETUP_BATTLE] Multiplayer mode - notifying server we are ready...")
+		if ui:
+			ui.add_combat_message("", Color.WHITE)
+			ui.add_combat_message("🌐 MULTIPLAYER BATTLE", Color.CYAN)
+			ui.add_combat_message("Waiting for opponent...", Color.YELLOW)
+			ui.add_combat_message("", Color.WHITE)
+		
+		# Notificar al servidor que estamos listos en la escena de batalla
+		_notify_server_ready()
+		# NO llamar _start_deployment_phase() aquí
+		# Se llamará cuando llegue _on_net_deployment_started
+	else:
+		_start_deployment_phase()
+
+func _notify_server_ready():
+	"""Notifica al servidor que este cliente está listo en la escena de batalla"""
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager and match_id != -1:
+		print("[BATTLE] Sending server_client_ready for match %d" % match_id)
+		network_manager.rpc_id(1, "server_client_ready", match_id)
 
 func _create_mech_for_deployment(mech_data: Dictionary, team: String) -> Mech:
 	"""Crea un mech pero no lo coloca en el mapa todavía"""
@@ -528,6 +822,9 @@ func _create_mech_for_deployment(mech_data: Dictionary, team: String) -> Mech:
 func _start_deployment_phase():
 	"""Inicia la fase de despliegue"""
 	deployment_phase = true
+	print("[DEPLOY] ========== DEPLOYMENT PHASE STARTED ==========")
+	print("[DEPLOY] deployment_phase = %s" % deployment_phase)
+	print("[DEPLOY] mechs_to_deploy count = %d" % mechs_to_deploy.size())
 	
 	# Contar total de mechs por equipo
 	var total_player = 0
@@ -561,31 +858,65 @@ func _deploy_next_mech():
 	"""Selecciona el siguiente mech para desplegar"""
 	
 	if mechs_to_deploy.is_empty():
-		_end_deployment_phase()
+		# En multiplayer, notificar al servidor que terminamos de desplegar
+		if is_multiplayer_mode and network_battle_client:
+			print("[DEPLOY] All my mechs deployed, notifying server...")
+			# El servidor esperará a que ambos jugadores terminen
+			_on_my_deployment_complete()
+		else:
+			_end_deployment_phase()
 		return
 	
 	current_deploying_mech = mechs_to_deploy.pop_front()
-	var team = current_deploying_mech.get_meta("team")
+	var mech_team = current_deploying_mech.get_meta("team")
 	
-	# Contar cuántos mechs quedan por desplegar de cada equipo
-	var player_remaining = 0
-	var _enemy_remaining = 0  # Prefijo _ para evitar warning
+	# Contar cuántos mechs quedan por desplegar de MI equipo
+	var my_remaining = 0
 	for mech in mechs_to_deploy:
-		if mech.get_meta("team") == "player":
-			player_remaining += 1
+		var t = mech.get_meta("team")
+		if is_multiplayer_mode:
+			# En multiplayer, solo cuento mis mechs (los que coinciden con my_team)
+			if t == my_team:
+				my_remaining += 1
 		else:
-			_enemy_remaining += 1
+			# En singleplayer, cuento mechs "player"
+			if t == "player":
+				my_remaining += 1
 	
-	if team == "player":
+	# Determinar si este mech es MÍO (debo desplegarlo manualmente)
+	var is_my_mech = false
+	if is_multiplayer_mode:
+		# En multiplayer, es mío si su team coincide con my_team
+		is_my_mech = (mech_team == my_team)
+	else:
+		# En singleplayer, "player" es mío, "enemy" es IA
+		is_my_mech = (mech_team == "player")
+	
+	if is_my_mech:
 		# Jugador despliega manualmente
-		valid_deployment_hexes = deployment_zones["player"].duplicate()
+		# Determinar zona de despliegue según mi equipo
+		var my_zone = my_team if is_multiplayer_mode and my_team != "" else "player"
+		
+		# Usar sistema unificado si está disponible
+		if use_unified_system and battle_adapter:
+			valid_deployment_hexes = Array(battle_adapter.get_deployment_zone(my_zone))
+			print("[DEPLOY] Using unified system for zone '%s' - valid hexes: %d" % [my_zone, valid_deployment_hexes.size()])
+		elif deployment_zones.has(my_zone):
+			valid_deployment_hexes = deployment_zones[my_zone].duplicate()
+			print("[DEPLOY] My zone: %s, valid hexes: %d" % [my_zone, valid_deployment_hexes.size()])
+		else:
+			push_error("[DEPLOY] Zone not found for team: %s, available zones: %s" % [my_zone, deployment_zones.keys()])
+			valid_deployment_hexes = deployment_zones.get("player", []).duplicate()
+		
 		if ui:
-			var total_player_mechs = player_mechs.size() + player_remaining + 1
-			var deployed_count = total_player_mechs - player_remaining - 1
+			var total_my_mechs = 1 + my_remaining  # El actual + los que quedan
+			var deployed_count = (4 - total_my_mechs)  # Asumiendo lance de 4
+			if deployed_count < 0:
+				deployed_count = 0
 			var current_num = deployed_count + 1
 			
 			ui.add_combat_message("─────────────────────────────────────────", Color.GRAY)
-			ui.add_combat_message("⚔️  DEPLOYING MECH [%d/%d]" % [current_num, total_player_mechs], Color.GOLD)
+			ui.add_combat_message("⚔️  DEPLOYING MECH [%d/%d]" % [current_num, deployed_count + total_my_mechs], Color.GOLD)
 			ui.add_combat_message("─────────────────────────────────────────", Color.GRAY)
 			ui.add_combat_message("🤖 Mech: %s" % current_deploying_mech.mech_name, Color.CYAN)
 			ui.add_combat_message("⚖️  Tonnage: %d tons" % current_deploying_mech.tonnage, Color.WHITE)
@@ -593,16 +924,21 @@ func _deploy_next_mech():
 			if current_deploying_mech.jump_mp > 0:
 				ui.add_combat_message("🚀 Jump: %d MP" % current_deploying_mech.jump_mp, Color.LIGHT_BLUE)
 			ui.add_combat_message("", Color.WHITE)
-			if player_remaining > 0:
-				ui.add_combat_message("📊 Progress: %d deployed, %d remaining" % [deployed_count, player_remaining], Color.YELLOW)
+			if my_remaining > 0:
+				ui.add_combat_message("📊 Progress: %d deployed, %d remaining" % [deployed_count, my_remaining], Color.YELLOW)
 			else:
 				ui.add_combat_message("📊 Progress: This is your LAST mech!" % [], Color.ORANGE)
 			ui.add_combat_message("👉 Click on a GREEN hex to deploy", Color.GREEN)
 			ui.add_combat_message("", Color.WHITE)
 		update_overlays()
 	else:
-		# IA despliega automáticamente
-		_deploy_ai_mech()
+		# En singleplayer: IA despliega automáticamente
+		# En multiplayer: NO debería llegar aquí porque solo creamos nuestros mechs
+		if is_multiplayer_mode:
+			push_error("[DEPLOY] Trying to deploy opponent's mech locally - this shouldn't happen!")
+			_deploy_next_mech()  # Saltar al siguiente
+		else:
+			_deploy_ai_mech()
 
 func _deploy_ai_mech():
 	"""Despliega un mech de la IA automáticamente"""
@@ -647,14 +983,37 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 	
 	var team = mech.get_meta("team")
 	
+	# En modo multijugador, enviar al servidor ANTES de colocar localmente
+	if is_multiplayer_mode and network_battle_client and team == my_team:
+		# Construir datos del mech para enviar al servidor
+		var mech_data = {
+			"name": mech.mech_name,
+			"tonnage": mech.tonnage,
+			"walk_mp": mech.walk_mp,
+			"run_mp": mech.run_mp,
+			"jump_mp": mech.jump_mp,
+			"armor": mech.armor.duplicate(true) if mech.armor else {},
+			"weapons": mech.weapons.duplicate(true) if mech.weapons else [],
+			"heat_capacity": mech.heat_capacity,
+			"heat_dissipation": mech.heat_dissipation,
+			"gunnery_skill": mech.pilot_skill
+		}
+		print("[DEPLOY] Sending mech %s to server at [%d,%d]" % [mech.mech_name, hex.x, hex.y])
+		network_battle_client.request_deploy_mech(mech_data, hex, facing)
+		# En multijugador, el mech se añadirá cuando el servidor confirme via _on_net_mech_deployed
+		# Pero también lo añadimos localmente para feedback inmediato
+	
 	add_child(mech)
 	mech.visible = true  # Asegurar que sea visible
 	hex_grid.set_unit(hex, mech)
 	mech.update_visual_position(hex_grid)
 	mech.update_facing_visual()  # Actualizar sprite según facing
 	
+	# Registrar con sistema unificado
+	_register_mech_with_unified_system(mech, team)
+	
 	# Añadir a la lista correcta y mostrar confirmación
-	if team == "player":
+	if team == "player" or team == my_team:
 		player_mechs.append(mech)
 		if ui:
 			ui.add_combat_message("✓ %s deployed at [%d, %d], facing %s" % [
@@ -666,6 +1025,43 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 			ui.add_combat_message("", Color.WHITE)
 	else:
 		enemy_mechs.append(mech)
+
+func _on_my_deployment_complete():
+	"""Llamado en multiplayer cuando este cliente termina de desplegar todos sus mechs"""
+	deployment_phase = false
+	valid_deployment_hexes.clear()
+	current_deploying_mech = null
+	
+	if ui:
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("╔══════════════════════════════════════════╗", Color.CYAN)
+		ui.add_combat_message("║   ✓ YOUR DEPLOYMENT COMPLETE!           ║", Color.CYAN)
+		ui.add_combat_message("║   Waiting for opponent...               ║", Color.YELLOW)
+		ui.add_combat_message("╚══════════════════════════════════════════╝", Color.CYAN)
+		ui.add_combat_message("", Color.WHITE)
+	
+	# Notificar al servidor que terminamos
+	# El servidor esperará a que AMBOS jugadores terminen antes de iniciar iniciativa
+	if network_battle_client and network_battle_client.has_method("notify_deployment_complete"):
+		network_battle_client.notify_deployment_complete()
+	
+	update_overlays()
+
+func _on_both_players_deployed():
+	"""Llamado por el servidor cuando AMBOS jugadores terminaron de desplegar"""
+	print("[BATTLE] Both players deployed, waiting for server initiative...")
+	
+	if ui:
+		ui.add_combat_message("╔══════════════════════════════════════════╗", Color.GREEN)
+		ui.add_combat_message("║    ✓ ALL FORCES DEPLOYED!               ║", Color.GREEN)
+		ui.add_combat_message("╚══════════════════════════════════════════╝", Color.GREEN)
+		ui.add_combat_message("", Color.WHITE)
+		ui.add_combat_message("⚔️  Preparing for combat...", Color.YELLOW)
+		ui.add_combat_message("🎲 Server rolling for initiative...", Color.GOLD)
+	
+	# En multijugador, NO llamar show_initiative_screen() aquí
+	# El servidor enviará el resultado de iniciativa y entonces mostraremos la pantalla
+	# La pantalla se muestra en _on_net_initiative_result()
 
 func _end_deployment_phase():
 	"""Finaliza la fase de despliegue e inicia la batalla"""
@@ -932,9 +1328,16 @@ func _create_enemy_mech(mech_name: String, mech_position: Vector2i, tonnage: int
 func _input(event):
 	# Permitir input durante la fase de despliegue
 	if hex_grid == null or camera == null:
+		print("[INPUT] hex_grid or camera is null, ignoring input")
 		return
 	
-	# Bloquear input solo si no estamos en despliegue y la batalla no ha comenzado
+	# SIEMPRE permitir gestos de cámara (zoom, pan)
+	if _handle_camera_input(event):
+		long_press_active = false
+		return
+	
+	# Bloquear OTRO input solo si no estamos en despliegue y la batalla no ha comenzado
+	# (pero la cámara ya se manejó arriba)
 	if not deployment_phase and not battle_started:
 		return
 	
@@ -982,11 +1385,6 @@ func _input(event):
 		var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 		_handle_mech_inspect(hex)
 		return
-	
-	# Manejar gestos de cámara primero
-	if _handle_camera_input(event):
-		long_press_active = false  # Cancelar tap largo si se detecta gesto de cámara
-		return  # Si fue un gesto de cámara, no procesar como click en hexágono
 		
 	# Click/toque en hexágono
 	if event is InputEventScreenTouch and not event.pressed:  # Solo en release
@@ -998,6 +1396,10 @@ func _input(event):
 		if touch_points.size() == 0 and not long_press_active and not has_moved_significantly:
 			# Verificar cooldown de interacción con UI
 			if ui_interaction_cooldown > 0:
+				return
+			
+			# Verificar si el toque está sobre un control de UI
+			if _is_click_over_ui(event.position):
 				return
 			
 			# Bloquear clics si el facing selector está visible
@@ -1023,8 +1425,12 @@ func _input(event):
 	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		# Solo procesar como click si no hubo movimiento significativo
 		if not long_press_active and not has_moved_significantly:
-			# Verificar cooldown de interacción con UI (solo en móvil, no en PC)
-			if OS.has_feature("mobile") and ui_interaction_cooldown > 0:
+			# Verificar cooldown de interacción con UI
+			if ui_interaction_cooldown > 0:
+				return
+			
+			# Verificar si el clic está sobre un control de UI
+			if _is_click_over_ui(event.position):
 				return
 			
 			# Bloquear clics si el facing selector está visible
@@ -1042,6 +1448,41 @@ func _input(event):
 		# Limpiar posición inicial y resetear flag con deferred
 		touch_start_positions.erase(0)
 		call_deferred("_reset_movement_flag")
+
+func _is_click_over_ui(screen_pos: Vector2) -> bool:
+	"""Verifica si la posición de pantalla está sobre un control de UI interactivo"""
+	# Solo verificar controles dentro de CanvasLayers (UI real, no el mapa)
+	if not ui:
+		return false
+	
+	# Buscar botones visibles en la UI que realmente estén en pantalla
+	var buttons = _get_visible_buttons(ui)
+	for button in buttons:
+		var rect = button.get_global_rect()
+		if rect.has_point(screen_pos):
+			print("[INPUT] Click blocked - over button: %s at %s" % [button.text if button.text else button.name, rect])
+			return true
+	return false
+
+func _get_visible_buttons(node: Node) -> Array:
+	"""Obtiene recursivamente todos los botones realmente visibles"""
+	var buttons = []
+	if node is Button:
+		# Verificar que el botón Y todos sus ancestros estén visibles
+		if _is_truly_visible(node):
+			buttons.append(node)
+	for child in node.get_children():
+		buttons.append_array(_get_visible_buttons(child))
+	return buttons
+
+func _is_truly_visible(node: Node) -> bool:
+	"""Verifica si un nodo y todos sus ancestros están visibles"""
+	if node is CanvasItem:
+		if not node.visible:
+			return false
+	if node.get_parent():
+		return _is_truly_visible(node.get_parent())
+	return true
 
 func _handle_camera_input(event) -> bool:
 	# Retorna true si el evento fue procesado como gesto de cámara
@@ -1159,6 +1600,13 @@ func _handle_hex_clicked(hex: Vector2i):
 	if deployment_phase:
 		_handle_deployment_click(hex)
 		return
+	
+	# En modo multijugador, solo permitir input si es mi turno
+	if is_multiplayer_mode and not is_my_turn:
+		print("[BATTLE_NET] Not my turn, ignoring click")
+		if ui and ui.has_method("add_combat_message"):
+			ui.add_combat_message("Wait for your turn!", Color.YELLOW)
+		return
 
 # (helper debouncer implemented once above with await)
 	
@@ -1176,7 +1624,11 @@ func _handle_hex_clicked(hex: Vector2i):
 
 func _handle_deployment_click(hex: Vector2i):
 	"""Maneja clics durante la fase de despliegue"""
+	print("[DEPLOY_CLICK] hex=%s, current_deploying_mech=%s" % [hex, current_deploying_mech])
+	print("[DEPLOY_CLICK] valid_deployment_hexes count=%d" % valid_deployment_hexes.size())
+	
 	if not current_deploying_mech:
+		print("[DEPLOY_CLICK] No current_deploying_mech!")
 		return
 	
 	# Verificar que el hex esté en la zona de despliegue válida
@@ -1203,8 +1655,22 @@ func _handle_deployment_click(hex: Vector2i):
 		screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
 	
 	# IMPORTANTE: Solo mostrar si no está ya visible
-	if ui and ui.has_method("show_facing_selector") and not ui.is_facing_selector_visible():
-		ui.show_facing_selector(screen_pos, hex)
+	print("[DEPLOY_CLICK] UI exists: %s, has_method: %s, local_selector: %s" % [ui != null, ui.has_method("show_facing_selector") if ui else false, _local_facing_selector != null])
+	var selector_visible = false
+	if ui and ui.has_method("is_facing_selector_visible"):
+		selector_visible = ui.is_facing_selector_visible()
+	elif _local_facing_selector:
+		selector_visible = _local_facing_selector.visible
+	print("[DEPLOY_CLICK] is_facing_selector_visible: %s" % selector_visible)
+	
+	if not selector_visible:
+		print("[DEPLOY_CLICK] Showing facing selector at %s" % screen_pos)
+		if ui and ui.has_method("show_facing_selector"):
+			ui.show_facing_selector(screen_pos, hex)
+		elif _local_facing_selector:
+			_ui_show_facing_selector(screen_pos, hex)
+	else:
+		print("[DEPLOY_CLICK] NOT showing facing selector - already visible")
 
 var _cached_hex_screen_pos: Dictionary = {}
 var _camera_last_pos: Vector2 = Vector2.ZERO
@@ -1238,17 +1704,26 @@ func on_facing_selected(facing: int):
 		selected_hex = Vector2i(-1, -1)
 		if ui and ui.has_method("hide_facing_selector"):
 			ui.hide_facing_selector()
+		elif _local_facing_selector:
+			_ui_hide_facing_selector()
 		# En deployment, no hacer nada más - permitir que el jugador elija otro hex
 		return
 	
 	if deployment_phase and current_deploying_mech and selected_hex != Vector2i(-1, -1):
 		# Estamos en fase de despliegue
 		_place_mech(current_deploying_mech, selected_hex, facing)
+		
+		# Quitar el hex ocupado de la lista de hexes válidos para el overlay
+		valid_deployment_hexes.erase(selected_hex)
+		update_overlays()
+		
 		selected_hex = Vector2i(-1, -1)  # Reset
 		
 		# Asegurar que el selector se cierre antes de continuar
 		if ui and ui.has_method("hide_facing_selector"):
 			ui.hide_facing_selector()
+		elif _local_facing_selector:
+			_ui_hide_facing_selector()
 		
 		# Pequeño delay para asegurar que el selector se cerró completamente
 		await get_tree().create_timer(0.1).timeout
@@ -1375,12 +1850,14 @@ func select_turn_only():
 	ui_interaction_cooldown = 0.2  # 200ms de cooldown
 	
 	if ui:
-		ui.add_combat_message("%s: Select new facing (Turn only)" % selected_unit.mech_name, Color.CYAN)
+		ui.add_combat_message("%s: Select new facing (Turn only - %d MP available)" % [selected_unit.mech_name, selected_unit.current_movement], Color.CYAN)
 	
 	# Mostrar selector de facing en la posición del mech
 	var mech_screen_pos = selected_unit.global_position
 	if ui and ui.has_method("show_facing_selector_with_current"):
-		ui.show_facing_selector_with_current(mech_screen_pos, selected_unit.facing, 99)
+		ui.show_facing_selector_with_current(mech_screen_pos, selected_unit.facing, selected_unit.current_movement)
+	elif _local_facing_selector:
+		_ui_show_facing_selector_with_current(mech_screen_pos, selected_unit.facing, selected_unit.current_movement)
 
 func cancel_movement_selection():
 	"""Cancela la selección de movimiento actual y vuelve al selector de tipo"""
@@ -1395,40 +1872,75 @@ func cancel_movement_selection():
 	
 	# Volver a mostrar el selector de tipo de movimiento
 	if ui and selected_unit:
-		ui.hide_cancel_movement_button()
+		if ui.has_method("hide_cancel_movement_button"):
+			ui.hide_cancel_movement_button()
 		pending_movement_selection = true
-		ui.show_movement_type_selector(selected_unit)
+		if ui.has_method("show_movement_type_selector"):
+			ui.show_movement_type_selector(selected_unit)
 		ui.add_combat_message("Movement cancelled - select new movement type", Color.GRAY)
 
 func _handle_movement_click(hex: Vector2i):
+	print("[MOVE_CLICK] hex=%s, selected_unit=%s" % [hex, selected_unit.mech_name if selected_unit else "null"])
+	print("[MOVE_CLICK] pending_move_confirmation=%s, preview_destination=%s" % [pending_move_confirmation, preview_destination])
+	
 	if selected_unit == null:
+		print("[MOVE_CLICK] No unit selected - abort")
 		return
 	
 	# Si estamos esperando selección de tipo de movimiento, ignorar clics
 	if pending_movement_selection:
+		print("[MOVE_CLICK] Waiting for movement type selection - abort")
 		return
 	
 	# Solo permitir movimiento si es el turno del jugador
 	if selected_unit not in player_mechs:
+		print("[MOVE_CLICK] Not my mech - abort")
 		return
+	
+	# En modo multiplayer, verificar que sea nuestro turno
+	if is_multiplayer_mode and not is_my_turn:
+		print("[MOVE_CLICK] Not my turn - abort")
+		if ui and ui.has_method("add_combat_message"):
+			ui.add_combat_message("Not your turn!", Color.RED)
+		return
+	
+	# Si ya hay un movimiento pendiente de confirmar
+	if pending_move_confirmation and preview_destination != Vector2i(-1, -1):
+		print("[MOVE_CLICK] Have pending confirmation - checking if same hex")
+		if hex == preview_destination:
+			# Segundo click en el mismo destino = confirmar movimiento
+			print("[MOVE_CLICK] SAME HEX - confirming movement!")
+			_on_movement_confirmed()
+			return
+		else:
+			# Click en otro hex = cancelar preview y mostrar nuevo
+			print("[MOVE_CLICK] Different hex - cancelling preview")
+			_on_movement_cancelled()
 	
 	# Verificar que el hexágono sea alcanzable
 	if hex in reachable_hexes:
+		print("[MOVE_CLICK] Hex is reachable - showing preview")
 		_preview_movement_path(selected_unit, hex)
+	else:
+		print("[MOVE_CLICK] Hex NOT reachable (reachable_hexes.size=%d)" % reachable_hexes.size())
 
 
 func _preview_movement_path(unit, hex: Vector2i):
 	"""Muestra el camino de movimiento y pide confirmación"""
+	print("[PREVIEW_MOVE] Starting preview to hex=%s for unit=%s" % [hex, unit.mech_name])
+	
 	# Calcular camino
 	var path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
 	
 	if path.size() == 0:
+		print("[PREVIEW_MOVE] No path found - abort")
 		return
 	
 	# Guardar información del movimiento pendiente
 	preview_path = path
 	preview_destination = hex
 	pending_move_confirmation = true
+	print("[PREVIEW_MOVE] Set pending_move_confirmation=true, preview_destination=%s" % preview_destination)
 	
 	# Calcular coste del movimiento
 	var movement_cost = 0
@@ -1472,12 +1984,18 @@ func _preview_movement_path(unit, hex: Vector2i):
 			message += ", Rotation: %d MP" % rotation_cost
 		message += ")"
 		
-		ui.show_confirmation_dialog(
-			"Confirm Movement",
-			message,
-			_on_movement_confirmed,
-			_on_movement_cancelled
-		)
+		# Verificar si el UI tiene el método de diálogo de confirmación
+		if ui.has_method("show_confirmation_dialog"):
+			ui.show_confirmation_dialog(
+				"Confirm Movement",
+				message,
+				_on_movement_confirmed,
+				_on_movement_cancelled
+			)
+		else:
+			# UI simplificado - mostrar mensaje en combat log y confirmar con segundo click
+			ui.add_combat_message("▶ " + message, Color.YELLOW)
+			ui.add_combat_message("Tap destination again to confirm", Color.CYAN)
 	
 	# Actualizar overlays para mostrar el camino
 	update_overlays()
@@ -1497,10 +2015,25 @@ func _on_movement_confirmed():
 	pending_move_confirmation = false
 	
 	# Ocultar botón de cancelar
-	if ui:
+	if ui and ui.has_method("hide_cancel_movement_button"):
 		ui.hide_cancel_movement_button()
 	
-	# Ejecutar movimiento
+	# En modo multiplayer, enviar solicitud al servidor
+	if is_multiplayer_mode and network_battle_client:
+		print("[BATTLE] Multiplayer mode - sending move request to server")
+		var mech_id = selected_unit.get_meta("network_id", -1)
+		var move_type = selected_unit.movement_type_used if selected_unit.movement_type_used else GameEnums.MovementType.WALK
+		network_battle_client.request_move(mech_id, preview_destination, move_type)
+		
+		# Limpiar previsualización pero NO ejecutar movimiento localmente
+		# El servidor enviará confirmación que actualizará la posición
+		preview_path = []
+		preview_destination = Vector2i(-1, -1)
+		reachable_hexes = []
+		update_overlays()
+		return
+	
+	# En modo singleplayer, ejecutar movimiento localmente
 	print("[BATTLE] Executing movement to %s" % preview_destination)
 	_execute_movement(selected_unit, preview_destination, preview_path)
 	
@@ -1571,9 +2104,14 @@ func _execute_movement(unit, hex: Vector2i, path: Array):
 	
 	# Actualizar facing al final del movimiento
 	unit.facing = current_facing
+	print("[BATTLE] _execute_movement: Updated facing to %d for %s" % [current_facing, unit.mech_name])
 	
 	# ACTUALIZAR POSICIÓN VISUAL DEL MECH
 	unit.update_visual_position(hex_grid)
+	
+	# Forzar actualización del sprite para reflejar el nuevo facing
+	print("[BATTLE] _execute_movement: Forcing sprite update for %s" % unit.mech_name)
+	unit._update_sprite()
 	
 	# Actualizar visibilidad de todos los mechs tras movimiento
 	update_mech_visibility()
@@ -1619,18 +2157,26 @@ func _execute_movement(unit, hex: Vector2i, path: Array):
 	# El estado se limpia en _on_movement_confirmed
 	print("[BATTLE] Movement execution completed")
 	
-	# Después del movimiento, mostrar selector de facing para ajustar orientación final (sin costo)
+	# Después del movimiento, mostrar selector de facing para ajustar orientación final
 	if ui and unit and unit in player_mechs:
 		print("[BATTLE] Showing post-movement facing selector")
 		var mech_screen_pos = hex_grid.hex_to_pixel(unit.hex_position, true) + hex_grid.global_position
-		ui.add_combat_message("Adjust final facing (free rotation)", Color.YELLOW)
+		
+		# Mostrar MPs restantes disponibles para rotación
+		if unit.current_movement > 0:
+			ui.add_combat_message("Adjust final facing (%d MP remaining)" % unit.current_movement, Color.YELLOW)
+		else:
+			ui.add_combat_message("Adjust final facing (no MP remaining)", Color.ORANGE)
 		
 		# Guardar el hex actual para el callback de facing
 		selected_hex = unit.hex_position
 		selected_unit = unit  # Asegurar que selected_unit esté disponible
 		
-		# Mostrar selector
-		ui.show_facing_selector_with_current(mech_screen_pos, unit.facing, 99)
+		# Mostrar selector con MPs disponibles para rotación
+		if ui.has_method("show_facing_selector_with_current"):
+			ui.show_facing_selector_with_current(mech_screen_pos, unit.facing, unit.current_movement)
+		elif _local_facing_selector:
+			_ui_show_facing_selector_with_current(mech_screen_pos, unit.facing, unit.current_movement)
 	else:
 		# Si no hay UI o no es mech del jugador, completar activación directamente
 		print("[BATTLE] No facing selector needed, completing activation")
@@ -1661,12 +2207,22 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 		hex_grid.set_unit(hex, unit)
 		
 		# Actualizar facing automaticamente basado en la direccion del movimiento
-		if old_pos != hex:
-			var new_facing = FacingSystem.get_facing_to_hex(old_pos, hex)
+		# Usar el último paso del path para obtener la dirección correcta
+		if path.size() >= 2:
+			var last_step_from = path[path.size() - 2]
+			var last_step_to = path[path.size() - 1]
+			var new_facing = FacingSystem.get_facing_to_hex(last_step_from, last_step_to)
 			unit.facing = new_facing
+			print("[BATTLE] Updated facing to %d based on movement direction for %s" % [new_facing, unit.mech_name])
+		else:
+			print("[BATTLE] Path too short to determine facing: %d steps" % path.size())
 		
 		# ACTUALIZAR POSICIÓN VISUAL DEL MECH
 		unit.update_visual_position(hex_grid)
+		
+		# Forzar actualización del sprite para reflejar el nuevo facing
+		print("[BATTLE] Forcing sprite update for %s with facing %d" % [unit.mech_name, unit.facing])
+		unit._update_sprite()
 		
 		# Actualizar visibilidad de todos los mechs tras movimiento
 		update_mech_visibility()
@@ -1716,7 +2272,13 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 			# Verificar si tiene al menos 1 MP para rotar (incluso si current_movement quedó en 0)
 			# El selector mostrará correctamente cuántos MPs tiene disponibles
 			# IMPORTANTE: Solo mostrar si el selector NO está ya visible (evita doble-apertura)
-			if ui and ui.has_method("show_facing_selector_with_current") and not ui.is_facing_selector_visible():
+			var selector_visible = false
+			if ui and ui.has_method("is_facing_selector_visible"):
+				selector_visible = ui.is_facing_selector_visible()
+			elif _local_facing_selector:
+				selector_visible = _local_facing_selector.visible
+			
+			if not selector_visible:
 				# Mostrar selector de facing
 				selected_hex = hex  # Guardar posición actual
 				var hex_pixel = hex_grid.hex_to_pixel(hex, true) + hex_grid.global_position
@@ -1725,7 +2287,10 @@ func _move_unit_to_hex(unit, hex: Vector2i):
 					screen_pos = hex_pixel - camera.position + get_viewport().get_visible_rect().size / 2
 				
 				# Siempre mostrar el selector, que internamente manejará si hay MPs o no
-				ui.show_facing_selector_with_current(screen_pos, unit.facing, unit.current_movement)
+				if ui and ui.has_method("show_facing_selector_with_current"):
+					ui.show_facing_selector_with_current(screen_pos, unit.facing, unit.current_movement)
+				elif _local_facing_selector:
+					_ui_show_facing_selector_with_current(screen_pos, unit.facing, unit.current_movement)
 			else:
 				# Fallback si no hay método mejorado
 				if unit.current_movement > 0:
@@ -1797,8 +2362,10 @@ func _handle_weapon_attack_click(hex: Vector2i):
 		
 		# print("[DEBUG] Showing weapon selector for target %s at range %d" % [target.mech_name, range_hexes])
 		# Mostrar selector de armas
-		if ui:
+		if ui and ui.has_method("show_weapon_selector"):
 			ui.show_weapon_selector(selected_unit, target, range_hexes)
+		elif ui and ui.has_method("add_combat_message"):
+			ui.add_combat_message("Select weapons to fire at %s (Range: %d)" % [target.mech_name, range_hexes], Color.YELLOW)
 
 func execute_weapon_attack(attacker, target, weapon_indices: Array, range_hexes: int):
 	# Ejecutar ataque con las armas seleccionadas
@@ -2048,7 +2615,7 @@ func _on_phase_changed(phase: String):
 			pass
 	
 	# Actualizar UI con la fase
-	if ui:
+	if ui and ui.has_method("update_phase_info"):
 		ui.update_phase_info(phase)
 
 func _on_unit_activated(unit):
@@ -2080,7 +2647,7 @@ func _on_unit_activated(unit):
 	unit.has_performed_physical_attack = false
 	
 	# Ocultar menú de movimiento siempre al activar una nueva unidad
-	if ui:
+	if ui and ui.has_method("hide_movement_type_selector"):
 		ui.hide_movement_type_selector()
 	
 	# NO resetear movimiento aquí - lo hace el turn_manager
@@ -2099,7 +2666,8 @@ func _on_unit_activated(unit):
 			# Mostrar menú de selección de tipo de movimiento SOLO en fase de movimiento
 			pending_movement_selection = true
 			if ui:
-				ui.show_movement_type_selector(unit)
+				if ui.has_method("show_movement_type_selector"):
+					ui.show_movement_type_selector(unit)
 				ui.add_combat_message("Your turn: Select movement type for %s" % unit.mech_name, Color.CYAN)
 		elif current_state == GameEnums.GameState.PHYSICAL_TARGETING:
 			# Verificar si ya realizó un ataque físico
@@ -2432,7 +3000,17 @@ func get_turn_manager():
 	return turn_manager
 
 func end_current_activation():
-	if turn_manager:
+	"""Termina la activación de la unidad actual"""
+	if is_multiplayer_mode and network_battle_client and selected_unit:
+		# En multiplayer, notificar al servidor
+		print("[BATTLE] Multiplayer - requesting end activation from server")
+		mp_request_end_activation(selected_unit)
+		is_my_turn = false  # Ya no es mi turno
+		reachable_hexes = []
+		update_overlays()
+		_hide_active_mech_indicator()
+	elif turn_manager:
+		# En singleplayer, usar el turn_manager local
 		turn_manager.complete_unit_activation()
 
 func notify_ui_interaction():
@@ -2652,3 +3230,405 @@ func _hide_active_mech_indicator():
 		if active_mech_indicator and is_instance_valid(active_mech_indicator):
 			active_mech_indicator.queue_free()
 		active_mech_indicator = null
+
+# ============================================================
+# SISTEMA MULTIPLAYER - FUNCIONES DE RED
+# ============================================================
+
+func _connect_network_signals():
+	"""Conecta las señales del cliente de red"""
+	if not network_battle_client:
+		return
+	
+	network_battle_client.deployment_started.connect(_on_net_deployment_started)
+	network_battle_client.mech_deployed.connect(_on_net_mech_deployed)
+	network_battle_client.initiative_result.connect(_on_net_initiative_result)
+	network_battle_client.phase_changed.connect(_on_net_phase_changed)
+	network_battle_client.unit_activated.connect(_on_net_unit_activated)
+	network_battle_client.mech_moved.connect(_on_net_mech_moved)
+	network_battle_client.mech_rotated.connect(_on_net_mech_rotated)
+	network_battle_client.weapons_fired.connect(_on_net_weapons_fired)
+	network_battle_client.physical_attack_result.connect(_on_net_physical_attack)
+	network_battle_client.heat_phase_result.connect(_on_net_heat_phase)
+	network_battle_client.battle_ended.connect(_on_net_battle_ended)
+	network_battle_client.action_rejected.connect(_on_net_action_rejected)
+	network_battle_client.opponent_disconnected.connect(_on_net_opponent_disconnected)
+	
+	# Conectar señal de NetworkManager para cuando ambos jugadores desplieguen
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager:
+		network_manager.battle_all_deployed.connect(_on_both_players_deployed)
+
+func _on_net_deployment_started(_match_id: int, team: String):
+	"""Servidor indica inicio de despliegue"""
+	print("[BATTLE_NET] Deployment started - Team: %s" % team)
+	my_team = team
+	
+	# AHORA iniciar el despliegue
+	print("[BATTLE_NET] Server authorized deployment - starting deployment phase")
+	_start_deployment_phase()
+
+func _on_net_mech_deployed(mech_id: int, mech_data: Dictionary, hex_pos: Vector2i, facing: int, team: String):
+	"""Un mech fue desplegado (mío o enemigo)"""
+	print("[BATTLE_NET] Mech deployed: %s at %s (team: %s, my_team: %s)" % [mech_data.get("name", "Unknown"), hex_pos, team, my_team])
+	waiting_for_server = false
+	
+	# Si es MI mech, ya lo creamos localmente en _place_mech, solo actualizar el network_id
+	if team == my_team:
+		# Buscar el mech local por posición y nombre
+		for mech in player_mechs:
+			if mech.hex_position == hex_pos and mech.mech_name == mech_data.get("name", ""):
+				mech.set_meta("network_id", mech_id)
+				print("[BATTLE_NET] Updated my mech %s with network_id %d" % [mech.mech_name, mech_id])
+				return
+		# Si no lo encontramos, es un error pero no creamos duplicado
+		print("[BATTLE_NET] WARNING: Could not find my mech at %s to update network_id" % hex_pos)
+		return
+	
+	# Es un mech ENEMIGO - crearlo visualmente
+	print("[BATTLE_NET] Creating enemy mech: %s" % mech_data.get("name", "Unknown"))
+	var mech = _create_mech_from_network_data(mech_id, mech_data, hex_pos, facing, team)
+	enemy_mechs.append(mech)
+	print("[BATTLE_NET] Enemy mechs count: %d" % enemy_mechs.size())
+
+func _on_net_initiative_result(result: Dictionary):
+	"""Resultado de iniciativa del servidor"""
+	print("[BATTLE_NET] Initiative result: %s wins" % result["winner"])
+	initiative_data_stored = result
+	# Mostrar pantalla de iniciativa con los datos del servidor
+	show_initiative_screen_multiplayer(result)
+
+func _on_net_phase_changed(phase: String, turn: int):
+	"""Cambio de fase desde servidor"""
+	print("[BATTLE_NET] *** PHASE CHANGED: %s (Turn %d) ***" % [phase, turn])
+	
+	# Asegurar que la batalla ha empezado
+	battle_started = true
+	
+	# Cerrar pantalla de iniciativa si está abierta
+	var init_screen = get_node_or_null("InitiativeScreen")
+	if init_screen:
+		print("[BATTLE_NET] Closing initiative screen due to phase change")
+		init_screen.queue_free()
+	
+	match phase:
+		"movement":
+			turn_manager.current_phase = GameEnums.TurnPhase.MOVEMENT
+			current_state = GameEnums.GameState.MOVING  # CRÍTICO: Establecer estado de juego
+			deployment_phase = false  # Asegurar que el despliegue terminó
+			print("[BATTLE_NET] Set current_state to MOVING")
+		"weapon_attack":
+			turn_manager.current_phase = GameEnums.TurnPhase.WEAPON_ATTACK
+			current_state = GameEnums.GameState.WEAPON_ATTACK
+			print("[BATTLE_NET] Set current_state to WEAPON_ATTACK")
+		"physical_attack":
+			turn_manager.current_phase = GameEnums.TurnPhase.PHYSICAL_ATTACK
+			current_state = GameEnums.GameState.PHYSICAL_TARGETING
+			print("[BATTLE_NET] Set current_state to PHYSICAL_TARGETING")
+		"heat":
+			turn_manager.current_phase = GameEnums.TurnPhase.HEAT
+			# Fase de calor es automática
+			print("[BATTLE_NET] Heat phase (automatic)")
+	
+	if ui and ui.has_method("update_phase_display"):
+		ui.update_phase_display(turn_manager.current_phase)
+	elif ui and ui.has_method("add_combat_message"):
+		ui.add_combat_message("═══ Phase: %s (Turn %d) ═══" % [phase.to_upper(), turn], Color.GOLD)
+
+func _on_net_unit_activated(mech_id: int, is_mine: bool):
+	"""Unidad activada por el servidor"""
+	print("[BATTLE_NET] *** UNIT ACTIVATED: %d (mine: %s) ***" % [mech_id, is_mine])
+	is_my_turn = is_mine
+	
+	# Buscar el mech por ID
+	var mech = _find_mech_by_network_id(mech_id)
+	print("[BATTLE_NET] Found mech: %s" % (mech.mech_name if mech else "NULL"))
+	
+	if mech:
+		selected_unit = mech
+		if is_mine:
+			# Es mi turno - habilitar controles
+			print("[BATTLE_NET] It's MY turn with %s!" % mech.mech_name)
+			_show_active_mech_indicator(mech)
+			# Calcular hexes alcanzables (usa el tipo de movimiento del mech)
+			var move_type = selected_unit.movement_type_used if selected_unit.movement_type_used else GameEnums.MovementType.WALK
+			if selected_unit.jump_mp > 0 and move_type == GameEnums.MovementType.JUMP:
+				reachable_hexes = MovementSystem.get_jump_hexes(selected_unit.hex_position, selected_unit.current_movement, hex_grid, selected_unit)
+			else:
+				reachable_hexes = MovementSystem.get_reachable_hexes(selected_unit.hex_position, selected_unit.current_movement, move_type, hex_grid, selected_unit)
+			
+			# CRÍTICO: Actualizar overlays para mostrar los hexes alcanzables
+			update_overlays()
+			
+			if ui:
+				if ui.has_method("show_unit_info"):
+					ui.show_unit_info(mech)
+				elif ui.has_method("add_combat_message"):
+					ui.add_combat_message("▶ Your turn: %s" % mech.mech_name, Color.GREEN)
+				if ui.has_method("enable_controls"):
+					ui.enable_controls(true)
+		else:
+			# Turno del oponente - deshabilitar controles y limpiar overlays
+			reachable_hexes = []
+			update_overlays()
+			if ui:
+				if ui.has_method("enable_controls"):
+					ui.enable_controls(false)
+				if ui.has_method("show_message"):
+					ui.show_message("Opponent's turn...")
+				elif ui.has_method("add_combat_message"):
+					ui.add_combat_message("⏳ Opponent's turn: %s" % mech.mech_name, Color.YELLOW)
+
+func _on_net_mech_moved(result: Dictionary):
+	"""Mech movido - actualizar visual"""
+	print("[BATTLE_NET] Mech moved: %s" % result)
+	waiting_for_server = false
+	
+	var mech_id = result["mech_id"]
+	var from_hex = Vector2i(result["from_hex"][0], result["from_hex"][1])
+	var to_hex = Vector2i(result["to_hex"][0], result["to_hex"][1])
+	
+	var mech = _find_mech_by_network_id(mech_id)
+	if mech:
+		# Actualizar posición en el grid
+		hex_grid.set_unit(from_hex, null)
+		hex_grid.set_unit(to_hex, mech)
+		
+		# Actualizar mech
+		mech.hex_position = to_hex
+		mech.hexes_moved_this_turn = result.get("hexes_moved", 0)
+		mech.current_movement = result.get("remaining_mp", 0)
+		mech.movement_type_used = result.get("movement_type", GameEnums.MovementType.WALK)
+		
+		# Actualizar posición visual
+		mech.update_visual_position(hex_grid)
+		
+		# Log en UI
+		if ui:
+			ui.add_combat_message("%s moved to [%d,%d]" % [mech.mech_name, to_hex.x, to_hex.y], Color.WHITE)
+		
+		# Si es mi mech, mostrar selector de facing y botón de terminar
+		if mech in player_mechs and is_my_turn:
+			print("[BATTLE_NET] My mech moved - showing facing selector")
+			selected_unit = mech
+			
+			# Mostrar mensaje de que puede ajustar facing
+			if ui:
+				ui.add_combat_message("Adjust facing then tap 'End Activation'", Color.YELLOW)
+			
+			# Mostrar indicador activo
+			_show_active_mech_indicator(mech)
+
+func _on_net_mech_rotated(result: Dictionary):
+	"""Mech rotado - actualizar visual"""
+	waiting_for_server = false
+	
+	var mech_id = result["mech_id"]
+	var new_facing = result["new_facing"]
+	
+	var mech = _find_mech_by_network_id(mech_id)
+	if mech:
+		mech.set_facing(new_facing)
+
+func _on_net_weapons_fired(result: Dictionary):
+	"""Resultado de disparo desde servidor"""
+	print("[BATTLE_NET] Weapons fired: %s" % result)
+	waiting_for_server = false
+	
+	var attacker = _find_mech_by_network_id(result["attacker_id"])
+	var target = _find_mech_by_network_id(result["target_id"])
+	
+	# Mostrar resultados visuales
+	for weapon_result in result["results"]:
+		if weapon_result["hit"]:
+			_show_hit_effect(target)
+		else:
+			_show_miss_effect(target)
+	
+	# Actualizar calor del atacante
+	if attacker:
+		attacker.heat = result.get("attacker_heat", attacker.heat)
+	
+	# Verificar destrucción
+	if result["target_destroyed"] and target:
+		target.is_destroyed = true
+		_show_destruction_effect(target)
+
+func _on_net_physical_attack(_result: Dictionary):
+	"""Resultado de ataque físico"""
+	waiting_for_server = false
+	# Similar a weapons_fired - TODO: implementar
+	pass
+
+func _on_net_heat_phase(results: Array):
+	"""Fase de calor procesada"""
+	for result in results:
+		var mech = _find_mech_by_network_id(result["mech_id"])
+		if mech:
+			mech.heat = result["final_heat"]
+			if result["shutdown"]:
+				mech.is_shutdown = true
+
+func _on_net_battle_ended(winner_team: String, reason: String):
+	"""Batalla terminada"""
+	var i_won = winner_team == my_team
+	print("[BATTLE_NET] Battle ended! I %s (%s)" % ["WON" if i_won else "LOST", reason])
+	
+	if ui:
+		if ui.has_method("show_battle_end"):
+			ui.show_battle_end(i_won, reason)
+		elif ui.has_method("add_combat_message"):
+			ui.add_combat_message("", Color.WHITE)
+			ui.add_combat_message("╔══════════════════════════════════════════╗", Color.GOLD)
+			if i_won:
+				ui.add_combat_message("║          🏆 VICTORY! 🏆                 ║", Color.GREEN)
+			else:
+				ui.add_combat_message("║          💀 DEFEAT 💀                   ║", Color.RED)
+			ui.add_combat_message("╚══════════════════════════════════════════╝", Color.GOLD)
+			ui.add_combat_message(reason, Color.WHITE)
+	
+	# Volver al menú después de un delay
+	await get_tree().create_timer(5.0).timeout
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+func _on_net_action_rejected(reason: String):
+	"""Acción rechazada por servidor"""
+	waiting_for_server = false
+	print("[BATTLE_NET] Action rejected: %s" % reason)
+	if ui:
+		if ui.has_method("show_message"):
+			ui.show_message("Action rejected: " + reason)
+		elif ui.has_method("add_combat_message"):
+			ui.add_combat_message("❌ Action rejected: " + reason, Color.RED)
+
+func _on_net_opponent_disconnected():
+	"""Oponente desconectado"""
+	print("[BATTLE_NET] Opponent disconnected!")
+	if ui:
+		if ui.has_method("show_message"):
+			ui.show_message("Opponent disconnected! You win!")
+		elif ui.has_method("add_combat_message"):
+			ui.add_combat_message("🏆 Opponent disconnected! You win!", Color.GOLD)
+	# Volver al menú después de un delay
+	await get_tree().create_timer(3.0).timeout
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+func _find_mech_by_network_id(mech_id: int):
+	"""Busca un mech por su ID de red"""
+	for mech in player_mechs:
+		if mech.get_meta("network_id", -1) == mech_id:
+			return mech
+	for mech in enemy_mechs:
+		if mech.get_meta("network_id", -1) == mech_id:
+			return mech
+	return null
+
+func _create_mech_from_network_data(mech_id: int, mech_data: Dictionary, hex_pos: Vector2i, facing: int, team: String):
+	"""Crea un mech visual desde datos de red"""
+	var mech_scene = null
+	if ResourceLoader.exists("res://scenes/mech.tscn"):
+		mech_scene = load("res://scenes/mech.tscn")
+	
+	var mech
+	if mech_scene:
+		mech = mech_scene.instantiate()
+	else:
+		# Crear mech básico si no hay escena
+		mech = Node2D.new()
+		mech.set_script(preload("res://scripts/mech.gd"))
+	
+	# Configurar datos
+	mech.mech_name = mech_data.get("name", "Unknown")
+	mech.tonnage = mech_data.get("tonnage", 50)
+	mech.walk_mp = mech_data.get("walk_mp", 4)
+	mech.run_mp = mech_data.get("run_mp", 6)
+	mech.jump_mp = mech_data.get("jump_mp", 0)
+	mech.hex_position = hex_pos
+	mech.facing = facing
+	mech.set_meta("team", team)
+	mech.set_meta("network_id", mech_id)
+	
+	# Posición visual
+	mech.position = hex_grid.hex_to_pixel(hex_pos)
+	mech.visible = true
+	mech.z_index = 10  # Asegurar que esté por encima del terreno
+	
+	# Registrar en el grid
+	hex_grid.set_unit(hex_pos, mech)
+	
+	# Color según equipo
+	if team == my_team:
+		mech.modulate = Color.GREEN
+	else:
+		mech.modulate = Color.RED
+	
+	print("[BATTLE_NET] Created mech %s at pixel %s (hex %s)" % [mech.mech_name, mech.position, hex_pos])
+	
+	add_child(mech)
+	
+	# Actualizar visual
+	if mech.has_method("update_visual_position"):
+		mech.update_visual_position(hex_grid)
+	if mech.has_method("update_facing_visual"):
+		mech.update_facing_visual()
+	
+	return mech
+
+func _show_hit_effect(target):
+	"""Muestra efecto visual de impacto"""
+	if not target:
+		return
+	# Flash rojo
+	var original_modulate = target.modulate
+	target.modulate = Color.RED
+	await get_tree().create_timer(0.2).timeout
+	if is_instance_valid(target):
+		target.modulate = original_modulate
+
+func _show_miss_effect(_target):
+	"""Muestra efecto visual de fallo"""
+	pass  # TODO: Mostrar texto "MISS"
+
+func _show_destruction_effect(target):
+	"""Muestra efecto de destrucción"""
+	if not target:
+		return
+	# Animación de explosión o fade out
+	var tween = create_tween()
+	tween.tween_property(target, "modulate:a", 0.0, 1.0)
+
+# ============================================================
+# ENVÍO DE ACCIONES EN MULTIPLAYER
+# ============================================================
+
+func mp_request_move(mech, target_hex: Vector2i, movement_type: int):
+	"""Solicita movimiento al servidor en modo multiplayer"""
+	if not is_multiplayer_mode or not network_battle_client:
+		return
+	
+	var mech_id = mech.get_meta("network_id", -1)
+	if mech_id == -1:
+		push_error("Mech has no network_id!")
+		return
+	
+	waiting_for_server = true
+	network_battle_client.request_move(mech_id, target_hex, movement_type)
+
+func mp_request_fire(attacker, target, weapon_indices: Array):
+	"""Solicita disparo al servidor"""
+	if not is_multiplayer_mode or not network_battle_client:
+		return
+	
+	var attacker_id = attacker.get_meta("network_id", -1)
+	var target_id = target.get_meta("network_id", -1)
+	
+	waiting_for_server = true
+	network_battle_client.request_fire(attacker_id, target_id, weapon_indices)
+
+func mp_request_end_activation(mech):
+	"""Indica al servidor que terminó la activación"""
+	if not is_multiplayer_mode or not network_battle_client:
+		return
+	
+	var mech_id = mech.get_meta("network_id", -1)
+	network_battle_client.request_end_activation(mech_id)

@@ -1,9 +1,5 @@
 res://scripts/battle_scene.gd
-res://scripts/ui/facing_selector.gd
-res://scripts/ui/battle_ui.gd
-res://scripts/core/movement/facing_system.gd
-res://scripts/ui/mech_paper_doll.gd
-res://scripts/core/movement/movement_system.gd
-res://scripts/hex_grid.gd
-res://tests/unit/test_movement_reachability.gd
-res://scripts/hex_surface_renderer.gd
+res://scripts/network/network_manager.gd
+res://scripts/network/server_battle_manager.gd
+res://scripts/network/server_main.gd
+res://scripts/ui/screens/initiative_screen.gd

@@ -290,9 +290,16 @@ func _update_sprite():
 	else:
 		visible = true
 	
-	if sprite_manager:
+	print("[MECH] _update_sprite called for %s, facing=%d, sprite_manager=%s" % [mech_name, facing, sprite_manager != null])
+	
+	if sprite_manager and sprite:
 		# Obtener el sprite correcto según tonelaje y orientación
-		sprite.texture = sprite_manager.get_sprite_for_mech(tonnage, facing)
+		var new_texture = sprite_manager.get_sprite_for_mech(tonnage, facing)
+		if new_texture:
+			sprite.texture = new_texture
+			print("[MECH] Sprite texture updated for facing %d" % facing)
+		else:
+			print("[MECH] WARNING: No texture returned for facing %d" % facing)
 		
 		# Aplicar efectos visuales según estado
 		if is_prone:

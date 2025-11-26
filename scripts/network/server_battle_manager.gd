@@ -35,45 +35,82 @@ func _ready():
 # INICIALIZACIÓN DE PARTIDA
 # ============================================================
 
-func start_match(player1_peer: int, player2_peer: int):
+func start_match(player1_peer: int, player2_peer: int, match_id: int = -1, map_seed: int = -1):
 	"""Inicia una nueva partida entre dos jugadores"""
-	var match_id = _generate_match_id(player1_peer, player2_peer)
+	# Usar el match_id proporcionado o generar uno nuevo
+	if match_id == -1:
+		match_id = _generate_match_id(player1_peer, player2_peer)
+	if map_seed == -1:
+		map_seed = randi()  # Semilla para el mapa - COMPARTIDA entre clientes
 	
 	var match_data = {
 		"match_id": match_id,
 		"player1_peer": player1_peer,
 		"player2_peer": player2_peer,
 		"current_turn": 0,
-		"current_phase": "deployment",
+		"current_phase": "waiting_for_clients",  # Esperar a que los clientes estén listos
 		"initiative_winner": "",
 		"mechs": {},
 		"player1_deployed": false,
 		"player2_deployed": false,
+		"player1_ready": false,  # Cliente 1 listo en escena de batalla
+		"player2_ready": false,  # Cliente 2 listo en escena de batalla
 		"units_to_activate": [],
 		"current_unit_index": 0,
-		"rng_seed": randi()  # Semilla para reproducibilidad
+		"rng_seed": map_seed  # Semilla para reproducibilidad
 	}
 	
 	active_battles[match_id] = match_data
 	
-	print("[SERVER_BATTLE] Match %d started: Peer %d vs Peer %d" % [match_id, player1_peer, player2_peer])
+	print("[SERVER_BATTLE] Match %d created: Peer %d vs Peer %d (seed: %d)" % [match_id, player1_peer, player2_peer, map_seed])
+	print("[SERVER_BATTLE] Waiting for both clients to be ready in battle scene...")
+
+func _send_rpc_to_client(peer_id: int, method: String, args: Array) -> void:
+	"""Envía un RPC al cliente a través del NetworkManager autoload"""
+	if not network_manager:
+		push_error("[SERVER_BATTLE] NetworkManager not available!")
+		return
 	
-	# Notificar a ambos jugadores que inicien la fase de despliegue
-	rpc_id(player1_peer, "client_start_deployment", match_id, "player")
-	rpc_id(player2_peer, "client_start_deployment", match_id, "enemy")
+	# Llamamos los RPCs específicos según el método
+	match method:
+		"client_start_deployment":
+			network_manager.rpc_id(peer_id, method, args[0], args[1], args[2])  # match_id, team, map_seed
+		"client_mech_deployed":
+			network_manager.rpc_id(peer_id, method, args[0], args[1], args[2], args[3], args[4])
+		"client_initiative_result":
+			network_manager.rpc_id(peer_id, method, args[0])
+		"client_phase_changed":
+			network_manager.rpc_id(peer_id, method, args[0], args[1])
+		"client_unit_activated":
+			network_manager.rpc_id(peer_id, method, args[0], args[1])
+		"client_mech_moved":
+			network_manager.rpc_id(peer_id, method, args[0])
+		"client_mech_rotated":
+			network_manager.rpc_id(peer_id, method, args[0])
+		"client_weapons_fired":
+			network_manager.rpc_id(peer_id, method, args[0])
+		"client_physical_attack_result":
+			network_manager.rpc_id(peer_id, method, args[0])
+		"client_heat_phase_result":
+			network_manager.rpc_id(peer_id, method, args[0])
+		"client_battle_ended":
+			network_manager.rpc_id(peer_id, method, args[0], args[1])
+		"client_action_rejected":
+			network_manager.rpc_id(peer_id, method, args[0])
+		"client_opponent_disconnected":
+			network_manager.rpc_id(peer_id, method)
+		_:
+			push_error("[SERVER_BATTLE] Unknown RPC method: %s" % method)
 
 func _generate_match_id(peer1: int, peer2: int) -> int:
 	return hash(str(peer1) + "_" + str(peer2) + "_" + str(Time.get_ticks_msec()))
 
 # ============================================================
-# RPCs - SOLICITUDES DE CLIENTES (Client -> Server)
+# HANDLERS - Llamados desde NetworkManager cuando recibe RPCs
 # ============================================================
 
-@rpc("any_peer", "reliable")
-func server_request_deploy_mech(match_id: int, mech_data: Dictionary, hex_pos: Array, facing: int):
-	"""Cliente solicita desplegar un mech"""
-	var sender_id = multiplayer.get_remote_sender_id()
-	
+func _handle_deploy_request(sender_id: int, match_id: int, mech_data: Dictionary, hex_pos: Array, facing: int) -> void:
+	"""Procesa solicitud de despliegue recibida via NetworkManager"""
 	if not _validate_match_participant(match_id, sender_id):
 		return
 	
@@ -81,9 +118,12 @@ func server_request_deploy_mech(match_id: int, mech_data: Dictionary, hex_pos: A
 	var team = _get_team_for_peer(match_data, sender_id)
 	var hex = Vector2i(hex_pos[0], hex_pos[1])
 	
+	print("[SERVER_BATTLE] Deploy request from peer %d (team=%s) at [%d,%d]" % [sender_id, team, hex.x, hex.y])
+	
 	# Validar zona de despliegue
 	if not _is_valid_deployment_hex(hex, team):
-		rpc_id(sender_id, "client_action_rejected", "Invalid deployment zone")
+		print("[SERVER_BATTLE] REJECTED - Invalid deployment zone for team %s at y=%d" % [team, hex.y])
+		_send_rpc_to_client(sender_id, "client_action_rejected", ["Invalid deployment zone"])
 		return
 	
 	# Crear mech en el servidor
@@ -116,56 +156,101 @@ func server_request_deploy_mech(match_id: int, mech_data: Dictionary, hex_pos: A
 	
 	match_data["mechs"][mech_id] = server_mech
 	
-	# Marcar como desplegado
+	# Contar mechs desplegados por equipo
+	if not match_data.has("player1_mech_count"):
+		match_data["player1_mech_count"] = 0
+	if not match_data.has("player2_mech_count"):
+		match_data["player2_mech_count"] = 0
+	
 	if team == "player":
-		match_data["player1_deployed"] = true
+		match_data["player1_mech_count"] += 1
 	else:
-		match_data["player2_deployed"] = true
+		match_data["player2_mech_count"] += 1
 	
-	print("[SERVER_BATTLE] Mech deployed: %s at [%d,%d] facing %d" % [server_mech["name"], hex.x, hex.y, facing])
+	print("[SERVER_BATTLE] Mech deployed: %s at [%d,%d] facing %d (P1: %d mechs, P2: %d mechs)" % [
+		server_mech["name"], hex.x, hex.y, facing,
+		match_data["player1_mech_count"], match_data["player2_mech_count"]
+	])
 	
-	# Notificar a ambos jugadores
+	# Notificar a ambos jugadores via NetworkManager
 	var opponent_peer = _get_opponent_peer(match_data, sender_id)
-	rpc_id(sender_id, "client_mech_deployed", mech_id, mech_data, [hex.x, hex.y], facing, team)
-	rpc_id(opponent_peer, "client_mech_deployed", mech_id, mech_data, [hex.x, hex.y], facing, team)
-	
-	# Verificar si ambos desplegaron
-	if match_data["player1_deployed"] and match_data["player2_deployed"]:
-		_start_initiative_phase(match_id)
+	network_manager.rpc_id(sender_id, "client_mech_deployed", mech_id, mech_data, [hex.x, hex.y], facing, team)
+	network_manager.rpc_id(opponent_peer, "client_mech_deployed", mech_id, mech_data, [hex.x, hex.y], facing, team)
 
-@rpc("any_peer", "reliable")
-func server_request_move(match_id: int, mech_id: int, target_hex: Array, movement_type: int):
-	"""Cliente solicita mover un mech"""
-	var sender_id = multiplayer.get_remote_sender_id()
+func _handle_client_ready(sender_id: int, match_id: int) -> void:
+	"""Procesa notificación de que un cliente está listo en la escena de batalla"""
+	if not _validate_match_participant(match_id, sender_id):
+		print("[SERVER_BATTLE] Invalid match participant: %d for match %d" % [sender_id, match_id])
+		return
 	
+	var match_data = active_battles[match_id]
+	
+	# Marcar qué cliente está listo
+	if sender_id == match_data["player1_peer"]:
+		match_data["player1_ready"] = true
+		print("[SERVER_BATTLE] Player 1 (peer %d) ready in battle scene" % sender_id)
+	elif sender_id == match_data["player2_peer"]:
+		match_data["player2_ready"] = true
+		print("[SERVER_BATTLE] Player 2 (peer %d) ready in battle scene" % sender_id)
+	
+	# Verificar si AMBOS están listos para iniciar deployment
+	if match_data["player1_ready"] and match_data["player2_ready"]:
+		print("[SERVER_BATTLE] Both clients ready! Starting deployment phase...")
+		match_data["current_phase"] = "deployment"
+		var map_seed = match_data["rng_seed"]
+		_send_rpc_to_client(match_data["player1_peer"], "client_start_deployment", [match_id, "player", map_seed])
+		_send_rpc_to_client(match_data["player2_peer"], "client_start_deployment", [match_id, "enemy", map_seed])
+
+func _handle_deployment_complete(sender_id: int, match_id: int) -> void:
+	"""Procesa notificación de que un jugador terminó de desplegar"""
 	if not _validate_match_participant(match_id, sender_id):
 		return
 	
 	var match_data = active_battles[match_id]
 	
-	# Validar que el mech pertenece al jugador
-	if not _validate_mech_ownership(match_data, mech_id, sender_id):
-		rpc_id(sender_id, "client_action_rejected", "Not your mech")
+	# Marcar qué jugador terminó
+	if sender_id == match_data["player1_peer"]:
+		match_data["player1_deployed"] = true
+		print("[SERVER_BATTLE] Player 1 (peer %d) finished deployment" % sender_id)
+	elif sender_id == match_data["player2_peer"]:
+		match_data["player2_deployed"] = true
+		print("[SERVER_BATTLE] Player 2 (peer %d) finished deployment" % sender_id)
+	
+	# Verificar si AMBOS terminaron
+	if match_data["player1_deployed"] and match_data["player2_deployed"]:
+		print("[SERVER_BATTLE] Both players deployed! Starting initiative...")
+		# Notificar a ambos que pueden empezar
+		network_manager.rpc_id(match_data["player1_peer"], "client_all_deployed")
+		network_manager.rpc_id(match_data["player2_peer"], "client_all_deployed")
+		# Iniciar fase de iniciativa
+		_start_initiative_phase(match_id)
+
+func _handle_move_request(sender_id: int, match_id: int, mech_id: int, target_hex: Array, movement_type: int) -> void:
+	"""Procesa solicitud de movimiento"""
+	if not _validate_match_participant(match_id, sender_id):
 		return
 	
-	# Validar fase
+	var match_data = active_battles[match_id]
+	
+	if not _validate_mech_ownership(match_data, mech_id, sender_id):
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Not your mech")
+		return
+	
 	if match_data["current_phase"] != "movement":
-		rpc_id(sender_id, "client_action_rejected", "Not movement phase")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Not movement phase")
 		return
 	
 	var mech = match_data["mechs"][mech_id]
 	var hex = Vector2i(target_hex[0], target_hex[1])
 	
-	# Validar movimiento (MPs, camino válido, etc.)
 	var max_mp = _get_max_movement(mech, movement_type)
 	var current_pos = mech["hex_position"]
 	var distance = _hex_distance(current_pos, hex)
 	
 	if distance > max_mp:
-		rpc_id(sender_id, "client_action_rejected", "Insufficient movement points")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Insufficient movement points")
 		return
 	
-	# Ejecutar movimiento en el servidor
 	var old_pos = mech["hex_position"]
 	mech["hex_position"] = hex
 	mech["moved_this_turn"] = true
@@ -177,16 +262,14 @@ func server_request_move(match_id: int, mech_id: int, target_hex: Array, movemen
 		mech["name"], old_pos.x, old_pos.y, hex.x, hex.y
 	])
 	
-	# Calcular calor por movimiento
 	var movement_heat = 0
-	if movement_type == 2:  # Run
+	if movement_type == 2:
 		movement_heat = 2
-	elif movement_type == 3:  # Jump
+	elif movement_type == 3:
 		movement_heat = distance
 	
 	mech["heat"] += movement_heat
 	
-	# Broadcast a ambos jugadores
 	var opponent_peer = _get_opponent_peer(match_data, sender_id)
 	var move_result = {
 		"mech_id": mech_id,
@@ -197,35 +280,31 @@ func server_request_move(match_id: int, mech_id: int, target_hex: Array, movemen
 		"remaining_mp": mech["current_movement"]
 	}
 	
-	rpc_id(sender_id, "client_mech_moved", move_result)
-	rpc_id(opponent_peer, "client_mech_moved", move_result)
+	network_manager.rpc_id(sender_id, "client_mech_moved", move_result)
+	network_manager.rpc_id(opponent_peer, "client_mech_moved", move_result)
 
-@rpc("any_peer", "reliable")
-func server_request_rotate(match_id: int, mech_id: int, new_facing: int):
-	"""Cliente solicita rotar un mech"""
-	var sender_id = multiplayer.get_remote_sender_id()
-	
+func _handle_rotate_request(sender_id: int, match_id: int, mech_id: int, new_facing: int) -> void:
+	"""Procesa solicitud de rotación"""
 	if not _validate_match_participant(match_id, sender_id):
 		return
 	
 	var match_data = active_battles[match_id]
 	
 	if not _validate_mech_ownership(match_data, mech_id, sender_id):
-		rpc_id(sender_id, "client_action_rejected", "Not your mech")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Not your mech")
 		return
 	
 	var mech = match_data["mechs"][mech_id]
 	var rotations = _calculate_rotations(mech["facing"], new_facing)
 	
 	if rotations > mech["current_movement"]:
-		rpc_id(sender_id, "client_action_rejected", "Insufficient MPs for rotation")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Insufficient MPs for rotation")
 		return
 	
 	var old_facing = mech["facing"]
 	mech["facing"] = new_facing
 	mech["current_movement"] -= rotations
 	
-	# Broadcast
 	var opponent_peer = _get_opponent_peer(match_data, sender_id)
 	var rotate_result = {
 		"mech_id": mech_id,
@@ -235,42 +314,37 @@ func server_request_rotate(match_id: int, mech_id: int, new_facing: int):
 		"remaining_mp": mech["current_movement"]
 	}
 	
-	rpc_id(sender_id, "client_mech_rotated", rotate_result)
-	rpc_id(opponent_peer, "client_mech_rotated", rotate_result)
+	network_manager.rpc_id(sender_id, "client_mech_rotated", rotate_result)
+	network_manager.rpc_id(opponent_peer, "client_mech_rotated", rotate_result)
 
-@rpc("any_peer", "reliable")
-func server_request_fire(match_id: int, attacker_id: int, target_id: int, weapon_indices: Array):
-	"""Cliente solicita disparar armas"""
-	var sender_id = multiplayer.get_remote_sender_id()
-	
+func _handle_fire_request(sender_id: int, match_id: int, attacker_id: int, target_id: int, weapon_indices: Array) -> void:
+	"""Procesa solicitud de disparo"""
 	if not _validate_match_participant(match_id, sender_id):
 		return
 	
 	var match_data = active_battles[match_id]
 	
 	if not _validate_mech_ownership(match_data, attacker_id, sender_id):
-		rpc_id(sender_id, "client_action_rejected", "Not your mech")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Not your mech")
 		return
 	
 	if match_data["current_phase"] != "weapon_attack":
-		rpc_id(sender_id, "client_action_rejected", "Not weapon attack phase")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Not weapon attack phase")
 		return
 	
 	var attacker = match_data["mechs"][attacker_id]
 	var target = match_data["mechs"].get(target_id)
 	
 	if not target:
-		rpc_id(sender_id, "client_action_rejected", "Invalid target")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Invalid target")
 		return
 	
-	# Verificar que el objetivo es enemigo
 	if attacker["team"] == target["team"]:
-		rpc_id(sender_id, "client_action_rejected", "Cannot attack ally")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Cannot attack ally")
 		return
 	
 	var range_hexes = _hex_distance(attacker["hex_position"], target["hex_position"])
 	
-	# Ejecutar ataque para cada arma
 	var attack_results = []
 	var total_heat = 0
 	
@@ -283,13 +357,11 @@ func server_request_fire(match_id: int, attacker_id: int, target_id: int, weapon
 		attack_results.append(result)
 		total_heat += weapon.get("heat", 0)
 		
-		# Actualizar semilla RNG
 		match_data["rng_seed"] = (match_data["rng_seed"] * 1103515245 + 12345) % 2147483648
 	
 	attacker["heat"] += total_heat
 	attacker["fired_this_turn"] = true
 	
-	# Broadcast resultados
 	var opponent_peer = _get_opponent_peer(match_data, sender_id)
 	var fire_result = {
 		"attacker_id": attacker_id,
@@ -301,48 +373,42 @@ func server_request_fire(match_id: int, attacker_id: int, target_id: int, weapon
 		"target_destroyed": target["is_destroyed"]
 	}
 	
-	rpc_id(sender_id, "client_weapons_fired", fire_result)
-	rpc_id(opponent_peer, "client_weapons_fired", fire_result)
+	network_manager.rpc_id(sender_id, "client_weapons_fired", fire_result)
+	network_manager.rpc_id(opponent_peer, "client_weapons_fired", fire_result)
 	
-	# Verificar fin de batalla
 	if target["is_destroyed"]:
 		_check_battle_end(match_id)
 
-@rpc("any_peer", "reliable")
-func server_request_physical_attack(match_id: int, attacker_id: int, target_id: int, attack_type: String):
-	"""Cliente solicita ataque físico"""
-	var sender_id = multiplayer.get_remote_sender_id()
-	
+func _handle_physical_request(sender_id: int, match_id: int, attacker_id: int, target_id: int, attack_type: String) -> void:
+	"""Procesa solicitud de ataque físico"""
 	if not _validate_match_participant(match_id, sender_id):
 		return
 	
 	var match_data = active_battles[match_id]
 	
 	if not _validate_mech_ownership(match_data, attacker_id, sender_id):
-		rpc_id(sender_id, "client_action_rejected", "Not your mech")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Not your mech")
 		return
 	
 	if match_data["current_phase"] != "physical_attack":
-		rpc_id(sender_id, "client_action_rejected", "Not physical attack phase")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Not physical attack phase")
 		return
 	
 	var attacker = match_data["mechs"][attacker_id]
 	var target = match_data["mechs"].get(target_id)
 	
 	if not target:
-		rpc_id(sender_id, "client_action_rejected", "Invalid target")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Invalid target")
 		return
 	
 	var distance = _hex_distance(attacker["hex_position"], target["hex_position"])
 	if distance > 1:
-		rpc_id(sender_id, "client_action_rejected", "Target too far for physical attack")
+		network_manager.rpc_id(sender_id, "client_action_rejected", "Target too far for physical attack")
 		return
 	
-	# Ejecutar ataque físico
 	var result = _execute_physical_attack(attacker, target, attack_type, match_data["rng_seed"])
 	match_data["rng_seed"] = (match_data["rng_seed"] * 1103515245 + 12345) % 2147483648
 	
-	# Broadcast
 	var opponent_peer = _get_opponent_peer(match_data, sender_id)
 	var attack_result = {
 		"attacker_id": attacker_id,
@@ -352,17 +418,14 @@ func server_request_physical_attack(match_id: int, attacker_id: int, target_id: 
 		"target_destroyed": target["is_destroyed"]
 	}
 	
-	rpc_id(sender_id, "client_physical_attack_result", attack_result)
-	rpc_id(opponent_peer, "client_physical_attack_result", attack_result)
+	network_manager.rpc_id(sender_id, "client_physical_attack_result", attack_result)
+	network_manager.rpc_id(opponent_peer, "client_physical_attack_result", attack_result)
 	
 	if target["is_destroyed"]:
 		_check_battle_end(match_id)
 
-@rpc("any_peer", "reliable")
-func server_request_end_activation(match_id: int, mech_id: int):
-	"""Cliente indica que terminó su activación"""
-	var sender_id = multiplayer.get_remote_sender_id()
-	
+func _handle_end_activation(sender_id: int, match_id: int, mech_id: int) -> void:
+	"""Procesa fin de activación"""
 	if not _validate_match_participant(match_id, sender_id):
 		return
 	
@@ -372,6 +435,46 @@ func server_request_end_activation(match_id: int, mech_id: int):
 		return
 	
 	_advance_to_next_unit(match_id)
+
+# ============================================================
+# RPCs LEGACY - Mantener por compatibilidad pero redirigir a handlers
+# ============================================================
+
+@rpc("any_peer", "reliable")
+func server_request_deploy_mech(match_id: int, mech_data: Dictionary, hex_pos: Array, facing: int):
+	"""Cliente solicita desplegar un mech - LEGACY, usar _handle_deploy_request"""
+	var sender_id = multiplayer.get_remote_sender_id()
+	_handle_deploy_request(sender_id, match_id, mech_data, hex_pos, facing)
+
+@rpc("any_peer", "reliable")
+func server_request_move(match_id: int, mech_id: int, target_hex: Array, movement_type: int):
+	"""Cliente solicita mover un mech - LEGACY, redirige a handler"""
+	var sender_id = multiplayer.get_remote_sender_id()
+	_handle_move_request(sender_id, match_id, mech_id, target_hex, movement_type)
+
+@rpc("any_peer", "reliable")
+func server_request_rotate(match_id: int, mech_id: int, new_facing: int):
+	"""Cliente solicita rotar un mech - LEGACY, redirige a handler"""
+	var sender_id = multiplayer.get_remote_sender_id()
+	_handle_rotate_request(sender_id, match_id, mech_id, new_facing)
+
+@rpc("any_peer", "reliable")
+func server_request_fire(match_id: int, attacker_id: int, target_id: int, weapon_indices: Array):
+	"""Cliente solicita disparar armas - LEGACY, redirige a handler"""
+	var sender_id = multiplayer.get_remote_sender_id()
+	_handle_fire_request(sender_id, match_id, attacker_id, target_id, weapon_indices)
+
+@rpc("any_peer", "reliable")
+func server_request_physical_attack(match_id: int, attacker_id: int, target_id: int, attack_type: String):
+	"""Cliente solicita ataque físico - LEGACY, redirige a handler"""
+	var sender_id = multiplayer.get_remote_sender_id()
+	_handle_physical_request(sender_id, match_id, attacker_id, target_id, attack_type)
+
+@rpc("any_peer", "reliable")
+func server_request_end_activation(match_id: int, mech_id: int):
+	"""Cliente indica que terminó su activación - LEGACY, redirige a handler"""
+	var sender_id = multiplayer.get_remote_sender_id()
+	_handle_end_activation(sender_id, match_id, mech_id)
 
 # ============================================================
 # RPCs - SERVIDOR -> CLIENTE
@@ -431,6 +534,9 @@ func client_action_rejected(_reason: String):
 
 func _start_initiative_phase(match_id: int):
 	"""Inicia la fase de iniciativa"""
+	if match_id not in active_battles:
+		print("[SERVER_BATTLE] Match %d no longer exists, skipping initiative" % match_id)
+		return
 	var match_data = active_battles[match_id]
 	match_data["current_turn"] += 1
 	match_data["current_phase"] = "initiative"
@@ -458,18 +564,29 @@ func _start_initiative_phase(match_id: int):
 	
 	print("[SERVER_BATTLE] Initiative: Player %d vs Enemy %d -> %s wins" % [player_total, enemy_total, winner])
 	
-	# Notificar a ambos jugadores
-	rpc_id(match_data["player1_peer"], "client_initiative_result", init_result)
-	rpc_id(match_data["player2_peer"], "client_initiative_result", init_result)
+	# Notificar a ambos jugadores via NetworkManager
+	network_manager.rpc_id(match_data["player1_peer"], "client_initiative_result", init_result)
+	network_manager.rpc_id(match_data["player2_peer"], "client_initiative_result", init_result)
 	
 	# Iniciar fase de movimiento después de un delay
 	await get_tree().create_timer(2.0).timeout
+	if match_id not in active_battles:
+		return
 	_start_movement_phase(match_id)
 
 func _start_movement_phase(match_id: int):
 	"""Inicia la fase de movimiento"""
+	if match_id not in active_battles:
+		print("[SERVER_BATTLE] _start_movement_phase: Match %d not in active_battles!" % match_id)
+		return
 	var match_data = active_battles[match_id]
 	match_data["current_phase"] = "movement"
+	
+	print("[SERVER_BATTLE] Starting movement phase for match %d" % match_id)
+	print("[SERVER_BATTLE] Mechs in match: %d" % match_data["mechs"].size())
+	for mech_id in match_data["mechs"]:
+		var mech = match_data["mechs"][mech_id]
+		print("[SERVER_BATTLE]   Mech %d: %s (team=%s, destroyed=%s)" % [mech_id, mech["name"], mech["team"], mech["is_destroyed"]])
 	
 	# Resetear movimiento de todos los mechs
 	for mech_id in match_data["mechs"]:
@@ -482,16 +599,36 @@ func _start_movement_phase(match_id: int):
 	# Construir orden de activación
 	_build_activation_order(match_id, "movement")
 	
-	# Notificar cambio de fase
-	rpc_id(match_data["player1_peer"], "client_phase_changed", "movement", match_data["current_turn"])
-	rpc_id(match_data["player2_peer"], "client_phase_changed", "movement", match_data["current_turn"])
+	# Notificar cambio de fase via NetworkManager
+	var peer1 = match_data["player1_peer"]
+	var peer2 = match_data["player2_peer"]
+	var connected_peers = multiplayer.get_peers()
+	print("[SERVER_BATTLE] Sending phase_changed RPC to peers %d and %d" % [peer1, peer2])
+	print("[SERVER_BATTLE] Connected peers: %s" % str(connected_peers))
+	print("[SERVER_BATTLE] NetworkManager path: %s" % network_manager.get_path())
+	
+	if peer1 in connected_peers:
+		network_manager.rpc_id(peer1, "client_phase_changed", "movement", match_data["current_turn"])
+		print("[SERVER_BATTLE] RPC sent to peer %d" % peer1)
+	else:
+		print("[SERVER_BATTLE] ERROR: Peer %d not connected!" % peer1)
+		
+	if peer2 in connected_peers:
+		network_manager.rpc_id(peer2, "client_phase_changed", "movement", match_data["current_turn"])
+		print("[SERVER_BATTLE] RPC sent to peer %d" % peer2)
+	else:
+		print("[SERVER_BATTLE] ERROR: Peer %d not connected!" % peer2)
 	
 	# Activar primera unidad
 	await get_tree().create_timer(0.5).timeout
+	if match_id not in active_battles:
+		return
 	_activate_next_unit(match_id)
 
 func _start_weapon_phase(match_id: int):
 	"""Inicia la fase de ataque con armas"""
+	if match_id not in active_battles:
+		return
 	var match_data = active_battles[match_id]
 	match_data["current_phase"] = "weapon_attack"
 	
@@ -501,27 +638,35 @@ func _start_weapon_phase(match_id: int):
 	
 	_build_activation_order(match_id, "attack")
 	
-	rpc_id(match_data["player1_peer"], "client_phase_changed", "weapon_attack", match_data["current_turn"])
-	rpc_id(match_data["player2_peer"], "client_phase_changed", "weapon_attack", match_data["current_turn"])
+	network_manager.rpc_id(match_data["player1_peer"], "client_phase_changed", "weapon_attack", match_data["current_turn"])
+	network_manager.rpc_id(match_data["player2_peer"], "client_phase_changed", "weapon_attack", match_data["current_turn"])
 	
 	await get_tree().create_timer(0.5).timeout
+	if match_id not in active_battles:
+		return
 	_activate_next_unit(match_id)
 
 func _start_physical_phase(match_id: int):
 	"""Inicia la fase de ataque físico"""
+	if match_id not in active_battles:
+		return
 	var match_data = active_battles[match_id]
 	match_data["current_phase"] = "physical_attack"
 	
 	_build_activation_order(match_id, "attack")
 	
-	rpc_id(match_data["player1_peer"], "client_phase_changed", "physical_attack", match_data["current_turn"])
-	rpc_id(match_data["player2_peer"], "client_phase_changed", "physical_attack", match_data["current_turn"])
+	network_manager.rpc_id(match_data["player1_peer"], "client_phase_changed", "physical_attack", match_data["current_turn"])
+	network_manager.rpc_id(match_data["player2_peer"], "client_phase_changed", "physical_attack", match_data["current_turn"])
 	
 	await get_tree().create_timer(0.5).timeout
+	if match_id not in active_battles:
+		return
 	_activate_next_unit(match_id)
 
 func _start_heat_phase(match_id: int):
 	"""Procesa la fase de calor"""
+	if match_id not in active_battles:
+		return
 	var match_data = active_battles[match_id]
 	match_data["current_phase"] = "heat"
 	
@@ -538,15 +683,26 @@ func _start_heat_phase(match_id: int):
 		result["mech_id"] = mech_id
 		heat_results.append(result)
 	
-	# Notificar resultados
-	rpc_id(match_data["player1_peer"], "client_heat_phase_result", heat_results)
-	rpc_id(match_data["player2_peer"], "client_heat_phase_result", heat_results)
+	# Notificar resultados via NetworkManager
+	network_manager.rpc_id(match_data["player1_peer"], "client_heat_phase_result", heat_results)
+	network_manager.rpc_id(match_data["player2_peer"], "client_heat_phase_result", heat_results)
 	
 	# Verificar si algún mech explotó
 	_check_battle_end(match_id)
 	
+	# Verificar si la batalla sigue activa antes de continuar
+	if match_id not in active_battles:
+		print("[SERVER_BATTLE] Battle %d ended, not starting next turn" % match_id)
+		return
+	
 	# Siguiente turno
 	await get_tree().create_timer(2.0).timeout
+	
+	# Verificar de nuevo después del await
+	if match_id not in active_battles:
+		print("[SERVER_BATTLE] Battle %d ended during wait, not starting next turn" % match_id)
+		return
+	
 	_start_initiative_phase(match_id)
 
 func _build_activation_order(match_id: int, phase_type: String):
@@ -587,6 +743,9 @@ func _build_activation_order(match_id: int, phase_type: String):
 			match_data["units_to_activate"].append(first_team[i])
 		if i < last_team.size():
 			match_data["units_to_activate"].append(last_team[i])
+	
+	print("[SERVER_BATTLE] Built activation order: %d units to activate" % match_data["units_to_activate"].size())
+	print("[SERVER_BATTLE]   Player mechs: %d, Enemy mechs: %d" % [player_mechs.size(), enemy_mechs.size()])
 
 func _activate_next_unit(match_id: int):
 	"""Activa la siguiente unidad"""
@@ -607,9 +766,23 @@ func _activate_next_unit(match_id: int):
 	var owner_peer = mech["owner_peer"]
 	var opponent_peer = _get_opponent_peer(match_data, owner_peer)
 	
-	# Notificar activación
-	rpc_id(owner_peer, "client_unit_activated", mech_id, true)
-	rpc_id(opponent_peer, "client_unit_activated", mech_id, false)
+	# Verificar peers conectados
+	var connected_peers = multiplayer.get_peers()
+	print("[SERVER_BATTLE] Activating unit %d (%s) for peer %d" % [mech_id, mech["name"], owner_peer])
+	print("[SERVER_BATTLE] Connected peers for activation: %s" % str(connected_peers))
+	
+	# Notificar activación via NetworkManager
+	if owner_peer in connected_peers:
+		network_manager.rpc_id(owner_peer, "client_unit_activated", mech_id, true)
+		print("[SERVER_BATTLE] Unit activation sent to owner %d (is_mine=true)" % owner_peer)
+	else:
+		print("[SERVER_BATTLE] ERROR: Owner peer %d not connected!" % owner_peer)
+		
+	if opponent_peer in connected_peers:
+		network_manager.rpc_id(opponent_peer, "client_unit_activated", mech_id, false)
+		print("[SERVER_BATTLE] Unit activation sent to opponent %d (is_mine=false)" % opponent_peer)
+	else:
+		print("[SERVER_BATTLE] ERROR: Opponent peer %d not connected!" % opponent_peer)
 	
 	print("[SERVER_BATTLE] Unit activated: %s (peer %d)" % [mech["name"], owner_peer])
 
@@ -810,8 +983,12 @@ func _check_battle_end(match_id: int):
 	var player_alive = false
 	var enemy_alive = false
 	
+	print("[SERVER_BATTLE] Checking battle end for match %d..." % match_id)
+	print("[SERVER_BATTLE] Total mechs in battle: %d" % match_data["mechs"].size())
+	
 	for mech_id in match_data["mechs"]:
 		var mech = match_data["mechs"][mech_id]
+		print("[SERVER_BATTLE]   Mech %d (%s): team=%s, destroyed=%s" % [mech_id, mech["name"], mech["team"], mech["is_destroyed"]])
 		if mech["is_destroyed"]:
 			continue
 		
@@ -820,14 +997,16 @@ func _check_battle_end(match_id: int):
 		else:
 			enemy_alive = true
 	
+	print("[SERVER_BATTLE] Player alive: %s, Enemy alive: %s" % [player_alive, enemy_alive])
+	
 	if not player_alive or not enemy_alive:
 		var winner = "player" if player_alive else "enemy"
 		var reason = "All enemy mechs destroyed" if player_alive else "All player mechs destroyed"
 		
 		print("[SERVER_BATTLE] Battle ended: %s wins! (%s)" % [winner, reason])
 		
-		rpc_id(match_data["player1_peer"], "client_battle_ended", winner, reason)
-		rpc_id(match_data["player2_peer"], "client_battle_ended", winner, reason)
+		network_manager.rpc_id(match_data["player1_peer"], "client_battle_ended", winner, reason)
+		network_manager.rpc_id(match_data["player2_peer"], "client_battle_ended", winner, reason)
 		
 		# Limpiar partida
 		active_battles.erase(match_id)
@@ -838,6 +1017,7 @@ func _check_battle_end(match_id: int):
 
 func _validate_match_participant(match_id: int, peer_id: int) -> bool:
 	if match_id not in active_battles:
+		print("[SERVER_BATTLE] Match %d not found. Active battles: %s" % [match_id, active_battles.keys()])
 		return false
 	
 	var match_data = active_battles[match_id]
@@ -862,10 +1042,15 @@ func _generate_mech_id(match_id: int, team: String) -> int:
 	return hash(str(match_id) + "_" + team + "_" + str(Time.get_ticks_msec()))
 
 func _is_valid_deployment_hex(hex: Vector2i, team: String) -> bool:
-	# Simplificado: jugador en sur (y >= 14), enemigo en norte (y < 4)
+	# Zona de despliegue flexible para diferentes tamaños de mapa
+	# Jugador: sur (últimas 5 filas: y >= 13 para compatibilidad)
+	# Enemigo: norte (primeras 5 filas: y < 5)
+	# Esto permite mapas de diferentes tamaños
+	
 	if team == "player":
-		return hex.y >= 14
-	return hex.y < 4
+		return hex.y >= 13  # Aceptar y >= 13 para mayor flexibilidad
+	else:  # team == "enemy"
+		return hex.y < 5  # Aceptar y < 5 para mayor flexibilidad
 
 func _hex_distance(a: Vector2i, b: Vector2i) -> int:
 	var dx = abs(a.x - b.x)

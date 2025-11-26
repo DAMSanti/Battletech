@@ -30,6 +30,9 @@ func _ready():
 	
 	# Actualizar labels de mechs después de crear la UI
 	call_deferred("_update_mech_labels")
+	
+	# Verificar si estamos en modo servidor (multijugador)
+	call_deferred("_check_server_mode")
 
 func _update_mech_labels():
 	# Buscar todos los labels de mechs y actualizar sus nombres
@@ -42,6 +45,89 @@ func _update_mech_labels():
 				child.text = player_mech_names[mech_index]
 			elif team == "enemy" and mech_index < enemy_mech_names.size():
 				child.text = enemy_mech_names[mech_index]
+
+func _check_server_mode():
+	"""Si estamos en modo servidor, mostrar resultados directamente"""
+	if has_meta("server_mode") and get_meta("server_mode"):
+		var server_result = get_meta("server_result")
+		if server_result:
+			print("[INITIATIVE] Server mode - showing server results")
+			_show_server_results(server_result)
+
+func _show_server_results(server_result: Dictionary):
+	"""Muestra los resultados del servidor directamente"""
+	is_rolling = true
+	roll_button.disabled = true
+	roll_button.visible = false  # Ocultar botón de tirar en modo servidor
+	subtitle_label.text = "Server rolled initiative..."
+	
+	# Extraer datos del servidor
+	var player_dice_values = server_result.get("player_dice", [6, 6])
+	var enemy_dice_values = server_result.get("enemy_dice", [1, 1])
+	
+	# Asignar los mismos dados a cada mech (simplificado para multijugador)
+	# En multijugador solo hay 1 tirada de dados por equipo
+	for i in range(4):
+		player_results[i][0] = player_dice_values[0] if player_dice_values.size() > 0 else 1
+		player_results[i][1] = player_dice_values[1] if player_dice_values.size() > 1 else 1
+		enemy_results[i][0] = enemy_dice_values[0] if enemy_dice_values.size() > 0 else 1
+		enemy_results[i][1] = enemy_dice_values[1] if enemy_dice_values.size() > 1 else 1
+	
+	# Mostrar dados con animación rápida
+	for i in range(8):
+		if i < player_dice.size():
+			var dice = player_dice[i]
+			var mech_idx = i / 2
+			var dice_idx = i % 2
+			var value = player_results[mech_idx][dice_idx]
+			_show_dice_result(dice, value)
+	
+	for i in range(8):
+		if i < enemy_dice.size():
+			var dice = enemy_dice[i]
+			var mech_idx = i / 2
+			var dice_idx = i % 2
+			var value = enemy_results[mech_idx][dice_idx]
+			_show_dice_result(dice, value)
+	
+	# Mostrar resultados después de un breve delay
+	await get_tree().create_timer(0.5).timeout
+	show_results()
+	
+	# En modo servidor, cerrar automáticamente después de mostrar resultados
+	await get_tree().create_timer(2.0).timeout
+	_auto_continue_server_mode()
+
+func _auto_continue_server_mode():
+	"""Cierra automáticamente la pantalla en modo servidor"""
+	if not has_meta("server_mode") or not get_meta("server_mode"):
+		return
+	
+	# Emitir señal y cerrar como si el usuario hubiera presionado continuar
+	var player_totals = []
+	var enemy_totals = []
+	
+	for i in range(4):
+		player_totals.append(player_results[i][0] + player_results[i][1])
+		enemy_totals.append(enemy_results[i][0] + enemy_results[i][1])
+	
+	var data = {
+		"player_initiatives": player_totals,
+		"enemy_initiatives": enemy_totals,
+		"player_mech_names": player_mech_names.duplicate(),
+		"enemy_mech_names": enemy_mech_names.duplicate()
+	}
+	
+	initiative_complete.emit(data)
+	queue_free()
+
+func _show_dice_result(dice: Control, value: int):
+	"""Muestra un resultado de dado sin animación"""
+	if not is_instance_valid(dice):
+		return
+	var label = dice.get_meta("label")
+	if label:
+		label.text = dice_faces[value - 1]
 
 func setup_ui():
 	# Obtener tamaño de pantalla
