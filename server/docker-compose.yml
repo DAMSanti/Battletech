@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  battletech-server:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    container_name: battletech-server
+    ports:
+      - "7777:7777/udp"
+    environment:
+      - SERVER_PORT=7777
+      - MAX_PLAYERS=32
+    restart: unless-stopped
+    # Recursos limitados para DigitalOcean Droplet básico
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    # Healthcheck (opcional, ENet no expone HTTP)
+    # healthcheck:
+    #   test: ["CMD", "nc", "-z", "localhost", "7777"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3

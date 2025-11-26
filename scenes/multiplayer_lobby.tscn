@@ -1,0 +1,118 @@
+[gd_scene load_steps=2 format=3 uid="uid://multiplayer_lobby"]
+
+[ext_resource type="Script" path="res://scripts/ui/multiplayer_lobby_ui.gd" id="1_lobby"]
+
+[node name="MultiplayerLobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.1, 0.1, 0.15, 1)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -300.0
+offset_right = 200.0
+offset_bottom = 300.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 20
+
+[node name="Title" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "MULTIPLAYER"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="StatusLabel" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "Status: Disconnected"
+horizontal_alignment = 1
+
+[node name="NameContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="VBoxContainer/NameContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Name:"
+
+[node name="PlayerNameInput" type="LineEdit" parent="VBoxContainer/NameContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Enter your name"
+max_length = 20
+
+[node name="ServerContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="ServerLabel" type="Label" parent="VBoxContainer/ServerContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Server:"
+
+[node name="ServerAddressInput" type="LineEdit" parent="VBoxContainer/ServerContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "127.0.0.1"
+placeholder_text = "Server IP address"
+
+[node name="ConnectButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Connect"
+
+[node name="JoinLobbyButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+disabled = true
+text = "Join Matchmaking"
+
+[node name="LeaveLobbyButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+disabled = true
+text = "Leave Queue"
+
+[node name="LobbyPanel" type="Panel" parent="VBoxContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 200)
+
+[node name="LobbyTitle" type="Label" parent="VBoxContainer/LobbyPanel"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 30.0
+grow_horizontal = 2
+text = "Players in Queue:"
+horizontal_alignment = 1
+
+[node name="LobbyList" type="VBoxContainer" parent="VBoxContainer/LobbyPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 10.0
+offset_top = 35.0
+offset_right = -10.0
+offset_bottom = -10.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="BackButton" type="Button" parent="VBoxContainer"]
+layout_mode = 2
+text = "Back to Menu"

@@ -1,3 +1,187 @@
+# Configuración Multiplayer Online
+
+## Arquitectura del Sistema
+
+El sistema multiplayer usa **ENet** con un **servidor dedicado autoritativo**. Los clientes se conectan al servidor, que valida todas las acciones y sincroniza el estado de la partida.
+
+```
+┌─────────────┐         ┌─────────────────────┐         ┌─────────────┐
+│  Cliente 1  │◄───────►│  Servidor Dedicado  │◄───────►│  Cliente 2  │
+│  (Player)   │  ENet   │  (DigitalOcean)     │  ENet   │  (Enemy)    │
+└─────────────┘  UDP    └─────────────────────┘  UDP    └─────────────┘
+```
+
+## Archivos del Sistema
+
+```
+scripts/network/
+├── network_manager.gd      # Autoload - Gestión de conexiones y matchmaking
+├── server_main.gd          # Punto de entrada del servidor headless
+├── server_battle_manager.gd # Lógica de batalla en servidor (autoritativo)
+└── network_battle_client.gd # Cliente de batalla (envía peticiones, recibe resultados)
+
+scenes/
+├── server_main.tscn        # Escena del servidor
+└── multiplayer_lobby.tscn  # UI del lobby de matchmaking
+
+server/
+├── Dockerfile              # Imagen Docker para el servidor
+├── docker-compose.yml      # Configuración de despliegue
+└── deploy.ps1              # Script de despliegue a DigitalOcean
+```
+
+## Flujo de Conexión
+
+1. **Cliente abre lobby** → Muestra UI de conexión
+2. **Cliente conecta** → `NetworkManager.connect_to_server(ip, port, name)`
+3. **Servidor acepta** → `peer_connected` signal
+4. **Cliente se registra** → RPC `server_register_player(name)`
+5. **Cliente entra a cola** → RPC `server_join_lobby()`
+6. **Matchmaking** → Servidor empareja 2 jugadores
+7. **Partida inicia** → `client_match_found` RPC a ambos
+8. **Batalla** → Todas las acciones via RPC al servidor
+
+## Flujo de Batalla (Servidor Autoritativo)
+
+### Despliegue
+```
+Cliente → server_request_deploy_mech(match_id, mech_data, hex, facing)
+Servidor → Valida zona → Crea mech → client_mech_deployed() a ambos
+```
+
+### Movimiento
+```
+Cliente → server_request_move(match_id, mech_id, target_hex, movement_type)
+Servidor → Valida MPs y path → Aplica movimiento → client_mech_moved() a ambos
+```
+
+### Ataque con Armas
+```
+Cliente → server_request_fire(match_id, attacker_id, target_id, weapon_indices)
+Servidor → Calcula to-hit → Tira dados → Aplica daño → client_weapons_fired() a ambos
+```
+
+## RPCs Principales
+
+### Cliente → Servidor
+| RPC | Descripción |
+|-----|-------------|
+| `server_register_player(name)` | Registra nombre del jugador |
+| `server_join_lobby()` | Entra a cola de matchmaking |
+| `server_leave_lobby()` | Sale de la cola |
+| `server_request_deploy_mech(...)` | Despliega un mech |
+| `server_request_move(...)` | Solicita movimiento |
+| `server_request_rotate(...)` | Solicita rotación |
+| `server_request_fire(...)` | Solicita disparo |
+| `server_request_physical_attack(...)` | Solicita ataque físico |
+| `server_request_end_activation(...)` | Termina activación |
+
+### Servidor → Cliente
+| RPC | Descripción |
+|-----|-------------|
+| `client_registration_confirmed(peer_id)` | Confirma registro |
+| `client_lobby_update(players)` | Actualiza lista de cola |
+| `client_match_found(match_id, team, opponent)` | Partida encontrada |
+| `client_start_deployment(match_id, team)` | Inicio de despliegue |
+| `client_mech_deployed(...)` | Mech desplegado |
+| `client_initiative_result(result)` | Resultado de iniciativa |
+| `client_phase_changed(phase, turn)` | Cambio de fase |
+| `client_unit_activated(mech_id, is_mine)` | Unidad activada |
+| `client_mech_moved(result)` | Movimiento ejecutado |
+| `client_weapons_fired(result)` | Resultado de disparo |
+| `client_battle_ended(winner, reason)` | Fin de batalla |
+
+---
+
+# Despliegue en DigitalOcean
+
+## Requisitos
+
+- Droplet Ubuntu 22.04 (mínimo 1GB RAM, 1 vCPU)
+- Docker instalado en el Droplet
+- Puerto 7777/UDP abierto en firewall
+- Godot 4.x con export templates de Linux
+
+## Pasos Rápidos
+
+### 1. Crear Droplet en DigitalOcean
+
+```bash
+# En el panel de DigitalOcean:
+# - Create Droplet
+# - Ubuntu 22.04
+# - Basic plan ($6/mes es suficiente)
+# - Datacenter cercano a tus jugadores
+# - SSH Key authentication
+```
+
+### 2. Configurar Droplet
+
+```bash
+# Conectar por SSH
+ssh root@TU_IP
+
+# Instalar Docker
+curl -fsSL https://get.docker.com | sh
+
+# Crear directorio
+mkdir -p /opt/battletech
+
+# Abrir puerto UDP
+ufw allow 7777/udp
+```
+
+### 3. Exportar y Desplegar
+
+```powershell
+# Desde tu PC (en el directorio del proyecto)
+.\server\deploy.ps1 -ServerIP TU_IP_DIGITALOCEAN
+```
+
+### 4. Verificar
+
+```bash
+# Ver logs del servidor
+ssh root@TU_IP 'docker logs -f battletech-server'
+
+# Debería mostrar:
+# ========================================
+#   BATTLETECH DEDICATED SERVER
+#   Version: 1.0.0
+# ========================================
+# [SERVER] Dedicated server started on port 7777
+# [SERVER] Waiting for connections...
+```
+
+## Comandos Útiles
+
+```bash
+# Reiniciar servidor
+ssh root@TU_IP 'cd /opt/battletech && docker-compose restart'
+
+# Detener servidor
+ssh root@TU_IP 'cd /opt/battletech && docker-compose down'
+
+# Ver estado
+ssh root@TU_IP 'docker ps'
+
+# Actualizar servidor (después de nuevo deploy.ps1)
+ssh root@TU_IP 'cd /opt/battletech && docker-compose pull && docker-compose up -d'
+```
+
+## Configuración del Cliente
+
+En el juego, los jugadores deben:
+
+1. Ir a **Multiplayer** en el menú principal
+2. Ingresar la IP del servidor: `TU_IP_DIGITALOCEAN`
+3. Escribir su nombre
+4. Hacer clic en **Connect**
+5. Hacer clic en **Join Matchmaking**
+6. Esperar a que otro jugador se una
+
+---
+
 # Configuración de Múltiples Unidades
 
 ## Sistema Escalable para 1-4+ Mechs por Equipo
