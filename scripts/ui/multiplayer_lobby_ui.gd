@@ -36,6 +36,9 @@ func _ready():
 	
 	# Estado inicial
 	_update_ui_state()
+	
+	# AUTO-CONECTAR al servidor al entrar a la pantalla
+	_auto_connect()
 
 func _update_ui_state():
 	var state = network_manager.connection_state if network_manager else 0
@@ -165,3 +168,28 @@ func _update_lobby_list(players: Array):
 func _clear_lobby_list():
 	for child in lobby_list.get_children():
 		child.queue_free()
+
+func _auto_connect():
+	"""Conecta automáticamente al servidor al entrar a la pantalla"""
+	if network_manager.connection_state != network_manager.ConnectionState.DISCONNECTED:
+		return  # Ya conectado
+	
+	# Generar nombre aleatorio si no hay uno
+	var player_name = player_name_input.text.strip_edges()
+	if player_name.is_empty():
+		player_name = "Player_%d" % (randi() % 9999)
+		player_name_input.text = player_name
+	
+	# Obtener IP del servidor (usa la de producción por defecto)
+	var server_ip = network_manager.PRODUCTION_SERVER_IP
+	server_address_input.text = server_ip
+	
+	status_label.text = "Connecting to server..."
+	status_label.modulate = Color.YELLOW
+	
+	var error = network_manager.connect_to_server(server_ip, 7777, player_name)
+	if error != OK:
+		status_label.text = "Connection failed: " + error_string(error)
+		status_label.modulate = Color.RED
+	
+	_update_ui_state()

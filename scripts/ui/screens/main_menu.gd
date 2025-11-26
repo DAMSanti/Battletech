@@ -48,6 +48,13 @@ func _ready():
 	loadout_btn.pressed.connect(_on_advanced_loadout_pressed)
 	vbox.add_child(loadout_btn)
 	
+	# Botón de Multiplayer
+	var multiplayer_btn = Button.new()
+	multiplayer_btn.text = "Multiplayer"
+	multiplayer_btn.custom_minimum_size = Vector2(200, 50)
+	multiplayer_btn.pressed.connect(_on_multiplayer_pressed)
+	vbox.add_child(multiplayer_btn)
+	
 	# Botón de opciones
 	var options_btn = Button.new()
 	options_btn.text = "Options"
@@ -73,6 +80,10 @@ func _on_mechs_pressed():
 func _on_advanced_loadout_pressed():
 	# Abrir Advanced Loadout con sistema de slots críticos
 	get_tree().change_scene_to_file("res://scenes/mech_bay_advanced.tscn")
+
+func _on_multiplayer_pressed():
+	# Abrir lobby de Multiplayer
+	get_tree().change_scene_to_file("res://scenes/multiplayer_lobby.tscn")
 
 func _on_options_pressed():
 	pass  # Coming soon

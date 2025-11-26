@@ -1,5 +1,4 @@
 extends Node
-class_name NetworkManager
 
 ## NetworkManager - Singleton para gestión de red ENet
 ## Diseñado para servidor dedicado en DigitalOcean
@@ -16,6 +15,13 @@ signal lobby_updated(players: Array)
 
 const DEFAULT_PORT: int = 7777
 const MAX_CLIENTS: int = 32  # Múltiples partidas simultáneas
+
+# ============================================================
+# CONFIGURACIÓN DEL SERVIDOR DE PRODUCCIÓN
+# ============================================================
+# Cambia esta IP por la de tu Droplet en DigitalOcean
+const PRODUCTION_SERVER_IP: String = "127.0.0.1"  # TODO: Cambiar a IP de DigitalOcean
+const USE_PRODUCTION_SERVER: bool = false  # Cambiar a true para usar servidor remoto
 
 # Estados de conexión
 enum ConnectionState {
@@ -95,11 +101,15 @@ func stop_server():
 # CLIENTE
 # ============================================================
 
-func connect_to_server(address: String, port: int = DEFAULT_PORT, player_name: String = "Player") -> Error:
+func connect_to_server(address: String = "", port: int = DEFAULT_PORT, player_name: String = "Player") -> Error:
 	"""Conecta un cliente al servidor dedicado"""
 	if connection_state != ConnectionState.DISCONNECTED:
 		push_warning("Already connected or connecting")
 		return ERR_ALREADY_IN_USE
+	
+	# Usar servidor de producción si está configurado y no se especifica dirección
+	if address.is_empty() or USE_PRODUCTION_SERVER:
+		address = PRODUCTION_SERVER_IP
 	
 	local_player_name = player_name
 	multiplayer_peer = ENetMultiplayerPeer.new()
@@ -360,6 +370,11 @@ func _on_connected_to_server():
 	rpc_id(server_peer_id, "server_register_player", local_player_name)
 	
 	connected_to_server.emit()
+	
+	# Auto-unirse al lobby después de conectar
+	await get_tree().create_timer(0.5).timeout
+	if connection_state == ConnectionState.CONNECTED:
+		rpc_id(server_peer_id, "server_join_lobby")
 
 func _on_connection_failed():
 	print("[CLIENT] Connection failed!")

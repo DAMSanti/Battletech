@@ -1,0 +1,143 @@
+# ============================================================
+# GODOT ENGINE
+# ============================================================
+
+# Godot 4+ ignores
+.godot/
+
+# Godot-generated files
+*.translation
+
+# ============================================================
+# ARCHIVOS SENSIBLES - NUNCA SUBIR
+# ============================================================
+
+# SSH Keys
+*.pem
+*.key
+*.pub
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.ppk
+ssh_key*
+SSH_KEY*
+key
+key.*
+
+# Credenciales y secretos
+*.secret
+*.secrets
+.env
+.env.*
+*.credentials
+credentials.json
+secrets.json
+config.local.*
+
+# API Keys
+api_key*
+apikey*
+
+# Certificados SSL
+*.crt
+*.cer
+*.der
+
+# ============================================================
+# EXPORTS Y BUILDS
+# ============================================================
+
+# Exported builds
+exports/
+export/
+build/
+builds/
+*.apk
+*.aab
+*.exe
+*.x86_64
+*.pck
+*.zip
+
+# Android keystore
+*.keystore
+*.jks
+release.properties
+
+# ============================================================
+# SISTEMA OPERATIVO
+# ============================================================
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================
+# IDEs Y EDITORES
+# ============================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+*.iml
+
+# Vim
+*.swp
+*.swo
+*~
+
+# ============================================================
+# OTROS
+# ============================================================
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Node modules (si usas herramientas JS)
+node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+
+# Server deployment (mantener scripts, ignorar archivos generados)
+server/*.pem
+server/*.key
+server/docker-compose.override.yml
