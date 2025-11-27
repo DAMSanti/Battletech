@@ -228,6 +228,7 @@ func _setup_ui():
 	info_style.shadow_size = 3
 	info_style.shadow_offset = Vector2(0, 2)
 	info_panel.add_theme_stylebox_override("panel", info_style)
+	info_panel.visible = false  # Oculto hasta que se seleccione un mech
 	add_child(info_panel)
 	
 	# Posiciones dentro de la box
@@ -302,7 +303,7 @@ func _setup_ui():
 		mp_dots.append(dot)
 	
 	# 5. HEAT SECTION (debajo del robot, centrado y alineado)
-	var heat_y = doll_y + doll_height - 30 * scale_factor  # Justo bajo los pies del robot
+	var heat_y = doll_y + doll_height - 20 * scale_factor  # Justo bajo los pies del robot
 	var heat_row_height = 12 * scale_factor
 	var heat_total_width = doll_width + 30 * scale_factor
 	var heat_start_x = doll_center_x - heat_total_width / 2
@@ -355,13 +356,14 @@ func _setup_ui():
 	help_label.size = Vector2(200 * scale_factor, 40 * scale_factor)
 	add_child(help_label)
 	
-	# Botón de cancelar movimiento
+	# Botón de cancelar movimiento - CENTRADO EN PARTE SUPERIOR DE PANTALLA
 	cancel_movement_button = Button.new()
 	cancel_movement_button.text = "✗ CANCEL"
-	var cancel_btn_width = 85 * scale_factor
-	cancel_movement_button.position = Vector2(margin + 95 * scale_factor, margin + 52 * scale_factor)
-	cancel_movement_button.size = Vector2(cancel_btn_width, 28 * scale_factor)
-	cancel_movement_button.add_theme_font_size_override("font_size", int(12 * scale_factor))
+	var cancel_btn_width = 120 * scale_factor
+	var cancel_btn_height = 35 * scale_factor
+	cancel_movement_button.position = Vector2((screen_width - cancel_btn_width) / 2, margin)
+	cancel_movement_button.size = Vector2(cancel_btn_width, cancel_btn_height)
+	cancel_movement_button.add_theme_font_size_override("font_size", int(14 * scale_factor))
 	cancel_movement_button.visible = false
 	var cancel_btn_style = StyleBoxFlat.new()
 	cancel_btn_style.bg_color = Color(0.35, 0.1, 0.1, 0.9)
@@ -382,7 +384,7 @@ func _setup_ui():
 	cancel_movement_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	cancel_movement_button.add_theme_color_override("font_color", Color(1, 0.7, 0.7, 1))
 	cancel_movement_button.pressed.connect(_on_cancel_movement_pressed)
-	info_panel.add_child(cancel_movement_button)
+	add_child(cancel_movement_button)
 	
 	# unit_info_label oculto (para compatibilidad)
 	unit_info_label = Label.new()
@@ -637,7 +639,7 @@ func _setup_ui():
 	var movement_panel_width = screen_width * 0.85
 	var movement_panel_height = screen_height * 0.45
 	movement_selector_panel = Panel.new()
-	movement_selector_panel.position = Vector2((screen_width - movement_panel_width) / 2, (screen_height - movement_panel_height) / 2)
+	movement_selector_panel.position = Vector2((screen_width - movement_panel_width) / 2, (screen_height - movement_panel_height) / 2 - 50 * scale_factor)
 	movement_selector_panel.size = Vector2(movement_panel_width, movement_panel_height)
 	movement_selector_panel.visible = false
 	
@@ -1091,6 +1093,10 @@ func _on_unit_activated(unit):
 		
 		# SOLO actualizar info superior si es unidad del jugador
 		if is_player_unit:
+			# Mostrar el panel de info del mech
+			if info_panel:
+				info_panel.visible = true
+			
 			# Obtener nombre del mech correctamente
 			var unit_name = ""
 			if "mech_name" in unit:
@@ -1125,13 +1131,9 @@ func _on_unit_activated(unit):
 				mech_paper_doll.visible = true
 				mech_paper_doll.update_from_mech(unit)
 		else:
-			# Si es un enemigo, ocultar/resetear
-			if mech_paper_doll:
-				mech_paper_doll.visible = false
-			if mech_name_label:
-				mech_name_label.text = "Enemy unit"
-			_update_heat_bar(0, 30)
-			_update_mp_dots(0, 0)
+			# Si es un enemigo, ocultar el panel completo
+			if info_panel:
+				info_panel.visible = false
 
 func _update_heat_bar(current_heat: int, max_heat: int):
 	"""Actualiza la barra de heat con colores según el nivel"""

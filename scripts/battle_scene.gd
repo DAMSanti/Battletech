@@ -1742,6 +1742,16 @@ func on_facing_selected(facing: int):
 			ui.hide_facing_selector()
 		elif _local_facing_selector:
 			_ui_hide_facing_selector()
+		
+		# Si estamos en modo Turn Only, volver al selector de movimientos
+		if pending_turn_only and selected_unit:
+			print("[BATTLE] Turn only cancelled - reopening movement selector")
+			pending_turn_only = false
+			pending_movement_selection = true
+			if ui and ui.has_method("show_movement_type_selector"):
+				ui.show_movement_type_selector(selected_unit)
+			return
+		
 		# En deployment, no hacer nada más - permitir que el jugador elija otro hex
 		return
 	
@@ -1891,12 +1901,13 @@ func select_turn_only():
 	if ui:
 		ui.add_combat_message("%s: Select new facing (Turn only - %d MP available)" % [selected_unit.mech_name, selected_unit.current_movement], Color.CYAN)
 	
-	# Mostrar selector de facing en la posición del mech
-	var mech_screen_pos = selected_unit.global_position
+	# Mostrar selector de facing CENTRADO EN PANTALLA (no en la posición del mech)
+	var viewport_size = get_viewport().get_visible_rect().size
+	var center_screen_pos = viewport_size / 2
 	if ui and ui.has_method("show_facing_selector_with_current"):
-		ui.show_facing_selector_with_current(mech_screen_pos, selected_unit.facing, selected_unit.current_movement)
+		ui.show_facing_selector_with_current(center_screen_pos, selected_unit.facing, selected_unit.current_movement)
 	elif _local_facing_selector:
-		_ui_show_facing_selector_with_current(mech_screen_pos, selected_unit.facing, selected_unit.current_movement)
+		_ui_show_facing_selector_with_current(center_screen_pos, selected_unit.facing, selected_unit.current_movement)
 
 func cancel_movement_selection():
 	"""Cancela la selección de movimiento actual y vuelve al selector de tipo"""
@@ -2496,10 +2507,15 @@ func execute_weapon_attack(attacker, target, weapon_indices: Array, range_hexes:
 		if ui:
 			ui.add_combat_message("Heat generated: +%d (Current: %d/%d)" % [total_heat, attacker.heat, attacker.heat_capacity], Color.ORANGE)
 			ui.add_combat_message("  (Heat will be processed in Heat Phase)", Color.GRAY)
+			# Actualizar barra de calor en tiempo real
+			ui.update_unit_info(attacker)
 	
 	# Actualizar UI
 	if ui:
 		ui.add_combat_message("═══════════════════════════════", Color.YELLOW)
+	
+	# Pequeño delay para que se vea el cambio de calor
+	await get_tree().create_timer(0.5).timeout
 	
 	# Finalizar ataque y continuar con siguiente unidad
 	_end_weapon_attack_phase()
@@ -3032,6 +3048,10 @@ func _process_mech_heat(mech):
 	if ui:
 		ui.add_combat_message("  → Dissipated %d heat (%d -> %d)" % [heat_removed, initial_heat, current_heat], Color.LIGHT_BLUE)
 		
+		# Actualizar barra de calor en tiempo real
+		if selected_unit == mech or mech in player_mechs:
+			ui.update_unit_info(mech)
+		
 		if dissipation_result.get("restarted", false):
 			ui.add_combat_message("  ✓ MECH RESTARTED!", Color.GREEN)
 		
@@ -3042,6 +3062,9 @@ func _process_mech_heat(mech):
 	
 	# Actualizar visualización
 	mech.queue_redraw()
+	
+	# Pequeño delay para que se vea el cambio de calor
+	await get_tree().create_timer(0.3).timeout
 
 # Métodos públicos para la UI
 func get_turn_manager():
