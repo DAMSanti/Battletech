@@ -18,10 +18,19 @@ var end_turn_button: Button
 var help_label: Label
 var cancel_movement_button: Button  # Botón para cancelar selección de movimiento
 var combat_log: RichTextLabel
-var combat_log_mode: String = "full"  # "full" o "short"
+var combat_log_scrollbar: VScrollBar  # Scrollbar personalizada para el log
+var combat_log_mode: String = "full"  # "full", "short" o "chat"
 var full_button: Button
 var short_button: Button
+var chat_button: Button  # Nueva pestaña de chat para multiplayer
+var collapse_log_button: Button  # Botón para colapsar/expandir el log
+var combat_log_collapsed: bool = false  # Estado del log
+var log_expanded_height: float = 0.0  # Altura cuando está expandido
+var log_collapsed_height: float = 40.0  # Altura cuando está colapsado
 var message_history: Array = []  # Almacenar todos los mensajes [{text: String, color: Color}]
+var chat_history: Array = []  # Mensajes de chat multiplayer [{text: String, sender: String, color: Color}]
+var chat_input_container: HBoxContainer = null  # Contenedor para entrada de chat
+var chat_input: LineEdit = null  # Campo de entrada de chat
 
 # Selector de tipo de movimiento
 var movement_selector_panel: Panel
@@ -202,17 +211,23 @@ func _setup_ui():
 	cancel_movement_button.pressed.connect(_on_cancel_movement_pressed)
 	add_child(cancel_movement_button)
 	
-	# Log de combate (en la parte inferior, 23% de la altura)
-	var log_height = screen_height * 0.23
+	# ============================================
+	# COMBAT LOG MEJORADO - Colapsable con pestañas
+	# ============================================
+	log_expanded_height = screen_height * 0.26  # Aumentado para que quepa el textbox
+	log_collapsed_height = 40 * scale_factor  # Aumentado para que quepa el botón
+	var log_height = log_expanded_height
+	
 	log_panel = Panel.new()
 	log_panel.position = Vector2(margin, screen_height - log_height - margin)
 	log_panel.size = Vector2(screen_width * 0.95, log_height)
+	log_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	
 	# Aplicar estilo BattleTech al panel de combat log
 	var log_style = StyleBoxFlat.new()
-	log_style.bg_color = Color(0.08, 0.12, 0.18, 0.3)
+	log_style.bg_color = Color(0.08, 0.12, 0.18, 0.85)
 	log_style.border_width_left = 3
-	log_style.border_width_top = 1
+	log_style.border_width_top = 2
 	log_style.border_width_right = 3
 	log_style.border_width_bottom = 3
 	log_style.border_color = Color(0.2, 0.5, 0.7, 0.9)
@@ -225,69 +240,214 @@ func _setup_ui():
 	log_style.shadow_color = Color(0.2, 0.5, 0.7, 0.4)
 	log_style.shadow_size = 4
 	log_style.shadow_offset = Vector2(0, 2)
-	log_style.skew = Vector2(0.05, 0)
+	log_style.skew = Vector2(0.03, 0)  # Skew reducido para mejor legibilidad
 	log_panel.add_theme_stylebox_override("panel", log_style)
+	
+	# Conectar gui_input al panel para bloquear clicks que van al mapa
+	log_panel.gui_input.connect(_on_log_panel_gui_input)
 	add_child(log_panel)
 	
+	# Header del log con título y controles
+	var header_height = 30 * scale_factor
+	
+	# Botón colapsar/expandir (izquierda)
+	collapse_log_button = Button.new()
+	collapse_log_button.text = "▼"
+	collapse_log_button.position = Vector2(margin + 5 * scale_factor, 4 * scale_factor)
+	collapse_log_button.size = Vector2(28 * scale_factor, 24 * scale_factor)
+	collapse_log_button.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	collapse_log_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Estilo plano sin glow para el botón de colapsar
+	var collapse_btn_style = StyleBoxFlat.new()
+	collapse_btn_style.bg_color = Color(0.1, 0.15, 0.2, 0.8)
+	collapse_btn_style.border_color = Color(0.3, 0.5, 0.7, 0.8)
+	collapse_btn_style.border_width_left = 1
+	collapse_btn_style.border_width_top = 1
+	collapse_btn_style.border_width_right = 1
+	collapse_btn_style.border_width_bottom = 1
+	collapse_btn_style.corner_radius_top_left = 4
+	collapse_btn_style.corner_radius_top_right = 4
+	collapse_btn_style.corner_radius_bottom_right = 4
+	collapse_btn_style.corner_radius_bottom_left = 4
+	collapse_log_button.add_theme_stylebox_override("normal", collapse_btn_style)
+	var collapse_btn_hover = collapse_btn_style.duplicate()
+	collapse_btn_hover.bg_color = Color(0.15, 0.2, 0.28, 0.9)
+	collapse_log_button.add_theme_stylebox_override("hover", collapse_btn_hover)
+	collapse_log_button.add_theme_stylebox_override("pressed", collapse_btn_hover)
+	collapse_log_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	collapse_log_button.add_theme_color_override("font_color", Color(0.7, 0.85, 1, 1))
+	collapse_log_button.pressed.connect(_on_toggle_log_collapse)
+	log_panel.add_child(collapse_log_button)
+	
+	# Título "Log"
 	var log_title = Label.new()
-	log_title.text = "Combat Log:"
-	log_title.position = Vector2(margin, margin)
-	log_title.add_theme_font_size_override("font_size", int(18 * scale_factor))
-	log_title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Color BattleTech
+	log_title.text = "Log"
+	log_title.position = Vector2(margin + 38 * scale_factor, 6 * scale_factor)
+	log_title.add_theme_font_size_override("font_size", int(16 * scale_factor))
+	log_title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))
 	log_title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
-	log_title.add_theme_constant_override("outline_size", 2)
+	log_title.add_theme_constant_override("outline_size", 1)
 	log_panel.add_child(log_title)
 	
-	# Botones de modo Full/Short (a la derecha del título)
-	var log_button_y = margin
-	var log_button_width = 60 * scale_factor
-	var log_button_height = 25 * scale_factor
-	var log_button_x_start = log_panel.size.x - margin - log_button_width * 2 - 5 * scale_factor
+	# Pestañas FULL | SHORT | CHAT (centro-derecha)
+	var tab_button_width = 55 * scale_factor
+	var tab_button_height = 22 * scale_factor
+	var tab_spacing = 3 * scale_factor
+	var tabs_total_width = tab_button_width * 3 + tab_spacing * 2
+	var tabs_x_start = log_panel.size.x - margin - tabs_total_width - 35 * scale_factor
+	var tab_y = 5 * scale_factor
 	
 	full_button = Button.new()
 	full_button.text = "FULL"
-	full_button.position = Vector2(log_button_x_start, log_button_y)
-	full_button.size = Vector2(log_button_width, log_button_height)
+	full_button.position = Vector2(tabs_x_start, tab_y)
+	full_button.size = Vector2(tab_button_width, tab_button_height)
 	full_button.theme = battletech_theme
-	full_button.add_theme_font_size_override("font_size", int(12 * scale_factor))
+	full_button.add_theme_font_size_override("font_size", int(10 * scale_factor))
 	full_button.pressed.connect(_on_log_mode_changed.bind("full"))
 	log_panel.add_child(full_button)
 	
 	short_button = Button.new()
 	short_button.text = "SHORT"
-	short_button.position = Vector2(log_button_x_start + log_button_width + 5 * scale_factor, log_button_y)
-	short_button.size = Vector2(log_button_width, log_button_height)
+	short_button.position = Vector2(tabs_x_start + tab_button_width + tab_spacing, tab_y)
+	short_button.size = Vector2(tab_button_width, tab_button_height)
 	short_button.theme = battletech_theme
-	short_button.add_theme_font_size_override("font_size", int(12 * scale_factor))
+	short_button.add_theme_font_size_override("font_size", int(10 * scale_factor))
 	short_button.pressed.connect(_on_log_mode_changed.bind("short"))
 	log_panel.add_child(short_button)
+	
+	chat_button = Button.new()
+	chat_button.text = "CHAT"
+	chat_button.position = Vector2(tabs_x_start + (tab_button_width + tab_spacing) * 2, tab_y)
+	chat_button.size = Vector2(tab_button_width, tab_button_height)
+	chat_button.theme = battletech_theme
+	chat_button.add_theme_font_size_override("font_size", int(10 * scale_factor))
+	chat_button.pressed.connect(_on_log_mode_changed.bind("chat"))
+	log_panel.add_child(chat_button)
 	
 	# Actualizar visual de botones
 	_update_log_mode_buttons()
 	
+	# ---- COMBAT LOG CON SCROLLBAR PERSONALIZADA ----
+	var scrollbar_width = 35 * scale_factor  # Ancho de scrollbar para móvil
+	var log_content_margin_left = margin + 15 * scale_factor  # Extra margen izquierdo por skew
+	var log_content_margin_right = margin + 15 * scale_factor  # Margen derecho
+	var log_content_top = header_height + 10 * scale_factor
+	
+	# RichTextLabel SIN scrollbar interna (la ocultamos)
 	combat_log = RichTextLabel.new()
-	combat_log.position = Vector2(margin, 35 * scale_factor)
-	combat_log.size = Vector2(log_panel.size.x - margin * 2, log_panel.size.y - 40 * scale_factor)
+	combat_log.position = Vector2(log_content_margin_left, log_content_top)
+	combat_log.size = Vector2(
+		log_panel.size.x - log_content_margin_left - log_content_margin_right - scrollbar_width - 5 * scale_factor,
+		log_panel.size.y - log_content_top - 10 * scale_factor
+	)
 	combat_log.bbcode_enabled = true
 	combat_log.scroll_following = true
-	combat_log.mouse_filter = Control.MOUSE_FILTER_STOP  # Evita que el scroll pase a la cámara
-	combat_log.add_theme_font_size_override("normal_font_size", int(14 * scale_factor))
+	combat_log.scroll_active = false  # Desactivar scroll interno
+	combat_log.mouse_filter = Control.MOUSE_FILTER_STOP
+	combat_log.add_theme_font_size_override("normal_font_size", int(13 * scale_factor))
 	
-	# Aplicar estilo BattleTech al fondo del combat log
+	# Fondo del área de texto
 	var combat_log_bg = StyleBoxFlat.new()
-	combat_log_bg.bg_color = Color(0.05, 0.08, 0.12, 0.25)  # Fondo más oscuro para contraste
+	combat_log_bg.bg_color = Color(0.03, 0.05, 0.08, 0.5)
 	combat_log_bg.border_width_left = 1
 	combat_log_bg.border_width_top = 1
 	combat_log_bg.border_width_right = 1
 	combat_log_bg.border_width_bottom = 1
-	combat_log_bg.border_color = Color(0.15, 0.35, 0.5, 0.6)
+	combat_log_bg.border_color = Color(0.15, 0.3, 0.45, 0.5)
 	combat_log_bg.corner_radius_top_left = 4
 	combat_log_bg.corner_radius_top_right = 4
 	combat_log_bg.corner_radius_bottom_right = 4
 	combat_log_bg.corner_radius_bottom_left = 4
 	combat_log.add_theme_stylebox_override("normal", combat_log_bg)
-	combat_log.add_theme_color_override("default_color", Color(0.8, 0.9, 1, 1))  # Color de texto por defecto
+	combat_log.add_theme_color_override("default_color", Color(0.85, 0.92, 1, 1))
 	log_panel.add_child(combat_log)
+	
+	# Scrollbar personalizada a la derecha
+	combat_log_scrollbar = VScrollBar.new()
+	combat_log_scrollbar.position = Vector2(
+		log_panel.size.x - log_content_margin_right - scrollbar_width,
+		log_content_top
+	)
+	combat_log_scrollbar.size = Vector2(scrollbar_width, combat_log.size.y)
+	combat_log_scrollbar.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# Estilo del grabber (la parte que se arrastra)
+	var grabber_style = StyleBoxFlat.new()
+	grabber_style.bg_color = Color(0.3, 0.5, 0.7, 0.9)
+	grabber_style.corner_radius_top_left = 6
+	grabber_style.corner_radius_top_right = 6
+	grabber_style.corner_radius_bottom_right = 6
+	grabber_style.corner_radius_bottom_left = 6
+	grabber_style.skew = Vector2(0.03, 0)  # Skew para coincidir con el panel
+	combat_log_scrollbar.add_theme_stylebox_override("grabber", grabber_style)
+	combat_log_scrollbar.add_theme_stylebox_override("grabber_highlight", grabber_style)
+	combat_log_scrollbar.add_theme_stylebox_override("grabber_pressed", grabber_style)
+	
+	# Estilo del fondo del scroll
+	var scroll_bg_style = StyleBoxFlat.new()
+	scroll_bg_style.bg_color = Color(0.08, 0.12, 0.18, 0.7)
+	scroll_bg_style.corner_radius_top_left = 6
+	scroll_bg_style.corner_radius_top_right = 6
+	scroll_bg_style.corner_radius_bottom_right = 6
+	scroll_bg_style.corner_radius_bottom_left = 6
+	scroll_bg_style.skew = Vector2(0.03, 0)  # Skew para coincidir con el panel
+	combat_log_scrollbar.add_theme_stylebox_override("scroll", scroll_bg_style)
+	
+	# Conectar la scrollbar con el RichTextLabel y bloquear clicks
+	combat_log_scrollbar.value_changed.connect(_on_log_scrollbar_changed)
+	combat_log_scrollbar.gui_input.connect(_on_scrollbar_gui_input)
+	log_panel.add_child(combat_log_scrollbar)
+	
+	# Ocultar scrollbar interna y conectar para sincronizar
+	var internal_scrollbar = combat_log.get_v_scroll_bar()
+	internal_scrollbar.modulate.a = 0  # Hacerla invisible
+	internal_scrollbar.mouse_filter = Control.MOUSE_FILTER_IGNORE  # Ignorar clicks
+	internal_scrollbar.value_changed.connect(_on_combat_log_scrolled)
+	
+	# Chat input (solo visible en modo chat)
+	var chat_input_height = 28 * scale_factor
+	chat_input_container = HBoxContainer.new()
+	chat_input_container.position = Vector2(log_content_margin_left, log_panel.size.y - chat_input_height - 5 * scale_factor)
+	chat_input_container.size = Vector2(combat_log.size.x, chat_input_height)
+	chat_input_container.visible = false  # Oculto por defecto, solo visible en modo chat
+	chat_input_container.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	chat_input = LineEdit.new()
+	chat_input.placeholder_text = "Escribe un mensaje..."
+	chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chat_input.add_theme_font_size_override("font_size", int(12 * scale_factor))
+	chat_input.text_submitted.connect(_on_chat_message_submitted)
+	
+	var chat_input_style = StyleBoxFlat.new()
+	chat_input_style.bg_color = Color(0.05, 0.08, 0.12, 0.9)
+	chat_input_style.border_color = Color(0.2, 0.4, 0.6, 0.8)
+	chat_input_style.border_width_left = 1
+	chat_input_style.border_width_top = 1
+	chat_input_style.border_width_right = 1
+	chat_input_style.border_width_bottom = 1
+	chat_input_style.corner_radius_top_left = 4
+	chat_input_style.corner_radius_top_right = 4
+	chat_input_style.corner_radius_bottom_right = 4
+	chat_input_style.corner_radius_bottom_left = 4
+	chat_input.add_theme_stylebox_override("normal", chat_input_style)
+	chat_input.mouse_filter = Control.MOUSE_FILTER_STOP
+	chat_input.add_theme_color_override("font_color", Color(0.9, 0.95, 1, 1))
+	chat_input.add_theme_color_override("font_placeholder_color", Color(0.5, 0.6, 0.7, 0.7))
+	chat_input_container.add_child(chat_input)
+	
+	var send_button = Button.new()
+	send_button.text = "➤"
+	send_button.custom_minimum_size = Vector2(40 * scale_factor, chat_input_height)
+	send_button.theme = battletech_theme
+	send_button.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	send_button.pressed.connect(_on_send_chat_pressed)
+	chat_input_container.add_child(send_button)
+	
+	log_panel.add_child(chat_input_container)
+	
+	# ============================================
+	# FIN COMBAT LOG
+	# ============================================
 	
 	# Panel selector de tipo de movimiento (centrado, 85% del ancho) - Estilo BattleTech
 	var movement_panel_width = screen_width * 0.85
@@ -806,15 +966,129 @@ func _on_log_mode_changed(mode: String):
 	combat_log_mode = mode
 	_update_log_mode_buttons()
 	_refresh_combat_log()
+	_update_chat_input_visibility()
 
 func _update_log_mode_buttons():
-	if full_button and short_button:
-		if combat_log_mode == "full":
-			full_button.modulate = Color(0.5, 1.0, 0.5)
-			short_button.modulate = Color(1.0, 1.0, 1.0)
-		else:
-			full_button.modulate = Color(1.0, 1.0, 1.0)
-			short_button.modulate = Color(0.5, 1.0, 0.5)
+	"""Actualiza el estilo visual de las pestañas del log"""
+	var active_color = Color(0.4, 0.9, 0.5)  # Verde brillante para activo
+	var inactive_color = Color(0.7, 0.7, 0.7)  # Gris para inactivo
+	
+	if full_button:
+		full_button.modulate = active_color if combat_log_mode == "full" else inactive_color
+	if short_button:
+		short_button.modulate = active_color if combat_log_mode == "short" else inactive_color
+	if chat_button:
+		chat_button.modulate = active_color if combat_log_mode == "chat" else inactive_color
+
+func _update_chat_input_visibility():
+	"""Muestra/oculta el campo de entrada de chat según el modo y estado del log"""
+	if chat_input_container:
+		# Solo visible en modo chat y cuando el log no está colapsado
+		chat_input_container.visible = (combat_log_mode == "chat" and not combat_log_collapsed)
+		
+		# Ajustar el tamaño del RichTextLabel y scrollbar para dejar espacio al input
+		if combat_log and log_panel:
+			var header_height = 30 * scale_factor
+			var log_content_top = header_height + 10 * scale_factor
+			var chat_input_height = 28 * scale_factor
+			var bottom_margin = 10 * scale_factor
+			
+			if chat_input_container.visible:
+				# Reducir altura del log para dejar espacio al input
+				var new_height = log_panel.size.y - log_content_top - chat_input_height - bottom_margin - 5 * scale_factor
+				combat_log.size.y = new_height
+				if combat_log_scrollbar:
+					combat_log_scrollbar.size.y = new_height
+			else:
+				# Altura completa cuando no hay input visible
+				var new_height = log_panel.size.y - log_content_top - bottom_margin
+				combat_log.size.y = new_height
+				if combat_log_scrollbar:
+					combat_log_scrollbar.size.y = new_height
+
+func _on_log_panel_gui_input(event: InputEvent):
+	"""Captura todos los eventos de input en el panel de log para que no pasen al mapa"""
+	# Solo marcar como manejado para eventos que NO son de la scrollbar
+	# La scrollbar necesita procesar sus propios eventos
+	if event is InputEventMouseButton or event is InputEventMouseMotion or event is InputEventScreenTouch or event is InputEventScreenDrag:
+		get_viewport().set_input_as_handled()
+
+func _on_scrollbar_gui_input(_event: InputEvent):
+	"""La scrollbar maneja sus propios eventos - no hacer nada aquí"""
+	# NO llamar set_input_as_handled() porque la scrollbar necesita el evento
+	# La protección viene de is_mouse_over_log_panel() en battle_scene
+	pass
+
+func is_mouse_over_log_panel() -> bool:
+	"""Devuelve true si el mouse/touch está sobre el panel de log"""
+	if not log_panel or not log_panel.visible:
+		return false
+	var mouse_pos = get_viewport().get_mouse_position()
+	var panel_rect = Rect2(log_panel.global_position, log_panel.size)
+	return panel_rect.has_point(mouse_pos)
+
+func _on_toggle_log_collapse():
+	"""Alterna entre log expandido y colapsado"""
+	combat_log_collapsed = not combat_log_collapsed
+	_update_log_collapse_state()
+
+func _on_log_scrollbar_changed(value: float):
+	"""Sincroniza la scrollbar personalizada con el RichTextLabel"""
+	if combat_log:
+		var internal_scroll = combat_log.get_v_scroll_bar()
+		if internal_scroll and internal_scroll.value != value:
+			internal_scroll.value = value
+
+func _on_combat_log_scrolled(value: float):
+	"""Sincroniza el scroll interno del RichTextLabel con la scrollbar personalizada"""
+	if combat_log_scrollbar and combat_log_scrollbar.value != value:
+		combat_log_scrollbar.value = value
+
+func _update_scrollbar_range():
+	"""Actualiza el rango de la scrollbar personalizada"""
+	if not combat_log or not combat_log_scrollbar:
+		return
+	var internal_scroll = combat_log.get_v_scroll_bar()
+	if internal_scroll:
+		combat_log_scrollbar.min_value = internal_scroll.min_value
+		combat_log_scrollbar.max_value = internal_scroll.max_value
+		combat_log_scrollbar.page = internal_scroll.page
+		combat_log_scrollbar.value = internal_scroll.value
+
+func _update_log_collapse_state():
+	"""Actualiza el estado visual del log según si está colapsado o no"""
+	if not log_panel:
+		return
+	
+	var screen_height = get_viewport().get_visible_rect().size.y
+	var target_height = log_collapsed_height if combat_log_collapsed else log_expanded_height
+	
+	# Actualizar tamaño y posición del panel
+	log_panel.size.y = target_height
+	log_panel.position.y = screen_height - target_height - margin
+	
+	# Actualizar botón de colapso
+	if collapse_log_button:
+		collapse_log_button.text = "▲" if combat_log_collapsed else "▼"
+	
+	# Mostrar/ocultar contenido del log
+	if combat_log:
+		combat_log.visible = not combat_log_collapsed
+	
+	# Mostrar/ocultar scrollbar personalizada
+	if combat_log_scrollbar:
+		combat_log_scrollbar.visible = not combat_log_collapsed
+	
+	# Mostrar/ocultar pestañas cuando está colapsado
+	if full_button:
+		full_button.visible = not combat_log_collapsed
+	if short_button:
+		short_button.visible = not combat_log_collapsed
+	if chat_button:
+		chat_button.visible = not combat_log_collapsed
+	
+	# Actualizar visibilidad del chat input
+	_update_chat_input_visibility()
 
 func _refresh_combat_log():
 	if not combat_log:
@@ -823,9 +1097,23 @@ func _refresh_combat_log():
 	# Limpiar el log
 	combat_log.clear()
 	
+	# Si estamos en modo chat, mostrar mensajes de chat
+	if combat_log_mode == "chat":
+		for msg_data in chat_history:
+			var sender = msg_data.get("sender", "???")
+			var text = msg_data.get("text", "")
+			var color = msg_data.get("color", Color.WHITE)
+			combat_log.push_color(color)
+			combat_log.append_text("[%s]: %s\n" % [sender, text])
+			combat_log.pop()
+		call_deferred("_update_scrollbar_range")
+		return
+	
 	# Regenerar todos los mensajes con el filtrado actual
 	for msg_data in message_history:
 		_add_message_to_log(msg_data["text"], msg_data["color"])
+	
+	call_deferred("_update_scrollbar_range")
 
 func _add_message_to_log(message: String, color: Color):
 	# Esta función procesa y añade un mensaje al log según el modo actual
@@ -968,6 +1256,9 @@ func _add_message_to_log(message: String, color: Color):
 	combat_log.push_color(final_color)
 	combat_log.append_text(final_message + "\n")
 	combat_log.pop()
+	
+	# Actualizar rango de la scrollbar personalizada
+	call_deferred("_update_scrollbar_range")
 
 func add_combat_message(message: String, color: Color = Color.WHITE):
 	# Solo evitar duplicados de mensajes específicos que se repiten por señales múltiples
@@ -994,8 +1285,49 @@ func add_combat_message(message: String, color: Color = Color.WHITE):
 	# Guardar en el historial
 	message_history.append({"text": message, "color": color})
 	
-	# Añadir al log visible
-	_add_message_to_log(message, color)
+	# Añadir al log visible (solo si no estamos en modo chat)
+	if combat_log_mode != "chat":
+		_add_message_to_log(message, color)
+
+func add_chat_message(sender: String, message: String, color: Color = Color.WHITE):
+	"""Añade un mensaje de chat (para multiplayer)"""
+	chat_history.append({"sender": sender, "text": message, "color": color})
+	
+	# Si estamos en modo chat, mostrar inmediatamente
+	if combat_log_mode == "chat" and combat_log:
+		combat_log.push_color(color)
+		combat_log.append_text("[%s]: %s\n" % [sender, message])
+		combat_log.pop()
+
+func _on_chat_message_submitted(text: String):
+	"""Callback cuando se presiona Enter en el campo de chat"""
+	if text.strip_edges().is_empty():
+		return
+	_send_chat_message(text)
+	chat_input.clear()
+
+func _on_send_chat_pressed():
+	"""Callback cuando se presiona el botón de enviar"""
+	if chat_input and not chat_input.text.strip_edges().is_empty():
+		_send_chat_message(chat_input.text)
+		chat_input.clear()
+
+func _send_chat_message(text: String):
+	"""Envía un mensaje de chat. En multiplayer, esto se enviaría por red."""
+	# Obtener nombre del jugador local
+	var sender_name = "Jugador"
+	var battle_scene = get_parent()
+	if battle_scene and battle_scene.has_method("get"):
+		var network_manager = battle_scene.get("network_manager")
+		if network_manager and network_manager.has_method("get_local_player_name"):
+			sender_name = network_manager.get_local_player_name()
+	
+	# Añadir mensaje local
+	add_chat_message(sender_name, text, Color(0.7, 0.9, 1, 1))
+	
+	# En multiplayer, enviar por RPC (esto se implementará en network_manager)
+	if battle_scene and battle_scene.has_method("send_chat_message"):
+		battle_scene.send_chat_message(text)
 
 func set_help_text(text: String):
 	if help_label:

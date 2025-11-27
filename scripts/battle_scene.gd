@@ -1335,7 +1335,15 @@ func _input(event):
 		print("[INPUT] hex_grid or camera is null, ignoring input")
 		return
 	
-	# SIEMPRE permitir gestos de cámara (zoom, pan)
+	# PRIMERO: Ignorar TODOS los eventos si están sobre el panel de log de la UI
+	# Esto incluye gestos de cámara (pan/zoom)
+	if ui and ui.has_method("is_mouse_over_log_panel"):
+		if ui.is_mouse_over_log_panel():
+			# Bloquear cualquier evento táctil o de mouse sobre el log
+			if event is InputEventMouseButton or event is InputEventScreenTouch or event is InputEventScreenDrag or event is InputEventMouseMotion:
+				return
+	
+	# Gestos de cámara (zoom, pan) - solo si NO estamos sobre el log
 	if _handle_camera_input(event):
 		long_press_active = false
 		return
@@ -1470,6 +1478,11 @@ func _is_click_over_ui(screen_pos: Vector2) -> bool:
 	# Solo verificar controles dentro de CanvasLayers (UI real, no el mapa)
 	if not ui:
 		return false
+	
+	# Verificar primero si está sobre el panel de log (tiene prioridad)
+	if ui.has_method("is_mouse_over_log_panel") and ui.is_mouse_over_log_panel():
+		print("[INPUT] Click blocked - over log panel")
+		return true
 	
 	# Buscar botones visibles en la UI que realmente estén en pantalla
 	var buttons = _get_visible_buttons(ui)
