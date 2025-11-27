@@ -1838,6 +1838,146 @@ func show_mech_inspector(mech):
 	close_button.pressed.connect(_on_close_inspector_pressed)
 	button_container.add_child(close_button)
 
+func show_mech_paper_doll_dialog(mech):
+	"""Open the full paper-doll scene in a centered WindowDialog (modal).
+	This does not change the currently selected unit in the battle scene.
+	"""
+	print("[UI] show_mech_paper_doll_dialog called for mech=", mech)
+	if not mech:
+		print("[UI] show_mech_paper_doll_dialog called with null mech")
+		return
+	# Ensure the paper_doll scene exists
+	if not ResourceLoader.exists("res://scenes/mech_paper_doll.tscn"):
+		print("[UI] Paper doll scene not found")
+		return
+
+	var paper_scene = load("res://scenes/mech_paper_doll.tscn")
+	if not paper_scene:
+		print("[UI] Failed to load mech_paper_doll.tscn")
+		return
+
+	# Create a simple custom modal overlay so we control layout and sizing across
+	# all targets (mobile/desktop). We'll build a ColorRect full-screen overlay
+	# plus a centered Panel that contains the paper doll and a close button.
+	var overlay = ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.6)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	overlay.anchor_left = 0
+	overlay.anchor_top = 0
+	overlay.anchor_right = 1
+	overlay.anchor_bottom = 1
+
+	var panel = Panel.new()
+	panel.name = "PaperDollModal"
+	panel.add_theme_font_size_override("font_size", 16)
+
+	# Use a CenterContainer inside the overlay to avoid setting position/size manually
+	var center = CenterContainer.new()
+	center.anchor_left = 0
+	center.anchor_top = 0
+	center.anchor_right = 1
+	center.anchor_bottom = 1
+
+	var viewport_size = get_viewport().get_visible_rect().size
+	# Make the dialog noticeably smaller and well centered for both mobile and desktop.
+	# Use a smaller fraction of the viewport so it doesn't dominate the screen.
+	# Prefer a dialog only slightly larger than the internal MechPaperDoll
+	# Use the paper doll's base size (or a sensible fallback) and add padding
+	# Instantiate paper doll early so we can read its minimum size and layout
+	var paper = paper_scene.instantiate()
+	var paper_min_size = Vector2(120, 170)
+	if paper and paper.has_method("get_minimum_size"):
+		# prefer an explicit custom_minimum_size if it exists on the control
+		if paper.custom_minimum_size and paper.custom_minimum_size != Vector2.ZERO:
+			paper_min_size = paper.custom_minimum_size
+		else:
+			paper_min_size = paper.get_minimum_size()
+
+	# Add small padding so the dialog frames the paper doll + header comfortably
+	var target_width = paper_min_size.x + 48
+	var target_height = paper_min_size.y + 72  # header + compact padding
+
+	# Clamp so very small/very large screens still look acceptable
+	var panel_width = clamp(target_width, 220, min(viewport_size.x - 40, 600))
+	var panel_height = clamp(target_height, 180, min(viewport_size.y - 40, 420))
+	var panel_size = Vector2(panel_width, panel_height)
+	panel.custom_minimum_size = panel_size
+
+	# Instantiate paper doll and add (add it to panel before calling update_from_mech so onready refs initialize)
+	# Expand the paper doll to fit the dialog - we'll set position/size later
+	# Add panel sizing is computed above in panel_pos/panel_size
+
+	# Ensure paper fills the content area properly - compute inside the panel
+
+	# Header + close — sized to match the smaller dialog
+	var header = HBoxContainer.new()
+	header.custom_minimum_size = Vector2(panel_size.x, 30)
+	var title = Label.new()
+	title.text = mech.mech_name if "mech_name" in mech else "Mech"
+	title.add_theme_font_size_override("font_size", 18)
+	header.add_child(title)
+	var spacer = Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(spacer)
+	var close_btn = Button.new()
+	close_btn.text = "✕"
+	# Small close button with BattleTech theme applied
+	close_btn.custom_minimum_size = Vector2(28, 28)
+	close_btn.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	close_btn.theme = battletech_theme
+	close_btn.pressed.connect(Callable(overlay, "queue_free"))
+	close_btn.pressed.connect(Callable(panel, "queue_free"))
+	header.add_child(close_btn)
+
+	panel.add_child(header)
+
+	# Place paper inside the panel: leave a small border and space for header
+	# Leave a small border and space for header — scaled down for smaller dialog
+	# Center horizontally the inner content in the panel when paper is narrower
+	var inner_size = Vector2(max(panel_size.x - 16, paper_min_size.x), max(panel_size.y - header.custom_minimum_size.y - 12, paper_min_size.y))
+	var inner_pos_x = max(8, (panel_size.x - inner_size.x) / 2)
+	var inner_pos = Vector2(inner_pos_x, header.custom_minimum_size.y + 6)
+	# Control in Godot 4 uses `position`/`size` instead of `rect_position`/`rect_size`.
+	paper.position = inner_pos
+	paper.size = inner_size
+	panel.add_child(paper)
+
+	# Apply BattleTech visual style to the modal panel so it fits the rest of the UI
+	var paper_style = StyleBoxFlat.new()
+	paper_style.bg_color = Color(0.06, 0.09, 0.13, 0.95)
+	paper_style.border_width_left = 3
+	paper_style.border_width_top = 2
+	paper_style.border_width_right = 3
+	paper_style.border_width_bottom = 3
+	paper_style.border_color = Color(0.2, 0.55, 0.85, 0.95)
+	paper_style.corner_radius_top_left = 10
+	paper_style.corner_radius_top_right = 10
+	paper_style.corner_radius_bottom_right = 10
+	paper_style.corner_radius_bottom_left = 10
+	paper_style.shadow_color = Color(0.15, 0.35, 0.55, 0.5)
+	paper_style.shadow_size = 8
+	paper_style.shadow_offset = Vector2(0, 3)
+	paper.add_theme_stylebox_override("panel", paper_style)
+	panel.add_theme_stylebox_override("panel", paper_style)
+	# Use the project's Battletech theme so controls (fonts, buttons) match the rest of the UI
+	panel.theme = battletech_theme
+
+	# Style the title to match the BattleTech look
+	title.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	title.add_theme_color_override("font_color", Color(0.8, 0.95, 1.0, 1))
+	title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.18, 1))
+	title.add_theme_constant_override("outline_size", 2)
+
+	# Now it's safe to update the paper doll with the mech data (onready nodes now exist)
+	if paper and paper.has_method("update_from_mech"):
+		paper.update_from_mech(mech)
+
+	# Add overlay and center->panel so panel is centered and sized by the center container
+	add_child(overlay)
+	overlay.add_child(center)
+	center.add_child(panel)
+	print("[UI] paper doll modal shown for", mech.mech_name)
+
 func hide_mech_inspector():
 	if mech_inspector_panel:
 		mech_inspector_panel.queue_free()
@@ -1877,6 +2017,11 @@ func hide_confirmation_dialog():
 func _on_confirmation_confirm():
 	"""Botón de confirmación presionado"""
 	print("[UI] Confirmation CONFIRM pressed")
+	# Establecer cooldown en battle_scene para evitar que el clic se propague al hex
+	if battle_scene:
+		battle_scene.ui_interaction_cooldown = 0.3
+		battle_scene.ignore_next_click = true
+	get_viewport().set_input_as_handled()
 	var callback = on_confirm_callback  # Guardar antes de limpiar
 	hide_confirmation_dialog()
 	if callback and callback.is_valid():
@@ -1888,6 +2033,11 @@ func _on_confirmation_confirm():
 func _on_confirmation_cancel():
 	"""Botón de cancelación presionado"""
 	print("[UI] Confirmation CANCEL pressed")
+	# Establecer cooldown en battle_scene para evitar que el clic se propague al hex
+	if battle_scene:
+		battle_scene.ui_interaction_cooldown = 0.3
+		battle_scene.ignore_next_click = true
+	get_viewport().set_input_as_handled()
 	var callback = on_cancel_callback  # Guardar antes de limpiar
 	hide_confirmation_dialog()
 	if callback and callback.is_valid():
@@ -1918,3 +2068,53 @@ func show_main_ui():
 		cancel_movement_button.visible = cancel_movement_button.has_meta("should_be_visible") and cancel_movement_button.get_meta("should_be_visible")
 	if log_panel:
 		log_panel.visible = true
+
+## Funciones adicionales para compatibilidad multiplayer
+
+func update_phase_display(phase) -> void:
+	"""Actualiza el display de fase - alias para update_phase_info"""
+	var phase_name = ""
+	if typeof(phase) == TYPE_INT:
+		# Es un enum, convertir a string
+		match phase:
+			GameEnums.TurnPhase.DEPLOYMENT:
+				phase_name = "Deployment"
+			GameEnums.TurnPhase.INITIATIVE:
+				phase_name = "Initiative"
+			GameEnums.TurnPhase.MOVEMENT:
+				phase_name = "Movement"
+			GameEnums.TurnPhase.WEAPON_ATTACK:
+				phase_name = "Weapon Attack"
+			GameEnums.TurnPhase.PHYSICAL_ATTACK:
+				phase_name = "Physical Attack"
+			GameEnums.TurnPhase.HEAT:
+				phase_name = "Heat"
+			GameEnums.TurnPhase.END:
+				phase_name = "End"
+			_:
+				phase_name = str(phase)
+	else:
+		phase_name = str(phase)
+	update_phase_info(phase_name)
+
+func show_message(message: String, color: Color = Color.WHITE) -> void:
+	"""Muestra un mensaje en el combat log"""
+	add_combat_message(message, color)
+
+func show_battle_end(won: bool, reason: String) -> void:
+	"""Muestra el mensaje de fin de batalla para multiplayer"""
+	# Usar el sistema de game over existente
+	if won:
+		show_game_over("YOU", "OPPONENT", reason)
+	else:
+		show_game_over("OPPONENT", "YOU", reason)
+
+func enable_controls(enabled: bool) -> void:
+	"""Habilita o deshabilita los controles del jugador"""
+	if end_turn_button:
+		end_turn_button.disabled = not enabled
+	# En multiplayer, mostrar indicador visual de turno
+	if not enabled:
+		set_help_text("Waiting for opponent...")
+	else:
+		set_help_text("Your turn!")
