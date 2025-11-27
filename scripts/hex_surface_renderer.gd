@@ -39,8 +39,39 @@ var global_bounds_valid: bool = false
 var pending_overlays: Array = []
 var pending_overlays_hex_grid = null
 
-@export var show_elevation_labels: bool = true
+@export var show_elevation_labels: bool = true:
+	set(v):
+		show_elevation_labels = v
+		_refresh_labels()
+@export var show_coordinates: bool = false:
+	set(v):
+		show_coordinates = v
+		_refresh_labels()
+@export var show_terrain_type: bool = false:
+	set(v):
+		show_terrain_type = v
+		_refresh_labels()
+@export var show_movement_cost: bool = false:
+	set(v):
+		show_movement_cost = v
+		_refresh_labels()
 @export var debug_depth_test: bool = false # When true, draw two overlapping test polygons to validate occlusion
+
+# Referencia al hex_grid para obtener info de terreno
+var hex_grid_ref = null
+
+# Cache para regenerar labels cuando cambian settings
+var _cached_surf_entries: Array = []
+var _cached_base_elevation: int = 0
+
+func set_hex_grid(hex_grid):
+	"""Establece la referencia al hex_grid para obtener info de terreno"""
+	hex_grid_ref = hex_grid
+
+func _refresh_labels():
+	"""Regenera los labels usando los datos cacheados"""
+	if _cached_surf_entries.size() > 0:
+		_update_hex_labels(_cached_surf_entries, _cached_base_elevation)
 
 func _ready():
 	# Load shaders once
@@ -640,69 +671,174 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		overlay_border_pool[i].visible = false
 	
 	# NUEVA LÓGICA DE LABELS: Crear labels SOLO para tiles "top" después de procesar todo
-	if show_elevation_labels:
-		# Limpiar todas las labels anteriores
+	# Cachear para poder regenerar cuando cambian los settings de overlay
+	_cached_surf_entries = surf_entries
+	_cached_base_elevation = base_elevation
+	_update_hex_labels(surf_entries, base_elevation)
+
+	# Debug: print small stats so we can tune
+	if Engine.is_editor_hint() or debug_show_depth:
+		print_debug("HexSurfaceRenderer: candidates=%d visible=%d processed=%d" % [debug_total_candidates, visible_surfaces.size(), stats_processed])
+
+func _update_hex_labels(surf_entries: Array, base_elevation: int):
+	"""Actualiza todos los labels de hex según las opciones de overlay activas"""
+	# Si no hay nada que mostrar, limpiar y salir
+	if not show_elevation_labels and not show_coordinates and not show_terrain_type and not show_movement_cost:
 		for child in label_root.get_children():
 			child.queue_free()
+		return
+	
+	# Limpiar todas las labels anteriores
+	for child in label_root.get_children():
+		child.queue_free()
+	
+	# Procesar hex coords ya procesados para evitar duplicados
+	var processed_hexes: Dictionary = {}
+	
+	# Recorrer todas las entradas de surf_entries
+	for s_entry in surf_entries:
+		# Skip overlays - they don't have labels
+		if s_entry.get("is_overlay", false):
+			continue
 		
-		# Crear nuevas labels para TODAS las superficies "top" (no limitadas por max_polygons_per_frame)
-		# Recorrer todas las entradas de surf_entries
-		for s_entry in surf_entries:
-			# Skip overlays - they don't have labels
-			if s_entry.get("is_overlay", false):
-				continue
-			
-			var s = s_entry.get("surf", null)
-			if s == null:
-				continue
-			
-			# Solo procesar superficies tipo "top"
-			if not (s.has("type") and s["type"] == "top"):
-				continue
-			
-			var poly_points: PackedVector2Array = s_entry["poly_points"]
-			
-			# Calcular centro del polígono
-			var center = Vector2.ZERO
-			for p in poly_points:
-				center += p
-			center /= poly_points.size()
-			
-			# Obtener elevación
+		var s = s_entry.get("surf", null)
+		if s == null:
+			continue
+		
+		# Solo procesar superficies tipo "top"
+		if not (s.has("type") and s["type"] == "top"):
+			continue
+		
+		# Obtener coordenadas del hex (puede ser Vector2i en "hex" o q/r separados)
+		var hex_q = 0
+		var hex_r = 0
+		if s.has("hex"):
+			var hex_pos = s["hex"]
+			hex_q = hex_pos.x
+			hex_r = hex_pos.y
+		else:
+			hex_q = s.get("q", 0)
+			hex_r = s.get("r", 0)
+		var hex_key = "%d,%d" % [hex_q, hex_r]
+		
+		# Evitar duplicados
+		if processed_hexes.has(hex_key):
+			continue
+		processed_hexes[hex_key] = true
+		
+		var poly_points: PackedVector2Array = s_entry["poly_points"]
+		
+		# Calcular centro del polígono
+		var center = Vector2.ZERO
+		for p in poly_points:
+			center += p
+		center /= poly_points.size()
+		
+		# Construir el texto del label
+		var label_text = ""
+		var label_color = Color.WHITE
+		var line_count = 0
+		
+		# Elevación
+		if show_elevation_labels:
 			var elev = base_elevation
 			if s.has("elevation"):
 				elev = float(s["elevation"])
 			var elev_offset = int(elev) - base_elevation
 			
-			# Crear label
-			var lbl = Label.new()
-			lbl.add_theme_font_size_override("font_size", 16)
-			lbl.add_theme_constant_override("outline_size", 4)
-			lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
-			lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-			lbl.size = Vector2(40, 30)
-			lbl.position = center - Vector2(20, 15)
-			lbl.z_index = 0  # El z_index del label_root ya es suficiente
-			
-			# Formatear texto
-			var elev_str = ""
 			if elev_offset > 0:
-				elev_str = "+%d" % elev_offset
-				lbl.add_theme_color_override("font_color", Color.YELLOW)
+				label_text += "+%d" % elev_offset
+				label_color = Color.YELLOW
 			elif elev_offset < 0:
-				elev_str = "%d" % elev_offset
-				lbl.add_theme_color_override("font_color", Color.CYAN)
+				label_text += "%d" % elev_offset
+				label_color = Color.CYAN
 			else:
-				elev_str = "0"
-				lbl.add_theme_color_override("font_color", Color.WHITE)
-			
-			lbl.text = elev_str
-			label_root.add_child(lbl)
+				label_text += "0"
+			line_count += 1
+		
+		# Coordenadas Q,R
+		if show_coordinates:
+			if label_text != "":
+				label_text += "\n"
+			label_text += "%d,%d" % [hex_q, hex_r]
+			if not show_elevation_labels:
+				label_color = Color(0.6, 0.8, 1.0)  # Azul claro
+			line_count += 1
+		
+		# Tipo de terreno
+		if show_terrain_type and hex_grid_ref:
+			var terrain = _get_terrain_type(hex_q, hex_r)
+			if terrain != "":
+				if label_text != "":
+					label_text += "\n"
+				label_text += terrain
+				line_count += 1
+		
+		# Coste de movimiento
+		if show_movement_cost and hex_grid_ref:
+			var cost = _get_movement_cost(hex_q, hex_r)
+			if cost >= 0:
+				if label_text != "":
+					label_text += "\n"
+				label_text += "MP:%d" % cost
+				line_count += 1
+		
+		if label_text == "":
+			continue
+		
+		# Crear label
+		var lbl = Label.new()
+		lbl.add_theme_font_size_override("font_size", 14 if line_count > 1 else 16)
+		lbl.add_theme_constant_override("outline_size", 4)
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+		lbl.add_theme_color_override("font_color", label_color)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		
+		# Ajustar tamaño según número de líneas
+		var lbl_height = 20 * line_count + 10
+		var lbl_width = 50 if line_count > 1 else 40
+		lbl.size = Vector2(lbl_width, lbl_height)
+		lbl.position = center - Vector2(lbl_width / 2, lbl_height / 2)
+		lbl.z_index = 0
+		
+		lbl.text = label_text
+		label_root.add_child(lbl)
 
-	# Debug: print small stats so we can tune
-	if Engine.is_editor_hint() or debug_show_depth:
-		print_debug("HexSurfaceRenderer: candidates=%d visible=%d processed=%d" % [debug_total_candidates, visible_surfaces.size(), stats_processed])
+func _get_terrain_type(q: int, r: int) -> String:
+	"""Obtiene el tipo de terreno de un hex"""
+	if not hex_grid_ref:
+		return ""
+	if hex_grid_ref.has_method("get_terrain"):
+		var terrain = hex_grid_ref.get_terrain(Vector2i(q, r))
+		# terrain es un enum TerrainType.Type, convertir a string
+		return _terrain_type_to_abbrev(terrain)
+	return ""
+
+func _terrain_type_to_abbrev(terrain_type) -> String:
+	"""Convierte un tipo de terreno a abreviatura"""
+	match terrain_type:
+		0: return "CLR"   # CLEAR
+		1: return "RGH"   # ROUGH
+		2: return "WTR"   # WATER
+		3: return "FRST"  # FOREST
+		4: return "HVFR"  # HEAVY_FOREST
+		5: return "ROAD"  # ROAD
+		6: return "BLDG"  # BUILDING
+		7: return "RUB"   # RUBBLE
+		8: return "SAND"  # SAND
+		9: return "SWMP"  # SWAMP
+		10: return "ICE"  # ICE
+		11: return "SNOW" # SNOW
+		_: return "?"
+
+func _get_movement_cost(q: int, r: int) -> int:
+	"""Obtiene el coste de movimiento de un hex"""
+	if not hex_grid_ref:
+		return -1
+	if hex_grid_ref.has_method("get_terrain_cost"):
+		return hex_grid_ref.get_terrain_cost(Vector2i(q, r))
+	return 1
 
 func set_depth_viewport_scale(vp_scale: float):
 	depth_viewport_scale = clamp(vp_scale, 0.1, 2.0)

@@ -65,6 +65,8 @@ func _ready():
 		_surface_renderer.set_depth_viewport_scale(0.75)
 		# Enable elevation labels by default
 		_surface_renderer.show_elevation_labels = true
+		# Pasar referencia a este hex_grid para que pueda obtener info de terreno
+		_surface_renderer.set_hex_grid(self)
 
 func _preload_terrain_icons():
 	# Precargar todos los iconos SVG

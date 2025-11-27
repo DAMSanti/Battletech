@@ -32,6 +32,29 @@ var chat_history: Array = []  # Mensajes de chat multiplayer [{text: String, sen
 var chat_input_container: HBoxContainer = null  # Contenedor para entrada de chat
 var chat_input: LineEdit = null  # Campo de entrada de chat
 
+# Panel superior mejorado - Heat y MP visual
+var heat_bar: ProgressBar = null
+var heat_label: Label = null
+var mp_container: VBoxContainer = null
+var mp_dots: Array = []  # Array de TextureRect para los puntos de MP
+var mp_dot_filled_texture: Texture2D = null
+var mp_dot_empty_texture: Texture2D = null
+var mech_name_label: Label = null
+
+# Botón Eye y menú de overlays
+var eye_button: Button = null
+var eye_menu_panel: Panel = null
+var overlay_elevation_toggle: Button = null
+var overlay_coords_toggle: Button = null
+var overlay_terrain_toggle: Button = null
+var overlay_movement_toggle: Button = null
+var overlay_settings: Dictionary = {
+	"elevation": true,  # Por defecto activado
+	"coords": false,
+	"terrain": false,
+	"movement": false
+}
+
 # Selector de tipo de movimiento
 var movement_selector_panel: Panel
 var movement_selector_title: Label
@@ -99,121 +122,282 @@ func _setup_ui():
 	var screen_width = viewport_size.x
 	var screen_height = viewport_size.y
 	
-	
 	# Escalar todo basado en el ancho de pantalla
 	scale_factor = screen_width / 720.0  # Resolución base 720px de ancho
 	margin = 10 * scale_factor
 	
-	# Panel de información superior (20% del ancho de pantalla) - EXPANDIDO para paper doll
-	info_panel = Panel.new()
-	info_panel.position = Vector2(margin, margin)
-	info_panel.size = Vector2(screen_width * 0.95, screen_height * 0.15)  # Reducido a 0.15
+	# Cargar texturas de MP dots
+	if ResourceLoader.exists("res://assets/ui/mp_dot_filled.svg"):
+		mp_dot_filled_texture = load("res://assets/ui/mp_dot_filled.svg")
+	if ResourceLoader.exists("res://assets/ui/mp_dot_empty.svg"):
+		mp_dot_empty_texture = load("res://assets/ui/mp_dot_empty.svg")
 	
-	# Aplicar estilo BattleTech al panel superior
+	# ============================================
+	# SECCIÓN IZQUIERDA (SIN BOX): T1 + MOVEMENT + END
+	# ============================================
+	
+	# Turn label (arriba izquierda, sin panel)
+	turn_label = Label.new()
+	turn_label.text = "T1"
+	turn_label.position = Vector2(margin + 8 * scale_factor, margin + 4 * scale_factor)
+	turn_label.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	turn_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))
+	turn_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	turn_label.add_theme_constant_override("outline_size", 3)
+	add_child(turn_label)
+	
+	# Phase label (debajo de T1)
+	phase_label = Label.new()
+	phase_label.text = "MOVEMENT"
+	phase_label.position = Vector2(margin + 8 * scale_factor, margin + 30 * scale_factor)
+	phase_label.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	phase_label.add_theme_color_override("font_color", Color.CYAN)
+	phase_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	phase_label.add_theme_constant_override("outline_size", 2)
+	add_child(phase_label)
+	
+	# Botón End (debajo de phase)
+	end_turn_button = Button.new()
+	end_turn_button.text = "END ▶"
+	var end_btn_width = 80 * scale_factor
+	var end_btn_height = 28 * scale_factor
+	end_turn_button.position = Vector2(margin + 8 * scale_factor, margin + 52 * scale_factor)
+	end_turn_button.size = Vector2(end_btn_width, end_btn_height)
+	end_turn_button.add_theme_font_size_override("font_size", int(13 * scale_factor))
+	var end_btn_style = StyleBoxFlat.new()
+	end_btn_style.bg_color = Color(0.15, 0.35, 0.2, 0.9)
+	end_btn_style.border_color = Color(0.3, 0.7, 0.4, 1)
+	end_btn_style.border_width_left = 2
+	end_btn_style.border_width_right = 2
+	end_btn_style.border_width_top = 1
+	end_btn_style.border_width_bottom = 2
+	end_btn_style.corner_radius_top_left = 4
+	end_btn_style.corner_radius_top_right = 4
+	end_btn_style.corner_radius_bottom_left = 4
+	end_btn_style.corner_radius_bottom_right = 4
+	end_turn_button.add_theme_stylebox_override("normal", end_btn_style)
+	var end_btn_hover = end_btn_style.duplicate()
+	end_btn_hover.bg_color = Color(0.2, 0.45, 0.25, 1)
+	end_turn_button.add_theme_stylebox_override("hover", end_btn_hover)
+	end_turn_button.add_theme_stylebox_override("pressed", end_btn_hover)
+	end_turn_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	end_turn_button.add_theme_color_override("font_color", Color(0.8, 1, 0.8, 1))
+	end_turn_button.pressed.connect(_on_end_turn_pressed)
+	add_child(end_turn_button)
+	
+	# ============================================
+	# BOX DERECHA: Robot + MPs + Heat + Nombre + Eye
+	# ============================================
+	
+	# Calcular dimensiones de la box (más grande)
+	var box_height = screen_height * 0.18  # Más alto
+	var panel_padding = 10 * scale_factor
+	var content_height = box_height - panel_padding * 2
+	
+	# Dimensiones del robot (el elemento principal)
+	var heat_height = 16 * scale_factor
+	var doll_height = content_height - heat_height - 4 * scale_factor
+	var doll_width = doll_height * 0.55
+	
+	# Dimensiones de MPs y Eye button
+	var mp_column_width = 18 * scale_factor
+	var eye_btn_size = 32 * scale_factor
+	
+	# Ancho total de la box: MPs + robot + espacios (eye button va arriba)
+	var box_width = mp_column_width + 8 * scale_factor + doll_width + 8 * scale_factor + panel_padding * 2 + 20 * scale_factor
+	
+	# Crear el panel (box) arriba a la derecha
+	info_panel = Panel.new()
+	info_panel.position = Vector2(screen_width - margin - box_width, margin)
+	info_panel.size = Vector2(box_width, box_height)
+	
+	# Estilo BattleTech azul
 	var info_style = StyleBoxFlat.new()
-	info_style.bg_color = Color(0.08, 0.12, 0.18, 0.3)
-	info_style.border_width_left = 3
-	info_style.border_width_top = 1
-	info_style.border_width_right = 3
-	info_style.border_width_bottom = 3
+	info_style.bg_color = Color(0.08, 0.12, 0.18, 0.9)
+	info_style.border_width_left = 2
+	info_style.border_width_top = 2
+	info_style.border_width_right = 2
+	info_style.border_width_bottom = 2
 	info_style.border_color = Color(0.2, 0.5, 0.7, 0.9)
 	info_style.corner_radius_top_left = 8
 	info_style.corner_radius_top_right = 8
 	info_style.corner_radius_bottom_right = 8
 	info_style.corner_radius_bottom_left = 8
-	info_style.border_blend = true
 	info_style.anti_aliasing = true
-	info_style.shadow_color = Color(0.2, 0.5, 0.7, 0.4)
-	info_style.shadow_size = 4
+	info_style.shadow_color = Color(0.2, 0.5, 0.7, 0.3)
+	info_style.shadow_size = 3
 	info_style.shadow_offset = Vector2(0, 2)
-	info_style.skew = Vector2(0.05, 0)
 	info_panel.add_theme_stylebox_override("panel", info_style)
 	add_child(info_panel)
 	
-	# Layout horizontal: info a la izquierda, paper doll a la derecha
-	var hbox = HBoxContainer.new()
-	hbox.position = Vector2(margin, margin)
-	hbox.size = Vector2(info_panel.size.x - margin * 2, info_panel.size.y - margin * 2)
-	hbox.add_theme_constant_override("separation", int(10 * scale_factor))
-	info_panel.add_child(hbox)
+	# Posiciones dentro de la box
+	var mp_x = panel_padding
+	var doll_x = mp_x + mp_column_width + 8 * scale_factor
+	var doll_center_x = doll_x + doll_width / 2
 	
-	# Columna izquierda: información textual (70% del ancho)
-	var vbox = VBoxContainer.new()
-	vbox.custom_minimum_size = Vector2(hbox.size.x * 0.7, hbox.size.y)
-	hbox.add_child(vbox)
+	# 1. EYE BUTTON (arriba a la derecha de la box)
+	eye_button = Button.new()
+	eye_button.text = "👁"
+	eye_button.position = Vector2(box_width - panel_padding - eye_btn_size, panel_padding)
+	eye_button.size = Vector2(eye_btn_size, eye_btn_size)
+	eye_button.add_theme_font_size_override("font_size", int(16 * scale_factor))
+	eye_button.mouse_filter = Control.MOUSE_FILTER_STOP
 	
-	turn_label = Label.new()
-	turn_label.text = "Turn: 1"
-	turn_label.add_theme_font_size_override("font_size", int(24 * scale_factor))
-	turn_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Color BattleTech
-	turn_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
-	turn_label.add_theme_constant_override("outline_size", 2)
-	vbox.add_child(turn_label)
+	var eye_style = StyleBoxFlat.new()
+	eye_style.bg_color = Color(0.1, 0.15, 0.22, 0.9)
+	eye_style.border_color = Color(0.3, 0.6, 0.9, 0.9)
+	eye_style.set_border_width_all(2)
+	eye_style.set_corner_radius_all(6)
+	eye_button.add_theme_stylebox_override("normal", eye_style)
+	var eye_hover = eye_style.duplicate()
+	eye_hover.bg_color = Color(0.15, 0.22, 0.32, 0.95)
+	eye_button.add_theme_stylebox_override("hover", eye_hover)
+	eye_button.add_theme_stylebox_override("pressed", eye_hover)
+	eye_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	eye_button.pressed.connect(_on_eye_button_pressed)
+	info_panel.add_child(eye_button)
 	
-	phase_label = Label.new()
-	phase_label.text = "Phase: Movement"
-	phase_label.add_theme_font_size_override("font_size", int(20 * scale_factor))
-	phase_label.add_theme_color_override("font_color", Color.CYAN)
-	phase_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
-	phase_label.add_theme_constant_override("outline_size", 2)
-	vbox.add_child(phase_label)
-	
-	unit_info_label = Label.new()
-	unit_info_label.text = "No unit selected"
-	unit_info_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
-	unit_info_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))  # Color BattleTech
-	unit_info_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
-	unit_info_label.add_theme_constant_override("outline_size", 1)
-	vbox.add_child(unit_info_label)
-	
-	# Label de ayuda
-	help_label = Label.new()
-	help_label.text = ""
-	help_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
-	help_label.add_theme_color_override("font_color", Color.YELLOW)
-	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD
-	help_label.custom_minimum_size = Vector2(vbox.size.x, 40 * scale_factor)
-	vbox.add_child(help_label)
-	
-	# Columna derecha: Paper doll del mech (30% del ancho)
+	# 2. PAPER DOLL DEL MECH (empieza desde arriba)
+	var doll_y = panel_padding
 	if ResourceLoader.exists("res://scenes/mech_paper_doll.tscn"):
 		var paper_doll_scene = load("res://scenes/mech_paper_doll.tscn")
 		if paper_doll_scene:
 			mech_paper_doll = paper_doll_scene.instantiate()
-			mech_paper_doll.custom_minimum_size = Vector2(hbox.size.x * 0.25, hbox.size.y)
-			mech_paper_doll.size_flags_horizontal = Control.SIZE_SHRINK_END
-			mech_paper_doll.visible = false  # Oculto por defecto hasta que haya un mech seleccionado
-			hbox.add_child(mech_paper_doll)
-			print("[UI] Mech paper doll loaded successfully")
-		else:
-			print("[UI] Failed to load mech_paper_doll scene")
-	else:
-		print("[UI] mech_paper_doll.tscn not found")
+			mech_paper_doll.position = Vector2(doll_x, doll_y)
+			mech_paper_doll.size = Vector2(doll_width, doll_height)
+			mech_paper_doll.visible = false
+			info_panel.add_child(mech_paper_doll)
 	
-	# Botón de fin de turno
-	end_turn_button = Button.new()
-	end_turn_button.text = "End Activation"
-	end_turn_button.position = Vector2(margin, info_panel.position.y + info_panel.size.y + margin)
-	end_turn_button.size = Vector2(screen_width * 0.95, 70 * scale_factor)
-	end_turn_button.theme = battletech_theme
-	end_turn_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
-	end_turn_button.pressed.connect(_on_end_turn_pressed)
-	add_child(end_turn_button)
+	# 3. NOMBRE DEL MECH (alineado con la cabeza del robot)
+	var name_y = doll_y + doll_height * 0.02  # Justo arriba de la cabeza
+	mech_name_label = Label.new()
+	mech_name_label.text = ""
+	mech_name_label.position = Vector2(doll_x - 5 * scale_factor, name_y)  # Centrado con el robot
+	mech_name_label.size = Vector2(doll_width + 30 * scale_factor, 16 * scale_factor)
+	mech_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mech_name_label.add_theme_font_size_override("font_size", int(11 * scale_factor))
+	mech_name_label.add_theme_color_override("font_color", Color(1, 0.9, 0.6, 1))
+	mech_name_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
+	mech_name_label.add_theme_constant_override("outline_size", 1)
+	info_panel.add_child(mech_name_label)
 	
-	# Botón de cancelar movimiento (oculto por defecto, se muestra cuando hay movimiento activo)
+	# 4. MP DOTS (columna vertical a la izquierda del robot)
+	var mp_dot_size = 18 * scale_factor  # Dots más grandes (3x)
+	
+	mp_container = VBoxContainer.new()
+	mp_container.position = Vector2(mp_x, doll_y)
+	mp_container.size = Vector2(mp_column_width, doll_height)
+	mp_container.add_theme_constant_override("separation", 0)
+	mp_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	info_panel.add_child(mp_container)
+	
+	for i in range(12):
+		var dot = TextureRect.new()
+		dot.custom_minimum_size = Vector2(mp_dot_size, mp_dot_size)
+		dot.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		dot.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		dot.texture = mp_dot_empty_texture
+		dot.visible = false
+		mp_container.add_child(dot)
+		mp_dots.append(dot)
+	
+	# 5. HEAT SECTION (debajo del robot, centrado y alineado)
+	var heat_y = doll_y + doll_height - 30 * scale_factor  # Justo bajo los pies del robot
+	var heat_row_height = 12 * scale_factor
+	var heat_total_width = doll_width + 30 * scale_factor
+	var heat_start_x = doll_center_x - heat_total_width / 2
+	
+	var heat_icon = Label.new()
+	heat_icon.text = "🔥"
+	heat_icon.position = Vector2(heat_start_x, heat_y + 5)
+	heat_icon.add_theme_font_size_override("font_size", int(10 * scale_factor))
+	heat_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	info_panel.add_child(heat_icon)
+	
+	heat_bar = ProgressBar.new()
+	heat_bar.position = Vector2(heat_start_x + 16 * scale_factor, heat_y + 1 * scale_factor)
+	heat_bar.size = Vector2(heat_total_width - 48 * scale_factor, heat_row_height)
+	heat_bar.min_value = 0
+	heat_bar.max_value = 30
+	heat_bar.value = 0
+	heat_bar.show_percentage = false
+	var heat_bg_style = StyleBoxFlat.new()
+	heat_bg_style.bg_color = Color(0.1, 0.1, 0.1, 0.8)
+	heat_bg_style.border_color = Color(0.3, 0.3, 0.3, 1)
+	heat_bg_style.set_border_width_all(1)
+	heat_bg_style.set_corner_radius_all(2)
+	heat_bar.add_theme_stylebox_override("background", heat_bg_style)
+	var heat_fill_style = StyleBoxFlat.new()
+	heat_fill_style.bg_color = Color(0.2, 0.7, 0.3, 1)
+	heat_fill_style.set_corner_radius_all(1)
+	heat_bar.add_theme_stylebox_override("fill", heat_fill_style)
+	info_panel.add_child(heat_bar)
+	
+	heat_label = Label.new()
+	heat_label.text = "0"
+	heat_label.position = Vector2(heat_start_x + heat_total_width - 24 * scale_factor, heat_y + 5)
+	heat_label.add_theme_font_size_override("font_size", int(10 * scale_factor))
+	heat_label.add_theme_color_override("font_color", Color(0.8, 0.9, 0.8, 1))
+	heat_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	info_panel.add_child(heat_label)
+	
+	# ============================================
+	# Help label y Cancel button (debajo de END, sin box)
+	# ============================================
+	help_label = Label.new()
+	help_label.text = ""
+	help_label.position = Vector2(margin + 8 * scale_factor, margin + 85 * scale_factor)
+	help_label.add_theme_font_size_override("font_size", int(11 * scale_factor))
+	help_label.add_theme_color_override("font_color", Color.YELLOW)
+	help_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	help_label.add_theme_constant_override("outline_size", 2)
+	help_label.autowrap_mode = TextServer.AUTOWRAP_WORD
+	help_label.size = Vector2(200 * scale_factor, 40 * scale_factor)
+	add_child(help_label)
+	
+	# Botón de cancelar movimiento
 	cancel_movement_button = Button.new()
-	cancel_movement_button.text = "← CANCEL MOVEMENT"
-	cancel_movement_button.position = Vector2(margin, end_turn_button.position.y + end_turn_button.size.y + margin * 0.5)
-	cancel_movement_button.size = Vector2(screen_width * 0.95, 55 * scale_factor)
-	cancel_movement_button.theme = battletech_theme
-	cancel_movement_button.add_theme_font_size_override("font_size", int(18 * scale_factor))
+	cancel_movement_button.text = "✗ CANCEL"
+	var cancel_btn_width = 85 * scale_factor
+	cancel_movement_button.position = Vector2(margin + 95 * scale_factor, margin + 52 * scale_factor)
+	cancel_movement_button.size = Vector2(cancel_btn_width, 28 * scale_factor)
+	cancel_movement_button.add_theme_font_size_override("font_size", int(12 * scale_factor))
 	cancel_movement_button.visible = false
+	var cancel_btn_style = StyleBoxFlat.new()
+	cancel_btn_style.bg_color = Color(0.35, 0.1, 0.1, 0.9)
+	cancel_btn_style.border_color = Color(0.8, 0.2, 0.2, 1)
+	cancel_btn_style.border_width_left = 2
+	cancel_btn_style.border_width_right = 2
+	cancel_btn_style.border_width_top = 1
+	cancel_btn_style.border_width_bottom = 2
+	cancel_btn_style.corner_radius_top_left = 4
+	cancel_btn_style.corner_radius_top_right = 4
+	cancel_btn_style.corner_radius_bottom_left = 4
+	cancel_btn_style.corner_radius_bottom_right = 4
+	cancel_movement_button.add_theme_stylebox_override("normal", cancel_btn_style)
+	var cancel_btn_hover = cancel_btn_style.duplicate()
+	cancel_btn_hover.bg_color = Color(0.5, 0.15, 0.15, 1)
+	cancel_movement_button.add_theme_stylebox_override("hover", cancel_btn_hover)
+	cancel_movement_button.add_theme_stylebox_override("pressed", cancel_btn_hover)
+	cancel_movement_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	cancel_movement_button.add_theme_color_override("font_color", Color(1, 0.7, 0.7, 1))
 	cancel_movement_button.pressed.connect(_on_cancel_movement_pressed)
-	add_child(cancel_movement_button)
+	info_panel.add_child(cancel_movement_button)
+	
+	# unit_info_label oculto (para compatibilidad)
+	unit_info_label = Label.new()
+	unit_info_label.visible = false
+	add_child(unit_info_label)
+	
+	# ============================================
+	# Crear menú de overlays del Eye (va fuera de la box)
+	# ============================================
+	_create_eye_menu()
 	
 	# ============================================
 	# COMBAT LOG MEJORADO - Colapsable con pestañas
 	# ============================================
+	# Reutilizar viewport_size del inicio de _setup_ui
 	log_expanded_height = screen_height * 0.26  # Aumentado para que quepa el textbox
 	log_collapsed_height = 40 * scale_factor  # Aumentado para que quepa el botón
 	var log_height = log_expanded_height
@@ -847,34 +1031,34 @@ func _setup_ui():
 	cancel_button.add_theme_color_override("font_hover_color", Color(1.0, 0.25, 0.25))
 	cancel_button.add_theme_color_override("font_pressed_color", Color(0.7, 0.0, 0.0))
 	
-	# Estilo del botón cancelar
-	var cancel_btn_style = StyleBoxFlat.new()
-	cancel_btn_style.bg_color = Color(0.3, 0.05, 0.05, 0.8)  # Rojo oscuro
-	cancel_btn_style.border_width_left = 2
-	cancel_btn_style.border_width_right = 2
-	cancel_btn_style.border_width_top = 2
-	cancel_btn_style.border_width_bottom = 2
-	cancel_btn_style.border_color = Color(0.95, 0.15, 0.15)
-	cancel_btn_style.corner_radius_top_left = 4
-	cancel_btn_style.corner_radius_top_right = 4
-	cancel_btn_style.corner_radius_bottom_left = 4
-	cancel_btn_style.corner_radius_bottom_right = 4
-	cancel_button.add_theme_stylebox_override("normal", cancel_btn_style)
+	# Estilo del botón cancelar confirmación
+	var confirm_cancel_style = StyleBoxFlat.new()
+	confirm_cancel_style.bg_color = Color(0.3, 0.05, 0.05, 0.8)  # Rojo oscuro
+	confirm_cancel_style.border_width_left = 2
+	confirm_cancel_style.border_width_right = 2
+	confirm_cancel_style.border_width_top = 2
+	confirm_cancel_style.border_width_bottom = 2
+	confirm_cancel_style.border_color = Color(0.95, 0.15, 0.15)
+	confirm_cancel_style.corner_radius_top_left = 4
+	confirm_cancel_style.corner_radius_top_right = 4
+	confirm_cancel_style.corner_radius_bottom_left = 4
+	confirm_cancel_style.corner_radius_bottom_right = 4
+	cancel_button.add_theme_stylebox_override("normal", confirm_cancel_style)
 	
-	var cancel_btn_hover = cancel_btn_style.duplicate()
-	cancel_btn_hover.bg_color = Color(0.4, 0.1, 0.1, 0.9)
-	cancel_button.add_theme_stylebox_override("hover", cancel_btn_hover)
+	var confirm_cancel_hover = confirm_cancel_style.duplicate()
+	confirm_cancel_hover.bg_color = Color(0.4, 0.1, 0.1, 0.9)
+	cancel_button.add_theme_stylebox_override("hover", confirm_cancel_hover)
 	
 	cancel_button.pressed.connect(_on_confirmation_cancel)
 	confirmation_panel.add_child(cancel_button)
 
 func _on_turn_changed(_team: String, turn_number: int):
 	if turn_label:
-		turn_label.text = "Turn: " + str(turn_number)
+		turn_label.text = "T%d" % turn_number
 
 func _on_phase_changed(phase_name: String):
 	if phase_label:
-		phase_label.text = "Phase: " + phase_name
+		phase_label.text = phase_name.to_upper()
 		
 		var color = Color.CYAN
 		match phase_name:
@@ -894,10 +1078,10 @@ func _on_phase_changed(phase_name: String):
 func update_turn_info(turn_number: int, team: String):
 	# Actualizar información del turno
 	if turn_label:
-		turn_label.text = "Turn: %d - %s" % [turn_number, team]
+		turn_label.text = "T%d" % turn_number
 
 func _on_unit_activated(unit):
-	if unit_info_label and unit:
+	if unit:
 		# Verificar si es una unidad del jugador
 		var is_player_unit = false
 		if battle_scene and battle_scene.has_method("is_player_mech"):
@@ -917,21 +1101,83 @@ func _on_unit_activated(unit):
 				unit_name = "Mech"
 
 			var mp = unit.current_movement if "current_movement" in unit else 0
+			var max_mp = unit.movement_points if "movement_points" in unit else (unit.walk_mp if "walk_mp" in unit else 6)
 			var heat = unit.heat if "heat" in unit else 0
-			var heat_cap = unit.heat_capacity if "heat_capacity" in unit else 0
+			var heat_cap = unit.heat_capacity if "heat_capacity" in unit else 30
 
-			var info = "%s - MP: %s | Heat: %s/%s" % [unit_name, mp, heat, heat_cap]
-			unit_info_label.text = info
+			# Actualizar nombre del mech
+			if mech_name_label:
+				mech_name_label.text = unit_name
+			
+			# Actualizar barra de heat
+			_update_heat_bar(heat, heat_cap)
+			
+			# Actualizar puntos de MP
+			_update_mp_dots(mp, max_mp)
+			
+			# Mantener unit_info_label por compatibilidad
+			if unit_info_label:
+				var info = "%s - MP: %s | Heat: %s/%s" % [unit_name, mp, heat, heat_cap]
+				unit_info_label.text = info
 			
 			# Actualizar paper doll si existe
 			if mech_paper_doll and mech_paper_doll.has_method("update_from_mech"):
 				mech_paper_doll.visible = true
 				mech_paper_doll.update_from_mech(unit)
-				print("[UI] Paper doll updated for: %s" % unit_name)
 		else:
-			# Si es un enemigo, ocultar el paper doll
+			# Si es un enemigo, ocultar/resetear
 			if mech_paper_doll:
 				mech_paper_doll.visible = false
+			if mech_name_label:
+				mech_name_label.text = "Enemy unit"
+			_update_heat_bar(0, 30)
+			_update_mp_dots(0, 0)
+
+func _update_heat_bar(current_heat: int, max_heat: int):
+	"""Actualiza la barra de heat con colores según el nivel"""
+	if not heat_bar or not heat_label:
+		return
+	
+	heat_bar.max_value = max_heat if max_heat > 0 else 30
+	heat_bar.value = current_heat
+	heat_label.text = "%d/%d" % [current_heat, max_heat]
+	
+	# Cambiar color según nivel de heat
+	var heat_ratio = float(current_heat) / float(max_heat) if max_heat > 0 else 0
+	var fill_style = heat_bar.get_theme_stylebox("fill").duplicate()
+	
+	if heat_ratio < 0.3:
+		fill_style.bg_color = Color(0.2, 0.7, 0.3, 1)  # Verde
+		heat_label.add_theme_color_override("font_color", Color(0.6, 0.9, 0.6, 1))
+	elif heat_ratio < 0.6:
+		fill_style.bg_color = Color(0.8, 0.7, 0.2, 1)  # Amarillo
+		heat_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.5, 1))
+	elif heat_ratio < 0.8:
+		fill_style.bg_color = Color(0.9, 0.5, 0.1, 1)  # Naranja
+		heat_label.add_theme_color_override("font_color", Color(1, 0.7, 0.4, 1))
+	else:
+		fill_style.bg_color = Color(0.9, 0.2, 0.1, 1)  # Rojo
+		heat_label.add_theme_color_override("font_color", Color(1, 0.5, 0.5, 1))
+	
+	heat_bar.add_theme_stylebox_override("fill", fill_style)
+
+func _update_mp_dots(current_mp: int, max_mp: int):
+	"""Actualiza los puntos de MP visuales"""
+	if mp_dots.is_empty():
+		return
+	
+	for i in range(mp_dots.size()):
+		var dot = mp_dots[i]
+		if i < max_mp:
+			dot.visible = true
+			if i < current_mp:
+				dot.texture = mp_dot_filled_texture
+				dot.modulate = Color(0.4, 0.9, 0.5, 1)  # Verde brillante
+			else:
+				dot.texture = mp_dot_empty_texture
+				dot.modulate = Color(0.5, 0.5, 0.5, 0.8)  # Gris
+		else:
+			dot.visible = false
 
 func update_unit_info(unit):
 	# Alias para _on_unit_activated para compatibilidad
@@ -1020,12 +1266,28 @@ func _on_scrollbar_gui_input(_event: InputEvent):
 	pass
 
 func is_mouse_over_log_panel() -> bool:
-	"""Devuelve true si el mouse/touch está sobre el panel de log"""
-	if not log_panel or not log_panel.visible:
-		return false
+	"""Devuelve true si el mouse/touch está sobre el panel de log o el menú de Eye"""
 	var mouse_pos = get_viewport().get_mouse_position()
-	var panel_rect = Rect2(log_panel.global_position, log_panel.size)
-	return panel_rect.has_point(mouse_pos)
+	
+	# Verificar panel de log
+	if log_panel and log_panel.visible:
+		var panel_rect = Rect2(log_panel.global_position, log_panel.size)
+		if panel_rect.has_point(mouse_pos):
+			return true
+	
+	# Verificar botón de Eye
+	if eye_button and eye_button.visible:
+		var eye_rect = Rect2(eye_button.global_position, eye_button.size)
+		if eye_rect.has_point(mouse_pos):
+			return true
+	
+	# Verificar menú de Eye
+	if eye_menu_panel and eye_menu_panel.visible:
+		var menu_rect = Rect2(eye_menu_panel.global_position, eye_menu_panel.size)
+		if menu_rect.has_point(mouse_pos):
+			return true
+	
+	return false
 
 func _on_toggle_log_collapse():
 	"""Alterna entre log expandido y colapsado"""
@@ -2479,3 +2741,199 @@ func enable_controls(enabled: bool) -> void:
 		set_help_text("Waiting for opponent...")
 	else:
 		set_help_text("Your turn!")
+
+# ============================================
+# EYE BUTTON - SISTEMA DE OVERLAYS
+# ============================================
+
+func _create_eye_menu():
+	"""Crea el menú desplegable con opciones de overlay (debajo de la box del mech)"""
+	var menu_width = 180 * scale_factor
+	var menu_height = 200 * scale_factor
+	
+	# Posicionar debajo de la box del mech (info_panel)
+	var menu_x = info_panel.position.x + info_panel.size.x - menu_width
+	var menu_y = info_panel.position.y + info_panel.size.y + 5 * scale_factor
+	
+	eye_menu_panel = Panel.new()
+	eye_menu_panel.position = Vector2(menu_x, menu_y)
+	eye_menu_panel.size = Vector2(menu_width, menu_height)
+	eye_menu_panel.visible = false
+	eye_menu_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# Estilo del menú
+	var menu_style = StyleBoxFlat.new()
+	menu_style.bg_color = Color(0.08, 0.12, 0.18, 0.95)
+	menu_style.border_color = Color(0.3, 0.6, 0.9, 0.9)
+	menu_style.border_width_left = 2
+	menu_style.border_width_top = 2
+	menu_style.border_width_right = 2
+	menu_style.border_width_bottom = 2
+	menu_style.corner_radius_top_left = 8
+	menu_style.corner_radius_top_right = 8
+	menu_style.corner_radius_bottom_right = 8
+	menu_style.corner_radius_bottom_left = 8
+	eye_menu_panel.add_theme_stylebox_override("panel", menu_style)
+	
+	# Título
+	var title = Label.new()
+	title.text = "MAP OVERLAYS"
+	title.position = Vector2(10 * scale_factor, 8 * scale_factor)
+	title.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	title.add_theme_color_override("font_color", Color(0.7, 0.9, 1, 1))
+	eye_menu_panel.add_child(title)
+	
+	# Contenedor para los toggles
+	var toggle_start_y = 35 * scale_factor
+	var toggle_height = 38 * scale_factor
+	var toggle_width = menu_width - 20 * scale_factor
+	
+	# Toggle Elevación
+	overlay_elevation_toggle = _create_overlay_toggle(
+		"📊 Elevation", 
+		Vector2(10 * scale_factor, toggle_start_y),
+		Vector2(toggle_width, toggle_height),
+		overlay_settings["elevation"],
+		"elevation"
+	)
+	eye_menu_panel.add_child(overlay_elevation_toggle)
+	
+	# Toggle Coordenadas
+	overlay_coords_toggle = _create_overlay_toggle(
+		"📍 Coordinates", 
+		Vector2(10 * scale_factor, toggle_start_y + toggle_height),
+		Vector2(toggle_width, toggle_height),
+		overlay_settings["coords"],
+		"coords"
+	)
+	eye_menu_panel.add_child(overlay_coords_toggle)
+	
+	# Toggle Terreno
+	overlay_terrain_toggle = _create_overlay_toggle(
+		"🌲 Terrain Type", 
+		Vector2(10 * scale_factor, toggle_start_y + toggle_height * 2),
+		Vector2(toggle_width, toggle_height),
+		overlay_settings["terrain"],
+		"terrain"
+	)
+	eye_menu_panel.add_child(overlay_terrain_toggle)
+	
+	# Toggle Movimiento
+	overlay_movement_toggle = _create_overlay_toggle(
+		"🚶 Move Cost", 
+		Vector2(10 * scale_factor, toggle_start_y + toggle_height * 3),
+		Vector2(toggle_width, toggle_height),
+		overlay_settings["movement"],
+		"movement"
+	)
+	eye_menu_panel.add_child(overlay_movement_toggle)
+	
+	add_child(eye_menu_panel)
+
+func _create_overlay_toggle(text: String, pos: Vector2, size: Vector2, initial_state: bool, overlay_key: String) -> Button:
+	"""Crea un botón toggle para una opción de overlay"""
+	var btn = Button.new()
+	btn.text = ("✓ " if initial_state else "○ ") + text
+	btn.position = pos
+	btn.size = size
+	btn.add_theme_font_size_override("font_size", int(13 * scale_factor))
+	btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# Guardar el texto base en metadatos para poder restaurarlo
+	btn.set_meta("base_text", text)
+	
+	# Estilo toggle
+	var toggle_style = StyleBoxFlat.new()
+	toggle_style.bg_color = Color(0.12, 0.18, 0.25, 0.8) if initial_state else Color(0.08, 0.1, 0.14, 0.6)
+	toggle_style.border_color = Color(0.3, 0.7, 0.5, 0.8) if initial_state else Color(0.2, 0.3, 0.4, 0.5)
+	toggle_style.border_width_left = 2
+	toggle_style.border_width_top = 1
+	toggle_style.border_width_right = 2
+	toggle_style.border_width_bottom = 1
+	toggle_style.corner_radius_top_left = 4
+	toggle_style.corner_radius_top_right = 4
+	toggle_style.corner_radius_bottom_right = 4
+	toggle_style.corner_radius_bottom_left = 4
+	btn.add_theme_stylebox_override("normal", toggle_style)
+	btn.add_theme_stylebox_override("hover", toggle_style)
+	btn.add_theme_stylebox_override("pressed", toggle_style)
+	btn.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	btn.add_theme_color_override("font_color", Color(0.9, 0.95, 1, 1))
+	
+	btn.pressed.connect(_on_overlay_toggle_pressed.bind(overlay_key, btn))
+	return btn
+
+func _on_eye_button_pressed():
+	"""Toggle del menú de overlays"""
+	if eye_menu_panel:
+		eye_menu_panel.visible = not eye_menu_panel.visible
+
+func _on_overlay_toggle_pressed(overlay_key: String, btn: Button):
+	"""Maneja el cambio de estado de un overlay"""
+	overlay_settings[overlay_key] = not overlay_settings[overlay_key]
+	var is_active = overlay_settings[overlay_key]
+	
+	# Actualizar texto del botón usando el texto base guardado
+	var base_text = btn.get_meta("base_text", "")
+	btn.text = ("✓ " if is_active else "○ ") + base_text
+	
+	# Actualizar estilo
+	var toggle_style = StyleBoxFlat.new()
+	toggle_style.bg_color = Color(0.12, 0.18, 0.25, 0.8) if is_active else Color(0.08, 0.1, 0.14, 0.6)
+	toggle_style.border_color = Color(0.3, 0.7, 0.5, 0.8) if is_active else Color(0.2, 0.3, 0.4, 0.5)
+	toggle_style.border_width_left = 2
+	toggle_style.border_width_top = 1
+	toggle_style.border_width_right = 2
+	toggle_style.border_width_bottom = 1
+	toggle_style.corner_radius_top_left = 4
+	toggle_style.corner_radius_top_right = 4
+	toggle_style.corner_radius_bottom_right = 4
+	toggle_style.corner_radius_bottom_left = 4
+	btn.add_theme_stylebox_override("normal", toggle_style)
+	btn.add_theme_stylebox_override("hover", toggle_style)
+	btn.add_theme_stylebox_override("pressed", toggle_style)
+	
+	# Aplicar cambio al mapa
+	_apply_overlay_setting(overlay_key, is_active)
+
+func _apply_overlay_setting(overlay_key: String, is_active: bool):
+	"""Aplica la configuración del overlay al hex_grid/renderer"""
+	var battle_scene = get_parent()
+	if not battle_scene:
+		return
+	
+	var hex_grid = battle_scene.get_node_or_null("HexGrid")
+	if not hex_grid:
+		return
+	
+	# El surface_renderer se llama __hex_surface_renderer o es accesible vía _surface_renderer
+	var surface_renderer = hex_grid.get_node_or_null("__hex_surface_renderer")
+	if not surface_renderer and "_surface_renderer" in hex_grid:
+		surface_renderer = hex_grid._surface_renderer
+	
+	if not surface_renderer:
+		print("[UI] Warning: surface_renderer not found")
+		return
+	
+	match overlay_key:
+		"elevation":
+			surface_renderer.show_elevation_labels = is_active
+		"coords":
+			surface_renderer.show_coordinates = is_active
+		"terrain":
+			surface_renderer.show_terrain_type = is_active
+		"movement":
+			surface_renderer.show_movement_cost = is_active
+	
+	# NO llamar queue_redraw() porque borra los overlays de movimiento/deployment
+	# Los setters ya llaman a _refresh_labels() automáticamente
+	
+	print("[UI] Overlay '%s' set to %s" % [overlay_key, is_active])
+
+func is_mouse_over_eye_menu() -> bool:
+	"""Devuelve true si el mouse está sobre el menú de Eye"""
+	if not eye_menu_panel or not eye_menu_panel.visible:
+		return false
+	var mouse_pos = get_viewport().get_mouse_position()
+	var panel_rect = Rect2(eye_menu_panel.global_position, eye_menu_panel.size)
+	return panel_rect.has_point(mouse_pos)
