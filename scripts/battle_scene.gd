@@ -51,6 +51,9 @@ var ignore_next_click: bool = false  # Ignorar el próximo click (usado después
 var ignore_until_time: int = 0  # Timestamp (ms) hasta el cual ignorar clicks
 const IGNORE_CLICK_DEBOUNCE_MS: int = 200  # Tiempo para ignorar clicks tras cerrar UI (ms)
 var ui_interaction_cooldown: float = 0.0  # Tiempo de cooldown después de interacción con UI
+var _last_click_frame: int = -1  # Frame del último click procesado (evita doble procesamiento touch/mouse)
+var _last_hex_click_time: int = 0  # Tiempo del último click en hex (ms) - debounce para Android
+const HEX_CLICK_DEBOUNCE_MS: int = 150  # Tiempo mínimo entre clicks en hex (ms)
 
 # Sistema de confirmación de movimiento
 var pending_move_confirmation: bool = false  # Esperando confirmación de movimiento
@@ -1387,6 +1390,9 @@ func _input(event):
 		return
 		
 	# Click/toque en hexágono
+	# IMPORTANTE: Prevenir doble procesamiento por emulación de mouse desde touch
+	var current_frame = Engine.get_process_frames()
+	
 	if event is InputEventScreenTouch and not event.pressed:  # Solo en release
 		# Limpiar la posición inicial del toque
 		if touch_start_positions.has(event.index):
@@ -1413,16 +1419,25 @@ func _input(event):
 			var world_pos = camera.get_global_mouse_position()
 			var hex = hex_grid.pixel_to_hex(world_pos - hex_grid.global_position)
 			_handle_hex_clicked(hex)
+			
+			# Marcar este frame como procesado para evitar doble procesamiento
+			_last_click_frame = current_frame
+			get_viewport().set_input_as_handled()
 		
 		# Resetear el flag de movimiento cuando se sueltan todos los toques
 		# Usar call_deferred para evitar race conditions con eventos emulados de mouse
 		if touch_points.size() == 0:
 			call_deferred("_reset_movement_flag")
+		return  # Importante: salir para no procesar como mouse
+		
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		# Guardar posición inicial para detectar drags con mouse
 		touch_start_positions[0] = event.position
 		has_moved_significantly = false
 	elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# Ignorar si ya se procesó como touch en este frame
+		if _last_click_frame == current_frame:
+			return
 		# Solo procesar como click si no hubo movimiento significativo
 		if not long_press_active and not has_moved_significantly:
 			# Verificar cooldown de interacción con UI
@@ -1593,6 +1608,13 @@ func start_ignore_click_timer(duration_ms: int = 200) -> void:
 	ignore_next_click = false
 
 func _handle_hex_clicked(hex: Vector2i):
+	# Debounce basado en tiempo para evitar doble procesamiento en Android
+	var current_time = Time.get_ticks_msec()
+	if current_time - _last_hex_click_time < HEX_CLICK_DEBOUNCE_MS:
+		print("[HEX_CLICK] Debounce - ignoring click (delta=%dms)" % (current_time - _last_hex_click_time))
+		return
+	_last_hex_click_time = current_time
+	
 	if not hex_grid.is_valid_hex(hex):
 		return
 	

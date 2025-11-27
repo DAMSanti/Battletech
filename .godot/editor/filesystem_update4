@@ -1,5 +1,0 @@
-res://scripts/battle_scene.gd
-res://scripts/network/network_manager.gd
-res://scripts/network/server_battle_manager.gd
-res://scripts/network/server_main.gd
-res://scripts/ui/screens/initiative_screen.gd

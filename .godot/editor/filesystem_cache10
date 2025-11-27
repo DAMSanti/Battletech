@@ -1,7 +1,7 @@
 72322a848ab928aa5c89f0cb78209805
 ::res://::1764192112
 create_test_texture.gd::GDScript::5383216783731163535::1763831194::0::1::::<>RefCounted<><>0<>0<><>::
-export_presets.cfg::TextFile::-1::1764191896::0::1::::<><><>0<>0<><>::
+export_presets.cfg::TextFile::-1::1764192883::0::1::::<><><>0<>0<><>::
 godot_output.log::TextFile::-1::1763754978::0::1::::<><><>0<>0<><>::
 icon.svg::CompressedTexture2D::6741177958189595462::1762009794::1762011840::1::::<><><>0<>0<>3f5073a81f351b7ac81baba897aafa04<>res://.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.ctex::
 key.pub::CryptoKey::-1::1764173752::0::1::::<><><>0<>0<><>::
@@ -138,9 +138,9 @@ TESTING.md::TextFile::-1::1762014282::0::1::::<><><>0<>0<><>::
 UNIFIED_BATTLE_SYSTEM.md::TextFile::-1::1764181352::0::1::::<><><>0<>0<><>::
 WEAPON_ATTACK_IMPLEMENTATION_SUMMARY.md::TextFile::-1::1763921947::0::1::::<><><>0<>0<><>::
 WEAPON_ATTACK_RESOLUTION.md::TextFile::-1::1763921947::0::1::::<><><>0<>0<><>::
-::res://exports/::1764192207
+::res://exports/::1764192813
 ::res://scenes/::1764172936
-battle_scene.tscn::PackedScene::3551733754559541049::1764191483::0::1::::<><><>0<>0<><>::uid://b1p3n14u7q3io::::res://scripts/battle_scene.gd<>uid://bgykjlbw56ccy::::res://scripts/hex_grid.gd<>uid://dn0p6hxdbpd70::::res://scripts/managers/turn_manager.gd
+battle_scene.tscn::PackedScene::3551733754559541049::1764192883::0::1::::<><><>0<>0<><>::uid://b1p3n14u7q3io::::res://scripts/battle_scene.gd<>uid://bgykjlbw56ccy::::res://scripts/hex_grid.gd<>uid://dn0p6hxdbpd70::::res://scripts/managers/turn_manager.gd
 battle_scene_simple.tscn::PackedScene::5269106160023116314::1762013678::0::1::::<><><>0<>0<><>::res://scripts/battle_scene.gd<>res://scripts/hex_grid.gd<>res://scripts/managers/turn_manager.gd<>res://scripts/ui/battle_ui.gd
 initiative_screen.tscn::PackedScene::6912932152498828043::1762013678::0::1::::<><><>0<>0<><>::res://scripts/ui/screens/initiative_screen.gd
 main_menu.tscn::PackedScene::8504137621175329142::1763926777::0::1::::<><><>0<>0<><>::res://scripts/ui/screens/main_menu.gd
@@ -155,7 +155,7 @@ test_mechs.tscn::PackedScene::-1::1762512107::0::1::::<><><>0<>0<><>::res://scri
 test_procedural_generator.tscn::PackedScene::-1::1763912719::0::1::::<><><>0<>0<><>::
 ::res://scripts/::1764172936
 battle_overlay.gd::GDScript::3688687541075302013::1763843877::0::1::::<>Node2D<><>0<>0<><>::
-battle_scene.gd::GDScript::4244020987069628878::1764192764::0::1::::<>Node2D<><>0<>0<><>::
+battle_scene.gd::GDScript::4244020987069628878::1764193662::0::1::::<>Node2D<><>0<>0<><>::
 hex_grid.gd::GDScript::2857722634034084924::1764184368::0::1::::HexGrid<>Node2D<><>0<>1<><>::
 hex_surface_renderer.gd::GDScript::3918837244147530489::1764098770::0::1::::HexSurfaceRenderer<>Node2D<><>0<>0<><>::
 mech.gd::GDScript::2540652510487443154::1764178631::0::1::::Mech<>Node2D<><>0<>0<><>::
@@ -201,9 +201,9 @@ selected_loadout_manager.gd::GDScript::4738801789484143226::1762123836::0::1::::
 turn_manager.gd::GDScript::9000878597633555875::1763920666::0::1::::TurnManager<>Node<><>0<>0<><>::
 ::res://scripts/network/::1764173148
 network_battle_client.gd::GDScript::5265414861504937361::1764184368::0::1::::NetworkBattleClient<>Node<><>0<>0<><>::
-network_manager.gd::GDScript::8135286567487099469::1764184938::0::1::::<>Node<><>0<>0<><>::
-server_battle_manager.gd::GDScript::7832570372932945309::1764190112::0::1::::ServerBattleManager<>Node<><>0<>0<><>::
-server_main.gd::GDScript::4813432132232529579::1764185024::0::1::::<>Node<><>0<>0<><>::
+network_manager.gd::GDScript::8135286567487099469::1764192885::0::1::::<>Node<><>0<>0<><>::
+server_battle_manager.gd::GDScript::7832570372932945309::1764192885::0::1::::ServerBattleManager<>Node<><>0<>0<><>::
+server_main.gd::GDScript::4813432132232529579::1764192885::0::1::::<>Node<><>0<>0<><>::
 ::res://scripts/ui/::1764173148
 battle_ui.gd::GDScript::732739578862402692::1764172880::0::1::::<>CanvasLayer<><>0<>0<><>::
 custom_armor_panel.gd::GDScript::1282078652327452072::1763836896::0::1::::<>Control<><>0<>0<><>::
@@ -215,7 +215,7 @@ mech_paper_doll.gd::GDScript::16766299998622581::1764172880::0::1::::MechPaperDo
 multiplayer_lobby_ui.gd::GDScript::6154457839859692410::1764175002::0::1::::<>Control<><>0<>0<><>::
 ::res://scripts/ui/components/::1762013425
 ::res://scripts/ui/screens/::1763925105
-initiative_screen.gd::GDScript::3861912967429323300::1764189271::0::1::::<>CanvasLayer<><>0<>0<><>::
+initiative_screen.gd::GDScript::3861912967429323300::1764192885::0::1::::<>CanvasLayer<><>0<>0<><>::
 main_menu.gd::GDScript::6287310187516928481::1764183424::0::1::::<>Control<><>0<>0<><>::
 mech_bay_screen.gd::GDScript::7717639292842952875::1763926343::0::1::::<>CanvasLayer<><>0<>0<><>::
 team_setup.gd::GDScript::9006478043614091162::1763924551::0::1::::<>Control<><>0<>0<><>::
