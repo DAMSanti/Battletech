@@ -102,7 +102,9 @@ water_albedo.png::CompressedTexture2D::8237003134930171325::1763909523::17639096
 water_normal.png::CompressedTexture2D::2152017470122878507::1763909562::1763909614::1::::<><><>0<>0<>2b46ad004aa0df54585c065bd90b8501<>res://.godot/imported/water_normal.png-682ebddcf76c52581e46916bfbce612e.ctex::
 ::res://assets/themes/::1763924646
 battletech_theme.tres::Theme::-1::1763926343::0::1::::<><><>0<>0<><>::
-::res://assets/ui/::1764104987
+::res://assets/ui/::1764272771
+eye_icon.svg::CompressedTexture2D::5227645314924305067::1764272768::1764272814::1::::<><><>0<>0<>6130a6ad634bd7e05876f0d2ed9ccea9<>res://.godot/imported/eye_icon.svg-ea7b6238b8576b892982be98da5b880c.ctex::
+heat_icon.svg::CompressedTexture2D::5007527692916374678::1764272771::1764272814::1::::<><><>0<>0<>99be4d277c1bb3e256e588a6d2b02e8d<>res://.godot/imported/heat_icon.svg-f0d4ccc038a7328c33c03d8a5e313a2b.ctex::
 mp_dot_empty.svg::CompressedTexture2D::8202114294180071884::1764106257::1764104987::1::::<><><>0<>0<>6308dea015e7e81371fb1206201a2163<>res://.godot/imported/mp_dot_empty.svg-08e34e14f936726ce1a9b7b256ba52f9.ctex::
 mp_dot_filled.svg::CompressedTexture2D::3828535804546094639::1764106257::1764104987::1::::<><><>0<>0<>f08613acda9fc6891c6427e4a0c719ac<>res://.godot/imported/mp_dot_filled.svg-ab8342891a237d783404150908b2b18b.ctex::
 ::res://doc/::1764191818
@@ -155,9 +157,9 @@ test_mechs.tscn::PackedScene::-1::1762512107::0::1::::<><><>0<>0<><>::res://scri
 test_procedural_generator.tscn::PackedScene::-1::1763912719::0::1::::<><><>0<>0<><>::
 ::res://scripts/::1764172936
 battle_overlay.gd::GDScript::3688687541075302013::1763843877::0::1::::<>Node2D<><>0<>0<><>::
-battle_scene.gd::GDScript::4244020987069628878::1764193662::0::1::::<>Node2D<><>0<>0<><>::
-hex_grid.gd::GDScript::2857722634034084924::1764184368::0::1::::HexGrid<>Node2D<><>0<>1<><>::
-hex_surface_renderer.gd::GDScript::3918837244147530489::1764098770::0::1::::HexSurfaceRenderer<>Node2D<><>0<>0<><>::
+battle_scene.gd::GDScript::4244020987069628878::1764271077::0::1::::<>Node2D<><>0<>0<><>::
+hex_grid.gd::GDScript::2857722634034084924::1764267076::0::1::::HexGrid<>Node2D<><>0<>1<><>::
+hex_surface_renderer.gd::GDScript::3918837244147530489::1764269655::0::1::::HexSurfaceRenderer<>Node2D<><>0<>0<><>::
 mech.gd::GDScript::2540652510487443154::1764178631::0::1::::Mech<>Node2D<><>0<>0<><>::
 test_mechs.gd::GDScript::3199800061969589514::1762512314::0::1::::<>Node2D<><>0<>0<><>::
 test_procedural_generator.gd::GDScript::5662642845636982215::1763913392::0::1::::<>Node2D<><>0<>0<><>::
@@ -184,7 +186,7 @@ heat_system.gd::GDScript::3923109559431990555::1762800523::0::1::::<>RefCounted<
 ::res://scripts/core/movement/::1764172936
 facing_system.gd::GDScript::6168236144088231642::1764172936::0::1::::FacingSystem<>RefCounted<><>0<>0<><>::
 movement_restrictions.gd::GDScript::3091162093949949215::1763900495::0::1::::MovementRestrictions<>RefCounted<><>0<>0<><>::
-movement_system.gd::GDScript::3512848330814713364::1764172936::0::1::::MovementSystem<>RefCounted<><>0<>0<><>::
+movement_system.gd::GDScript::3512848330814713364::1764263215::0::1::::MovementSystem<>RefCounted<><>0<>0<><>::
 ::res://scripts/core/terrain/::1763912719
 procedural_map_generator.gd::GDScript::7766531885502793517::1763914015::0::1::::ProceduralMapGenerator<>RefCounted<><>0<>0<><>::
 terrain_decoration.gd::GDScript::4852645824364403913::1763909875::0::1::::TerrainDecoration<>Sprite2D<><>0<>0<><>::
@@ -205,7 +207,7 @@ network_manager.gd::GDScript::8135286567487099469::1764192885::0::1::::<>Node<><
 server_battle_manager.gd::GDScript::7832570372932945309::1764192885::0::1::::ServerBattleManager<>Node<><>0<>0<><>::
 server_main.gd::GDScript::4813432132232529579::1764192885::0::1::::<>Node<><>0<>0<><>::
 ::res://scripts/ui/::1764173148
-battle_ui.gd::GDScript::732739578862402692::1764172880::0::1::::<>CanvasLayer<><>0<>0<><>::
+battle_ui.gd::GDScript::732739578862402692::1764272799::0::1::::<>CanvasLayer<><>0<>0<><>::
 custom_armor_panel.gd::GDScript::1282078652327452072::1763836896::0::1::::<>Control<><>0<>0<><>::
 custom_armor_panel.tscn::PackedScene::-1::1764175002::0::1::::<><><>0<>0<><>::res://scripts/ui/custom_armor_panel.gd
 facing_selector.gd::GDScript::6754654081292337910::1764179347::0::1::::<>Control<><>0<>0<><>::

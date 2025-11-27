@@ -159,11 +159,11 @@ func _setup_ui():
 	# Botón End (debajo de phase)
 	end_turn_button = Button.new()
 	end_turn_button.text = "END ▶"
-	var end_btn_width = 80 * scale_factor
-	var end_btn_height = 28 * scale_factor
+	var end_btn_width = 100 * scale_factor
+	var end_btn_height = 38 * scale_factor
 	end_turn_button.position = Vector2(margin + 8 * scale_factor, margin + 52 * scale_factor)
 	end_turn_button.size = Vector2(end_btn_width, end_btn_height)
-	end_turn_button.add_theme_font_size_override("font_size", int(13 * scale_factor))
+	end_turn_button.add_theme_font_size_override("font_size", int(16 * scale_factor))
 	var end_btn_style = StyleBoxFlat.new()
 	end_btn_style.bg_color = Color(0.15, 0.35, 0.2, 0.9)
 	end_btn_style.border_color = Color(0.3, 0.7, 0.4, 1)
@@ -189,22 +189,10 @@ func _setup_ui():
 	# BOX DERECHA: Robot + MPs + Heat + Nombre + Eye
 	# ============================================
 	
-	# Calcular dimensiones de la box (más grande)
-	var box_height = screen_height * 0.18  # Más alto
-	var panel_padding = 10 * scale_factor
-	var content_height = box_height - panel_padding * 2
-	
-	# Dimensiones del robot (el elemento principal)
-	var heat_height = 16 * scale_factor
-	var doll_height = content_height - heat_height - 4 * scale_factor
-	var doll_width = doll_height * 0.55
-	
-	# Dimensiones de MPs y Eye button
-	var mp_column_width = 18 * scale_factor
-	var eye_btn_size = 32 * scale_factor
-	
-	# Ancho total de la box: MPs + robot + espacios (eye button va arriba)
-	var box_width = mp_column_width + 8 * scale_factor + doll_width + 8 * scale_factor + panel_padding * 2 + 20 * scale_factor
+	# Calcular dimensiones de la box basadas en porcentajes de pantalla
+	var box_height = screen_height * 0.18
+	var box_width = screen_width * 0.28  # Ancho relativo a la pantalla
+	box_width = clampf(box_width, 120, 300)  # Limitar tamaño mínimo y máximo
 	
 	# Crear el panel (box) arriba a la derecha
 	info_panel = Panel.new()
@@ -231,18 +219,53 @@ func _setup_ui():
 	info_panel.visible = false  # Oculto hasta que se seleccione un mech
 	add_child(info_panel)
 	
-	# Posiciones dentro de la box
+	# --- POSICIONES RELATIVAS AL TAMAÑO DEL PANEL ---
+	var panel_padding = box_width * 0.05  # 5% del ancho como padding
+	var content_width = box_width - panel_padding * 2
+	var content_height = box_height - panel_padding * 2
+	
+	# Eye button: 15% del ancho del panel, cuadrado
+	var eye_btn_size = box_width * 0.15
+	eye_btn_size = clampf(eye_btn_size, 24, 40)
+	
+	# MP column: 12% del ancho del contenido
+	var mp_column_width = content_width * 0.12
+	mp_column_width = clampf(mp_column_width, 14, 24)
+	
+	# Doll: ocupa el resto del espacio menos padding
+	var doll_width = content_width - mp_column_width - panel_padding
+	var doll_height = content_height * 0.85  # 85% de la altura para el robot
+	
+	# Heat section height
+	var heat_section_height = content_height * 0.15
+	
+	# Posiciones X relativas
 	var mp_x = panel_padding
-	var doll_x = mp_x + mp_column_width + 8 * scale_factor
-	var doll_center_x = doll_x + doll_width / 2
+	var doll_x = mp_x + mp_column_width + panel_padding * 0.5
+	var doll_center_x = doll_x + doll_width * 0.5
+	
+	# Posiciones Y relativas
+	var doll_y = panel_padding + content_height * 0.15
+	var heat_y = box_height - panel_padding - heat_section_height
 	
 	# 1. EYE BUTTON (arriba a la derecha de la box)
 	eye_button = Button.new()
-	eye_button.text = "👁"
+	eye_button.text = ""  # Sin texto, usamos icono
 	eye_button.position = Vector2(box_width - panel_padding - eye_btn_size, panel_padding)
 	eye_button.size = Vector2(eye_btn_size, eye_btn_size)
-	eye_button.add_theme_font_size_override("font_size", int(16 * scale_factor))
 	eye_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	
+	# Cargar icono SVG del ojo
+	if ResourceLoader.exists("res://assets/ui/eye_icon.svg"):
+		var eye_icon_texture = load("res://assets/ui/eye_icon.svg")
+		var eye_icon_rect = TextureRect.new()
+		eye_icon_rect.texture = eye_icon_texture
+		eye_icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		eye_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		eye_icon_rect.position = Vector2(eye_btn_size * 0.15, eye_btn_size * 0.15)
+		eye_icon_rect.size = Vector2(eye_btn_size * 0.7, eye_btn_size * 0.7)
+		eye_icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		eye_button.add_child(eye_icon_rect)
 	
 	var eye_style = StyleBoxFlat.new()
 	eye_style.bg_color = Color(0.1, 0.15, 0.22, 0.9)
@@ -259,7 +282,6 @@ func _setup_ui():
 	info_panel.add_child(eye_button)
 	
 	# 2. PAPER DOLL DEL MECH (empieza desde arriba)
-	var doll_y = panel_padding
 	if ResourceLoader.exists("res://scenes/mech_paper_doll.tscn"):
 		var paper_doll_scene = load("res://scenes/mech_paper_doll.tscn")
 		if paper_doll_scene:
@@ -270,23 +292,25 @@ func _setup_ui():
 			info_panel.add_child(mech_paper_doll)
 	
 	# 3. NOMBRE DEL MECH (alineado con la cabeza del robot)
-	var name_y = doll_y + doll_height * 0.02  # Justo arriba de la cabeza
+	var name_font_size = int(box_height * 0.08)
+	name_font_size = clampi(name_font_size, 8, 14)
 	mech_name_label = Label.new()
 	mech_name_label.text = ""
-	mech_name_label.position = Vector2(doll_x - 5 * scale_factor, name_y)  # Centrado con el robot
-	mech_name_label.size = Vector2(doll_width + 30 * scale_factor, 16 * scale_factor)
+	mech_name_label.position = Vector2(doll_x - doll_width * 0.1, doll_y - content_height * 0.15)
+	mech_name_label.size = Vector2(doll_width * 1.2, box_height * 0.12)
 	mech_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	mech_name_label.add_theme_font_size_override("font_size", int(11 * scale_factor))
+	mech_name_label.add_theme_font_size_override("font_size", name_font_size)
 	mech_name_label.add_theme_color_override("font_color", Color(1, 0.9, 0.6, 1))
 	mech_name_label.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
 	mech_name_label.add_theme_constant_override("outline_size", 1)
 	info_panel.add_child(mech_name_label)
 	
 	# 4. MP DOTS (columna vertical a la izquierda del robot)
-	var mp_dot_size = 18 * scale_factor  # Dots más grandes (3x)
+	var mp_dot_size = mp_column_width * 0.9
+	mp_dot_size = clampf(mp_dot_size, 10, 20)
 	
 	mp_container = VBoxContainer.new()
-	mp_container.position = Vector2(mp_x, doll_y)
+	mp_container.position = Vector2(mp_x, doll_y - content_height * 0.15)
 	mp_container.size = Vector2(mp_column_width, doll_height)
 	mp_container.add_theme_constant_override("separation", 0)
 	mp_container.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -303,21 +327,27 @@ func _setup_ui():
 		mp_dots.append(dot)
 	
 	# 5. HEAT SECTION (debajo del robot, centrado y alineado)
-	var heat_y = doll_y + doll_height - 20 * scale_factor  # Justo bajo los pies del robot
-	var heat_row_height = 12 * scale_factor
-	var heat_total_width = doll_width + 30 * scale_factor
-	var heat_start_x = doll_center_x - heat_total_width / 2
+	var heat_row_height = heat_section_height * 0.8
+	var heat_font_size = int(heat_section_height * 0.6)
+	heat_font_size = clampi(heat_font_size, 8, 14)
+	var heat_icon_width = heat_section_height
+	var heat_label_width = heat_section_height * 1.5
+	var heat_bar_width = content_width - heat_icon_width - heat_label_width - panel_padding
+	var heat_start_x = mp_x
 	
-	var heat_icon = Label.new()
-	heat_icon.text = "🔥"
-	heat_icon.position = Vector2(heat_start_x, heat_y + 5)
-	heat_icon.add_theme_font_size_override("font_size", int(10 * scale_factor))
-	heat_icon.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	# Heat icon usando SVG
+	var heat_icon = TextureRect.new()
+	if ResourceLoader.exists("res://assets/ui/heat_icon.svg"):
+		heat_icon.texture = load("res://assets/ui/heat_icon.svg")
+	heat_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	heat_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	heat_icon.position = Vector2(heat_start_x, heat_y)
+	heat_icon.size = Vector2(heat_icon_width, heat_section_height)
 	info_panel.add_child(heat_icon)
 	
 	heat_bar = ProgressBar.new()
-	heat_bar.position = Vector2(heat_start_x + 16 * scale_factor, heat_y + 1 * scale_factor)
-	heat_bar.size = Vector2(heat_total_width - 48 * scale_factor, heat_row_height)
+	heat_bar.position = Vector2(heat_start_x + heat_icon_width, heat_y + heat_section_height * 0.15)
+	heat_bar.size = Vector2(heat_bar_width, heat_row_height)
 	heat_bar.min_value = 0
 	heat_bar.max_value = 30
 	heat_bar.value = 0
@@ -336,10 +366,12 @@ func _setup_ui():
 	
 	heat_label = Label.new()
 	heat_label.text = "0"
-	heat_label.position = Vector2(heat_start_x + heat_total_width - 24 * scale_factor, heat_y + 5)
-	heat_label.add_theme_font_size_override("font_size", int(10 * scale_factor))
+	heat_label.position = Vector2(heat_start_x + heat_icon_width + heat_bar_width + panel_padding * 0.5, heat_y)
+	heat_label.size = Vector2(heat_label_width, heat_section_height)
+	heat_label.add_theme_font_size_override("font_size", heat_font_size)
 	heat_label.add_theme_color_override("font_color", Color(0.8, 0.9, 0.8, 1))
 	heat_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	heat_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	info_panel.add_child(heat_label)
 	
 	# ============================================
