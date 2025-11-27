@@ -174,6 +174,11 @@ func update_overlays():
 	
 	var overlays = []
 	
+	# LOS overlay primero (se pinta debajo de todo)
+	if ui and ui.los_overlay_visible and ui.los_overlay_hexes.size() > 0:
+		for los_entry in ui.los_overlay_hexes:
+			overlays.append(los_entry)
+	
 	# Deployment phase overlays
 	if deployment_phase and valid_deployment_hexes.size() > 0:
 		for hex in valid_deployment_hexes:

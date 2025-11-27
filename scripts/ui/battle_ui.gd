@@ -48,12 +48,18 @@ var overlay_elevation_toggle: Button = null
 var overlay_coords_toggle: Button = null
 var overlay_terrain_toggle: Button = null
 var overlay_movement_toggle: Button = null
+var overlay_los_toggle: Button = null
 var overlay_settings: Dictionary = {
 	"elevation": false,  # Por defecto desactivado
 	"coords": false,
 	"terrain": false,
-	"movement": false
+	"movement": false,
+	"los": false  # Line of Sight overlay
 }
+
+# Cache para overlay de LOS
+var los_overlay_visible: bool = false
+var los_overlay_hexes: Array = []
 
 # Selector de tipo de movimiento
 var movement_selector_panel: Panel
@@ -2783,7 +2789,7 @@ func enable_controls(enabled: bool) -> void:
 func _create_eye_menu():
 	"""Crea el menú desplegable con opciones de overlay (debajo de la box del mech)"""
 	var menu_width = 180 * scale_factor
-	var menu_height = 200 * scale_factor
+	var menu_height = 240 * scale_factor  # Altura para 5 toggles
 	
 	# Posicionar debajo de la box del mech (info_panel)
 	var menu_x = info_panel.position.x + info_panel.size.x - menu_width
@@ -2861,6 +2867,19 @@ func _create_eye_menu():
 		"movement"
 	)
 	eye_menu_panel.add_child(overlay_movement_toggle)
+	
+	# Toggle Line of Sight
+	overlay_los_toggle = _create_overlay_toggle(
+		"👁 Line of Sight", 
+		Vector2(10 * scale_factor, toggle_start_y + toggle_height * 4),
+		Vector2(toggle_width, toggle_height),
+		overlay_settings["los"],
+		"los"
+	)
+	eye_menu_panel.add_child(overlay_los_toggle)
+	
+	# Ajustar altura del panel para incluir el nuevo toggle
+	eye_menu_panel.size.y = toggle_start_y + toggle_height * 5 + 10 * scale_factor
 	
 	add_child(eye_menu_panel)
 
@@ -2958,6 +2977,8 @@ func _apply_overlay_setting(overlay_key: String, is_active: bool):
 			surface_renderer.show_terrain_type = is_active
 		"movement":
 			surface_renderer.show_movement_cost = is_active
+		"los":
+			_toggle_los_overlay(is_active, hex_grid)
 	
 	# NO llamar queue_redraw() porque borra los overlays de movimiento/deployment
 	# Los setters ya llaman a _refresh_labels() automáticamente
@@ -2971,3 +2992,103 @@ func is_mouse_over_eye_menu() -> bool:
 	var mouse_pos = get_viewport().get_mouse_position()
 	var panel_rect = Rect2(eye_menu_panel.global_position, eye_menu_panel.size)
 	return panel_rect.has_point(mouse_pos)
+
+func _toggle_los_overlay(is_active: bool, hex_grid):
+	"""Activa/desactiva el overlay de línea de visión para los mechs del jugador"""
+	los_overlay_visible = is_active
+	
+	if not is_active:
+		# Limpiar overlay de LOS
+		_clear_los_overlay(hex_grid)
+		return
+	
+	# Calcular hexes visibles por todos los mechs del jugador
+	_update_los_overlay(hex_grid)
+
+func _update_los_overlay(hex_grid):
+	"""Calcula y muestra los hexes visibles por los mechs del jugador"""
+	if not los_overlay_visible or not hex_grid:
+		return
+	
+	# Obtener turn_manager para acceder a los mechs del jugador
+	var turn_manager = null
+	if battle_scene and battle_scene.has_method("get_turn_manager"):
+		turn_manager = battle_scene.get_turn_manager()
+	
+	if not turn_manager:
+		print("[UI] No turn_manager found for LOS overlay")
+		return
+	
+	var player_units = turn_manager.player_units
+	if player_units.size() == 0:
+		return
+	
+	# Recolectar todos los hexes visibles por cualquier mech del jugador
+	var visible_hexes: Dictionary = {}  # hex_key -> true (para evitar duplicados)
+	
+	# Iterar sobre todos los hexes del mapa
+	for q in range(hex_grid.grid_width):
+		for r in range(hex_grid.grid_height):
+			var target_hex = Vector2i(q, r)
+			
+			# Verificar si algún mech del jugador puede ver este hex
+			for unit in player_units:
+				if unit.is_destroyed:
+					continue
+				
+				# Si es el propio hex del mech, siempre visible
+				if unit.hex_position == target_hex:
+					var hex_key = "%d,%d" % [q, r]
+					visible_hexes[hex_key] = target_hex
+					break
+				
+				# Usar el sistema completo de LineOfSight
+				var los_data = LineOfSight.calculate_los(hex_grid, unit.hex_position, target_hex)
+				
+				# Solo marcar como visible si la línea no está bloqueada
+				if los_data.result != LineOfSight.Result.BLOCKED:
+					var hex_key = "%d,%d" % [q, r]
+					visible_hexes[hex_key] = target_hex
+					break  # No necesitamos verificar más mechs
+	
+	# Preparar overlays para el renderer
+	var overlays: Array = []
+	var los_color = Color(0.2, 0.8, 0.2, 0.25)  # Verde semi-transparente
+	
+	for hex_key in visible_hexes:
+		var hex = visible_hexes[hex_key]
+		var elevation = hex_grid.get_elevation(hex)
+		overlays.append({
+			"hex": hex,
+			"color": los_color,
+			"elevation": elevation
+		})
+	
+	los_overlay_hexes = overlays
+	
+	# En lugar de renderizar directamente, pedimos a battle_scene que actualice
+	# todos los overlays (incluyendo el de LOS)
+	if battle_scene and battle_scene.has_method("update_overlays"):
+		battle_scene.update_overlays()
+	
+	print("[UI] LOS overlay showing %d visible hexes" % visible_hexes.size())
+
+func _clear_los_overlay(hex_grid):
+	"""Limpia el overlay de línea de visión"""
+	los_overlay_hexes.clear()
+	
+	# Actualizar overlays en battle_scene para que se quiten los de LOS
+	if battle_scene and battle_scene.has_method("update_overlays"):
+		battle_scene.update_overlays()
+
+func refresh_los_overlay():
+	"""Refresca el overlay de LOS (llamar cuando los mechs se muevan)"""
+	if not los_overlay_visible:
+		return
+	
+	var hex_grid = null
+	if battle_scene:
+		hex_grid = battle_scene.get_node_or_null("HexGrid")
+	
+	if hex_grid:
+		_update_los_overlay(hex_grid)
