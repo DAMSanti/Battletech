@@ -1568,7 +1568,7 @@ func _handle_camera_input(event) -> bool:
 			has_moved_significantly = true  # Marcar que hubo gesto de zoom
 			var points = touch_points.values()
 			var current_distance = points[0].distance_to(points[1])
-			var zoom_factor = initial_pinch_distance / current_distance
+			var zoom_factor = current_distance / initial_pinch_distance
 			
 			# Calcular nuevo zoom
 			var new_zoom = initial_zoom * zoom_factor

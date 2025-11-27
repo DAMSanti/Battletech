@@ -63,8 +63,8 @@ func _ready():
 		add_child(_surface_renderer)
 		# Set a reasonable depth resolution to start
 		_surface_renderer.set_depth_viewport_scale(0.75)
-		# Enable elevation labels by default
-		_surface_renderer.show_elevation_labels = true
+		# Elevation labels desactivados por defecto (se activan desde el boton de overlays)
+		_surface_renderer.show_elevation_labels = false
 		# Pasar referencia a este hex_grid para que pueda obtener info de terreno
 		_surface_renderer.set_hex_grid(self)
 

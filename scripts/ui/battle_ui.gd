@@ -49,7 +49,7 @@ var overlay_coords_toggle: Button = null
 var overlay_terrain_toggle: Button = null
 var overlay_movement_toggle: Button = null
 var overlay_settings: Dictionary = {
-	"elevation": true,  # Por defecto activado
+	"elevation": false,  # Por defecto desactivado
 	"coords": false,
 	"terrain": false,
 	"movement": false

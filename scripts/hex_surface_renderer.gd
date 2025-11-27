@@ -39,7 +39,7 @@ var global_bounds_valid: bool = false
 var pending_overlays: Array = []
 var pending_overlays_hex_grid = null
 
-@export var show_elevation_labels: bool = true:
+@export var show_elevation_labels: bool = false:
 	set(v):
 		show_elevation_labels = v
 		_refresh_labels()
@@ -739,18 +739,19 @@ func _update_hex_labels(surf_entries: Array, base_elevation: int):
 		var label_color = Color.WHITE
 		var line_count = 0
 		
-		# Elevación
+		# Elevación (mostrada relativa a nivel 2, restamos 2 al valor mostrado)
 		if show_elevation_labels:
 			var elev = base_elevation
 			if s.has("elevation"):
 				elev = float(s["elevation"])
 			var elev_offset = int(elev) - base_elevation
+			var display_value = elev_offset - 2  # Restar 2 para que +2 muestre como 0
 			
-			if elev_offset > 0:
-				label_text += "+%d" % elev_offset
+			if display_value > 0:
+				label_text += "+%d" % display_value
 				label_color = Color.YELLOW
-			elif elev_offset < 0:
-				label_text += "%d" % elev_offset
+			elif display_value < 0:
+				label_text += "%d" % display_value
 				label_color = Color.CYAN
 			else:
 				label_text += "0"
@@ -817,19 +818,24 @@ func _get_terrain_type(q: int, r: int) -> String:
 
 func _terrain_type_to_abbrev(terrain_type) -> String:
 	"""Convierte un tipo de terreno a abreviatura"""
+	# Mapeo según TerrainType.Type enum:
+	# CLEAR=0, FOREST=1, WATER=2, ROUGH=3, PAVEMENT=4, SAND=5, ICE=6, 
+	# BUILDING=7, HILL=8, LIGHT_WOODS=9, HEAVY_WOODS=10, BOG=11, ROAD=12, RUBBLE=13
 	match terrain_type:
-		0: return "CLR"   # CLEAR
-		1: return "RGH"   # ROUGH
-		2: return "WTR"   # WATER
-		3: return "FRST"  # FOREST
-		4: return "HVFR"  # HEAVY_FOREST
-		5: return "ROAD"  # ROAD
-		6: return "BLDG"  # BUILDING
-		7: return "RUB"   # RUBBLE
-		8: return "SAND"  # SAND
-		9: return "SWMP"  # SWAMP
-		10: return "ICE"  # ICE
-		11: return "SNOW" # SNOW
+		0: return "CLR"    # CLEAR
+		1: return "FRST"   # FOREST
+		2: return "WTR"    # WATER
+		3: return "RGH"    # ROUGH
+		4: return "PVMT"   # PAVEMENT
+		5: return "SAND"   # SAND
+		6: return "ICE"    # ICE
+		7: return "BLDG"   # BUILDING
+		8: return "HILL"   # HILL
+		9: return "LTWD"   # LIGHT_WOODS
+		10: return "HVWD"  # HEAVY_WOODS
+		11: return "BOG"   # BOG
+		12: return "ROAD"  # ROAD
+		13: return "RUB"   # RUBBLE
 		_: return "?"
 
 func _get_movement_cost(q: int, r: int) -> int:
