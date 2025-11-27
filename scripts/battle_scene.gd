@@ -529,12 +529,16 @@ func show_initiative_screen():
 	
 	# Pasar los nombres de los mechs a la pantalla de iniciativa
 	initiative_screen.player_mech_names = []
+	initiative_screen.player_mech_destroyed = []
 	for mech in player_mechs:
 		initiative_screen.player_mech_names.append(mech.mech_name)
+		initiative_screen.player_mech_destroyed.append(mech.is_destroyed)
 	
 	initiative_screen.enemy_mech_names = []
+	initiative_screen.enemy_mech_destroyed = []
 	for mech in enemy_mechs:
 		initiative_screen.enemy_mech_names.append(mech.mech_name)
+		initiative_screen.enemy_mech_destroyed.append(mech.is_destroyed)
 	
 	# Conectar señal (usar CONNECT_ONE_SHOT para que se desconecte automáticamente)
 	initiative_screen.initiative_complete.connect(_on_initiative_screen_complete, CONNECT_ONE_SHOT)
@@ -551,12 +555,16 @@ func show_initiative_screen_multiplayer(server_result: Dictionary):
 	
 	# Pasar los nombres de los mechs
 	initiative_screen.player_mech_names = []
+	initiative_screen.player_mech_destroyed = []
 	for mech in player_mechs:
 		initiative_screen.player_mech_names.append(mech.mech_name)
+		initiative_screen.player_mech_destroyed.append(mech.is_destroyed)
 	
 	initiative_screen.enemy_mech_names = []
+	initiative_screen.enemy_mech_destroyed = []
 	for mech in enemy_mechs:
 		initiative_screen.enemy_mech_names.append(mech.mech_name)
+		initiative_screen.enemy_mech_destroyed.append(mech.is_destroyed)
 	
 	# Configurar para modo servidor (sin tirar dados)
 	initiative_screen.set_meta("server_mode", true)

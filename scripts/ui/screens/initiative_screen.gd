@@ -21,6 +21,8 @@ var is_rolling = false
 
 var player_mech_names = []
 var enemy_mech_names = []
+var player_mech_destroyed = []  # Array de booleanos indicando si cada mech está destruido
+var enemy_mech_destroyed = []   # Array de booleanos indicando si cada mech está destruido
 
 func _ready():
 	visible = true
@@ -42,9 +44,91 @@ func _update_mech_labels():
 			var team = child.get_meta("team")
 			
 			if team == "player" and mech_index < player_mech_names.size():
-				child.text = player_mech_names[mech_index]
+				var is_dead = mech_index < player_mech_destroyed.size() and player_mech_destroyed[mech_index]
+				if is_dead:
+					# Tachar el nombre del mech muerto y cambiar color a gris
+					child.text = "☠ " + player_mech_names[mech_index]
+					child.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+					# Añadir línea de tachado usando una línea horizontal
+					_add_strikethrough_to_label(child)
+				else:
+					child.text = player_mech_names[mech_index]
 			elif team == "enemy" and mech_index < enemy_mech_names.size():
-				child.text = enemy_mech_names[mech_index]
+				var is_dead = mech_index < enemy_mech_destroyed.size() and enemy_mech_destroyed[mech_index]
+				if is_dead:
+					# Tachar el nombre del mech muerto y cambiar color a gris
+					child.text = "☠ " + enemy_mech_names[mech_index]
+					child.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+					_add_strikethrough_to_label(child)
+				else:
+					child.text = enemy_mech_names[mech_index]
+	
+	# También marcar visualmente los dados de mechs muertos
+	_mark_dead_mech_dice()
+
+func _add_strikethrough_to_label(label: Label):
+	"""Añade una línea de tachado sobre el label"""
+	# Esperar un frame para que el label tenga su tamaño
+	await get_tree().process_frame
+	
+	if not is_instance_valid(label):
+		return
+	
+	var line = ColorRect.new()
+	line.color = Color(0.6, 0.6, 0.6, 0.8)
+	line.size = Vector2(label.size.x * 0.8, 2)
+	line.position = Vector2(label.position.x + 5, label.position.y + label.size.y / 2)
+	add_child(line)
+
+func _mark_dead_mech_dice():
+	"""Marca visualmente los dados de mechs muertos con tachado y color gris"""
+	# Marcar dados del jugador
+	for i in range(4):
+		var is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
+		if is_dead:
+			var dice_idx1 = i * 2
+			var dice_idx2 = i * 2 + 1
+			if dice_idx1 < player_dice.size():
+				_mark_dice_as_dead(player_dice[dice_idx1])
+			if dice_idx2 < player_dice.size():
+				_mark_dice_as_dead(player_dice[dice_idx2])
+	
+	# Marcar dados del enemigo
+	for i in range(4):
+		var is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
+		if is_dead:
+			var dice_idx1 = i * 2
+			var dice_idx2 = i * 2 + 1
+			if dice_idx1 < enemy_dice.size():
+				_mark_dice_as_dead(enemy_dice[dice_idx1])
+			if dice_idx2 < enemy_dice.size():
+				_mark_dice_as_dead(enemy_dice[dice_idx2])
+
+func _mark_dice_as_dead(dice: Control):
+	"""Marca un dado como perteneciente a un mech muerto"""
+	if not is_instance_valid(dice):
+		return
+	
+	# Reducir opacidad
+	dice.modulate = Color(0.5, 0.5, 0.5, 0.6)
+	
+	# Cambiar el símbolo a X
+	var label = dice.get_meta("label")
+	if label:
+		label.text = "✕"
+		label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.4))
+	
+	# Añadir línea de tachado sobre el dado
+	var dice_size = dice.get_meta("dice_size")
+	var strike_line = ColorRect.new()
+	strike_line.color = Color(0.7, 0.2, 0.2, 0.8)
+	strike_line.size = Vector2(dice_size * 1.2, 3)
+	strike_line.position = Vector2(-dice_size * 0.1, dice_size / 2 - 1)
+	strike_line.rotation = -0.15  # Ligera inclinación
+	dice.add_child(strike_line)
+	
+	# Marcar que este dado está muerto para no animarlo
+	dice.set_meta("is_dead", true)
 
 func _check_server_mode():
 	"""Si estamos en modo servidor, mostrar resultados directamente"""
@@ -376,34 +460,54 @@ func _on_roll_pressed():
 	roll_button.disabled = true
 	subtitle_label.text = "Rolling dice for all mechs..."
 	
-	# Tirar 2D6 para cada mech
+	# Tirar 2D6 para cada mech (solo para los vivos)
 	for i in range(4):
-		player_results[i][0] = (randi() % 6) + 1
-		player_results[i][1] = (randi() % 6) + 1
-		enemy_results[i][0] = (randi() % 6) + 1
-		enemy_results[i][1] = (randi() % 6) + 1
+		var player_is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
+		var enemy_is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
+		
+		if not player_is_dead:
+			player_results[i][0] = (randi() % 6) + 1
+			player_results[i][1] = (randi() % 6) + 1
+		else:
+			player_results[i][0] = 0
+			player_results[i][1] = 0
+		
+		if not enemy_is_dead:
+			enemy_results[i][0] = (randi() % 6) + 1
+			enemy_results[i][1] = (randi() % 6) + 1
+		else:
+			enemy_results[i][0] = 0
+			enemy_results[i][1] = 0
 	
-	# Animar los 16 dados con delays escalonados
+	# Animar los 16 dados con delays escalonados (solo los vivos)
 	var delay = 0.0
 	for i in range(4):
-		# Dados del jugador (mech i)
-		animate_dice_3d(player_dice[i * 2], player_results[i][0], delay)
-		delay += 0.1
-		animate_dice_3d(player_dice[i * 2 + 1], player_results[i][1], delay)
-		delay += 0.1
+		var player_is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
+		if not player_is_dead:
+			# Dados del jugador (mech i)
+			animate_dice_3d(player_dice[i * 2], player_results[i][0], delay)
+			delay += 0.1
+			animate_dice_3d(player_dice[i * 2 + 1], player_results[i][1], delay)
+			delay += 0.1
 	
 	for i in range(4):
-		# Dados del enemigo (mech i)
-		animate_dice_3d(enemy_dice[i * 2], enemy_results[i][0], delay)
-		delay += 0.1
-		animate_dice_3d(enemy_dice[i * 2 + 1], enemy_results[i][1], delay)
-		delay += 0.1
+		var enemy_is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
+		if not enemy_is_dead:
+			# Dados del enemigo (mech i)
+			animate_dice_3d(enemy_dice[i * 2], enemy_results[i][0], delay)
+			delay += 0.1
+			animate_dice_3d(enemy_dice[i * 2 + 1], enemy_results[i][1], delay)
+			delay += 0.1
 	
 	await get_tree().create_timer(2.5).timeout  # Optimizado para móvil: 0.4s lanzamiento + 0.7s caída + 0.3s flash + margen
 	show_results()
 
 func animate_dice_3d(dice: Control, final_result: int, delay: float):
 	if not is_instance_valid(dice):
+		return
+	
+	# No animar dados de mechs muertos
+	if dice.has_meta("is_dead") and dice.get_meta("is_dead"):
 		return
 		
 	var label = dice.get_meta("label")
@@ -596,6 +700,7 @@ func show_results():
 	for i in range(4):
 		var player_name = player_mech_names[i] if i < player_mech_names.size() else ("Mech " + str(i + 1))
 		var player_total = player_results[i][0] + player_results[i][1]
+		var is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
 		
 		var row = HBoxContainer.new()
 		row.position = Vector2(margin * 2, y_offset)
@@ -603,23 +708,39 @@ func show_results():
 		player_panel.add_child(row)
 		
 		var name_label = Label.new()
-		name_label.text = player_name
+		if is_dead:
+			name_label.text = "☠ " + player_name
+			name_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+		else:
+			name_label.text = player_name
+			name_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1, 1))
 		name_label.custom_minimum_size = Vector2(panel_width * 0.6, 25 * scale_factor)
 		name_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
-		name_label.add_theme_color_override("font_color", Color(0.8, 0.9, 1, 1))
 		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(name_label)
 		
 		var score_label = Label.new()
-		score_label.text = str(player_total)
+		if is_dead:
+			score_label.text = "――"  # Tachado visual para muertos
+			score_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+		else:
+			score_label.text = str(player_total)
+			score_label.add_theme_color_override("font_color", Color(0.4, 1, 0.4, 1))
+			score_label.add_theme_color_override("font_outline_color", Color(0, 0.2, 0, 1))
+			score_label.add_theme_constant_override("outline_size", 2)
 		score_label.custom_minimum_size = Vector2(50 * scale_factor, 25 * scale_factor)
 		score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		score_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		score_label.add_theme_font_size_override("font_size", int(22 * scale_factor))
-		score_label.add_theme_color_override("font_color", Color(0.4, 1, 0.4, 1))
-		score_label.add_theme_color_override("font_outline_color", Color(0, 0.2, 0, 1))
-		score_label.add_theme_constant_override("outline_size", 2)
 		row.add_child(score_label)
+		
+		# Añadir línea de tachado si está muerto
+		if is_dead:
+			var strike_line = ColorRect.new()
+			strike_line.color = Color(0.7, 0.2, 0.2, 0.8)
+			strike_line.size = Vector2(panel_width - margin * 6, 2)
+			strike_line.position = Vector2(margin * 2, y_offset + 12 * scale_factor)
+			player_panel.add_child(strike_line)
 		
 		y_offset += 30 * scale_factor
 	
@@ -670,6 +791,7 @@ func show_results():
 	for i in range(4):
 		var enemy_name = enemy_mech_names[i] if i < enemy_mech_names.size() else ("Enemy " + str(i + 1))
 		var enemy_total = enemy_results[i][0] + enemy_results[i][1]
+		var is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
 		
 		var row = HBoxContainer.new()
 		row.position = Vector2(margin * 2, y_offset)
@@ -677,23 +799,39 @@ func show_results():
 		enemy_panel.add_child(row)
 		
 		var name_label = Label.new()
-		name_label.text = enemy_name
+		if is_dead:
+			name_label.text = "☠ " + enemy_name
+			name_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+		else:
+			name_label.text = enemy_name
+			name_label.add_theme_color_override("font_color", Color(1, 0.8, 0.8, 1))
 		name_label.custom_minimum_size = Vector2(panel_width * 0.6, 25 * scale_factor)
 		name_label.add_theme_font_size_override("font_size", int(16 * scale_factor))
-		name_label.add_theme_color_override("font_color", Color(1, 0.8, 0.8, 1))
 		name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(name_label)
 		
 		var score_label = Label.new()
-		score_label.text = str(enemy_total)
+		if is_dead:
+			score_label.text = "――"  # Tachado visual para muertos
+			score_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+		else:
+			score_label.text = str(enemy_total)
+			score_label.add_theme_color_override("font_color", Color(1, 0.4, 0.4, 1))
+			score_label.add_theme_color_override("font_outline_color", Color(0.2, 0, 0, 1))
+			score_label.add_theme_constant_override("outline_size", 2)
 		score_label.custom_minimum_size = Vector2(50 * scale_factor, 25 * scale_factor)
 		score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		score_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		score_label.add_theme_font_size_override("font_size", int(22 * scale_factor))
-		score_label.add_theme_color_override("font_color", Color(1, 0.4, 0.4, 1))
-		score_label.add_theme_color_override("font_outline_color", Color(0.2, 0, 0, 1))
-		score_label.add_theme_constant_override("outline_size", 2)
 		row.add_child(score_label)
+		
+		# Añadir línea de tachado si está muerto
+		if is_dead:
+			var strike_line = ColorRect.new()
+			strike_line.color = Color(0.7, 0.2, 0.2, 0.8)
+			strike_line.size = Vector2(panel_width - margin * 6, 2)
+			strike_line.position = Vector2(margin * 2, y_offset + 12 * scale_factor)
+			enemy_panel.add_child(strike_line)
 		
 		y_offset += 30 * scale_factor
 	
