@@ -59,6 +59,7 @@ const HEX_CLICK_DEBOUNCE_MS: int = 150  # Tiempo mínimo entre clicks en hex (ms
 var pending_move_confirmation: bool = false  # Esperando confirmación de movimiento
 var preview_path: Array = []  # Camino a previsualizar
 var preview_destination: Vector2i = Vector2i(-1, -1)  # Destino del movimiento pendiente
+var reachable_hexes_details: Dictionary = {}  # Detalles de hexes alcanzables (incluye paths)
 
 # USAR GameEnums en lugar de enum local
 var current_state: int = GameEnums.GameState.MOVING
@@ -1839,10 +1840,13 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 		return
 	
 	# Actualizar hexagonos alcanzables segun el tipo de movimiento usando MovementSystem
+	# Guardar también los detalles (paths) para usarlos en _preview_movement_path
 	if movement_type == GameEnums.MovementType.JUMP:
 		reachable_hexes = MovementSystem.get_jump_hexes(selected_unit.hex_position, selected_unit.current_movement, hex_grid, selected_unit)
+		reachable_hexes_details = {}  # Jump no usa detalles de path
 	else:
-		reachable_hexes = MovementSystem.get_reachable_hexes(selected_unit.hex_position, selected_unit.current_movement, movement_type, hex_grid, selected_unit)
+		reachable_hexes_details = MovementSystem.get_reachable_hexes_with_details(selected_unit.hex_position, selected_unit.current_movement, movement_type, hex_grid, selected_unit)
+		reachable_hexes = reachable_hexes_details.keys()
 	
 	# Verificar si se encontraron hexágonos alcanzables
 	if ui:
@@ -1887,6 +1891,7 @@ func cancel_movement_selection():
 	
 	# Limpiar hexágonos alcanzables y overlays
 	reachable_hexes = []
+	reachable_hexes_details = {}
 	preview_path = []
 	preview_destination = Vector2i(-1, -1)
 	pending_move_confirmation = false
@@ -1930,9 +1935,8 @@ func _handle_movement_click(hex: Vector2i):
 	if pending_move_confirmation and preview_destination != Vector2i(-1, -1):
 		print("[MOVE_CLICK] Have pending confirmation - checking if same hex")
 		if hex == preview_destination:
-			# Segundo click en el mismo destino = confirmar movimiento
-			print("[MOVE_CLICK] SAME HEX - confirming movement!")
-			_on_movement_confirmed()
+			# Click en el mismo destino = ignorar (solo se confirma con el menú)
+			print("[MOVE_CLICK] SAME HEX - ignoring (use confirmation menu)")
 			return
 		else:
 			# Click en otro hex = cancelar preview y mostrar nuevo
@@ -1951,8 +1955,15 @@ func _preview_movement_path(unit, hex: Vector2i):
 	"""Muestra el camino de movimiento y pide confirmación"""
 	print("[PREVIEW_MOVE] Starting preview to hex=%s for unit=%s" % [hex, unit.mech_name])
 	
-	# Calcular camino
-	var path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
+	# Usar el path pre-calculado de reachable_hexes_details si está disponible
+	var path: Array = []
+	if reachable_hexes_details.has(hex):
+		path = reachable_hexes_details[hex]["path"]
+		print("[PREVIEW_MOVE] Using pre-calculated path from reachable_hexes_details")
+	else:
+		# Fallback a find_path para saltos u otros casos
+		path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
+		print("[PREVIEW_MOVE] Using hex_grid.find_path (fallback)")
 	
 	if path.size() == 0:
 		print("[PREVIEW_MOVE] No path found - abort")
@@ -2063,6 +2074,7 @@ func _on_movement_confirmed():
 	preview_path = []
 	preview_destination = Vector2i(-1, -1)
 	reachable_hexes = []  # Limpiar hexágonos alcanzables después del movimiento
+	reachable_hexes_details = {}
 	
 	# Actualizar overlays
 	print("[BATTLE] Updating overlays after movement")
@@ -2195,10 +2207,11 @@ func _execute_movement(unit, hex: Vector2i, path: Array):
 		selected_unit = unit  # Asegurar que selected_unit esté disponible
 		
 		# Mostrar selector con MPs disponibles para rotación
+		# Pasar el hex para que el selector se ancle y siga la cámara
 		if ui.has_method("show_facing_selector_with_current"):
-			ui.show_facing_selector_with_current(mech_screen_pos, unit.facing, unit.current_movement)
+			ui.show_facing_selector_with_current(mech_screen_pos, unit.facing, unit.current_movement, unit.hex_position)
 		elif _local_facing_selector:
-			_ui_show_facing_selector_with_current(mech_screen_pos, unit.facing, unit.current_movement)
+			_ui_show_facing_selector_with_current(mech_screen_pos, unit.facing, unit.current_movement, unit.hex_position)
 	else:
 		# Si no hay UI o no es mech del jugador, completar activación directamente
 		print("[BATTLE] No facing selector needed, completing activation")

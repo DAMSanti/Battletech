@@ -179,7 +179,7 @@ static func get_reachable_hexes_with_details(start_hex: Vector2i, max_distance: 
 
 		# pop lowest cost state
 		pq.sort_custom(func(a, b):
-			return int(a.get("cost", 0) - b.get("cost", 0))
+			return a.get("cost", 0) < b.get("cost", 0)
 		)
 		var current = pq.pop_front()
 		var current_hex: Vector2i = current["hex"]

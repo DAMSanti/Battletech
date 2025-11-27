@@ -384,6 +384,10 @@ func _setup_ui():
 	weapon_selector_panel.position = Vector2((screen_width - weapon_panel_width) / 2, (screen_height - weapon_panel_height) / 2)
 	weapon_selector_panel.size = Vector2(weapon_panel_width, weapon_panel_height)
 	weapon_selector_panel.visible = false
+	# IMPORTANTE: Bloquear eventos de mouse/touch para que no pasen al battle_scene
+	weapon_selector_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Conectar gui_input para consumir eventos y evitar propagación
+	weapon_selector_panel.gui_input.connect(_on_weapon_panel_input)
 	
 	# Estilo BattleTech para el panel de armas - MÁS TRANSPARENTE
 	var weapon_style = StyleBoxFlat.new()
@@ -1069,10 +1073,15 @@ func show_facing_selector(screen_position: Vector2, hex: Vector2i = Vector2i(-1,
 		facing_selector.show_at_position(screen_position, -1, 99)
 
 func show_facing_selector_with_current(screen_position: Vector2, current_facing: int, available_mp: int, hex: Vector2i = Vector2i(-1, -1)):
-	"""Muestra el selector de orientación con facing actual y MPs disponibles"""
+	"""Muestra el selector de orientación con facing actual y MPs disponibles
+	Si se proporciona hex, el selector se anclará a esa posición y seguirá la cámara"""
 	if facing_selector:
+		# Siempre establecer el hex objetivo si está disponible para que siga la cámara
 		if hex != Vector2i(-1, -1) and battle_scene:
 			facing_selector.set_target_hex(hex, battle_scene)
+			# Obtener la posición actualizada del hex en pantalla
+			if battle_scene.has_method("get_screen_position_for_hex"):
+				screen_position = battle_scene.get_screen_position_for_hex(hex)
 		facing_selector.show_at_position(screen_position, current_facing, available_mp)
 
 func hide_facing_selector():
@@ -1267,6 +1276,7 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 		var hbox = HBoxContainer.new()
 		hbox.position = Vector2(20, y_pos)
 		hbox.size = Vector2(480, 40)
+		hbox.mouse_filter = Control.MOUSE_FILTER_STOP  # Bloquear eventos
 		weapon_selector_panel.add_child(hbox)
 		
 		# Label clickeable para mostrar info (toma la mayor parte del espacio)
@@ -1275,7 +1285,7 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 		weapon_label.add_theme_font_size_override("font_size", 14)
 		weapon_label.custom_minimum_size = Vector2(420, 40)
 		weapon_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		weapon_label.mouse_filter = Control.MOUSE_FILTER_PASS
+		weapon_label.mouse_filter = Control.MOUSE_FILTER_STOP  # Capturar eventos
 		weapon_label.set_meta("weapon_index", weapon_index)
 		weapon_label.set_meta("weapon_data", weapon)
 		weapon_label.set_meta("breakdown", breakdown)
@@ -1300,6 +1310,12 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 	# Mostrar panel
 	weapon_selector_panel.visible = true
 
+func _on_weapon_panel_input(event: InputEvent):
+	"""Consume todos los eventos de input en el panel de armas para evitar propagación"""
+	# Marcar cualquier evento de mouse/touch como manejado
+	if event is InputEventMouseButton or event is InputEventMouseMotion or event is InputEventScreenTouch or event is InputEventScreenDrag:
+		get_viewport().set_input_as_handled()
+
 func hide_weapon_selector():
 	if weapon_selector_panel:
 		weapon_selector_panel.visible = false
@@ -1314,6 +1330,8 @@ func hide_weapon_selector():
 func _on_weapon_label_clicked(event: InputEvent, weapon_index: int, weapon: Dictionary, breakdown: String, to_hit_data: Dictionary):
 	# Mostrar info solo cuando se hace clic en el label (no en el checkbox)
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		# Marcar evento como manejado para evitar propagación
+		get_viewport().set_input_as_handled()
 		_on_weapon_clicked(weapon_index, weapon, breakdown, to_hit_data)
 
 func _on_weapon_clicked(_weapon_index: int, weapon: Dictionary, breakdown: String, to_hit_data: Dictionary):
@@ -1563,6 +1581,9 @@ func _on_switch_clicked(event: InputEvent, switch_control: Control, weapon_index
 		return
 	if not event.pressed or event.button_index != MOUSE_BUTTON_LEFT:
 		return
+	
+	# Marcar evento como manejado para evitar propagación al battle_scene
+	switch_control.get_viewport().set_input_as_handled()
 	
 	var enabled = switch_control.get_meta("enabled")
 	if not enabled:
@@ -2020,7 +2041,11 @@ func _on_confirmation_confirm():
 	# Establecer cooldown en battle_scene para evitar que el clic se propague al hex
 	if battle_scene:
 		battle_scene.ui_interaction_cooldown = 0.3
-		battle_scene.ignore_next_click = true
+		# Usar el temporizador para resetear automáticamente
+		if battle_scene.has_method("start_ignore_click_timer"):
+			battle_scene.start_ignore_click_timer(300)
+		else:
+			battle_scene.ignore_next_click = true
 	get_viewport().set_input_as_handled()
 	var callback = on_confirm_callback  # Guardar antes de limpiar
 	hide_confirmation_dialog()
@@ -2036,7 +2061,11 @@ func _on_confirmation_cancel():
 	# Establecer cooldown en battle_scene para evitar que el clic se propague al hex
 	if battle_scene:
 		battle_scene.ui_interaction_cooldown = 0.3
-		battle_scene.ignore_next_click = true
+		# Usar el temporizador para resetear automáticamente
+		if battle_scene.has_method("start_ignore_click_timer"):
+			battle_scene.start_ignore_click_timer(300)
+		else:
+			battle_scene.ignore_next_click = true
 	get_viewport().set_input_as_handled()
 	var callback = on_cancel_callback  # Guardar antes de limpiar
 	hide_confirmation_dialog()
