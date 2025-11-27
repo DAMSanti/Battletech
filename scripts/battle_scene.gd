@@ -241,6 +241,10 @@ func update_overlays():
 func _ready():
 	print("[BATTLE] _ready() called")
 	
+	# Iniciar música de batalla
+	if AudioManager:
+		AudioManager.play_music(AudioManager.MUSIC_BATTLE, 1.5)
+	
 	# Crear indicador de long press
 	_create_long_press_indicator()
 	

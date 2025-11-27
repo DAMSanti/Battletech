@@ -39,40 +39,55 @@ const COLOR_ERROR = Color(0.9, 0.2, 0.2)
 const COLOR_NORMAL = Color(0.7, 0.7, 0.7)
 
 func _ready():
+	# Música del menú (continúa si ya está sonando)
+	if AudioManager:
+		AudioManager.play_music(AudioManager.MUSIC_MENU)
+	
 	_setup_ui()
 	
-	# Conectar botones
+	# Conectar botones con sonido
 	if save_button:
+		save_button.pressed.connect(_play_click)
 		save_button.pressed.connect(_on_save_pressed)
 	if load_button:
+		load_button.pressed.connect(_play_click)
 		load_button.pressed.connect(_on_load_pressed)
 	if apply_button:
+		apply_button.pressed.connect(_play_click)
 		apply_button.pressed.connect(_on_apply_pressed)
 	if back_button:
+		back_button.pressed.connect(_play_click)
 		back_button.pressed.connect(_on_back_pressed)
 	
-	# Conectar botones del popup
+	# Conectar botones del popup con sonido
 	if popup_add_button:
+		popup_add_button.pressed.connect(_play_click)
 		popup_add_button.pressed.connect(_on_popup_add_pressed)
 	if popup_cancel_button:
+		popup_cancel_button.pressed.connect(_play_click)
 		popup_cancel_button.pressed.connect(_on_popup_cancel_pressed)
 	
 	# Conectar búsqueda
 	if search_box:
 		search_box.text_changed.connect(_on_search_changed)
 	
-	# Conectar botones del popup de guardado
+	# Conectar botones del popup de guardado con sonido
 	if save_loadout_confirm_button:
+		save_loadout_confirm_button.pressed.connect(_play_click)
 		save_loadout_confirm_button.pressed.connect(_on_save_loadout_confirm)
 	if save_loadout_cancel_button:
+		save_loadout_cancel_button.pressed.connect(_play_click)
 		save_loadout_cancel_button.pressed.connect(_on_save_loadout_cancel)
 	
-	# Conectar botones del popup de carga
+	# Conectar botones del popup de carga con sonido
 	if load_loadout_confirm_button:
+		load_loadout_confirm_button.pressed.connect(_play_click)
 		load_loadout_confirm_button.pressed.connect(_on_load_loadout_confirm)
 	if load_loadout_cancel_button:
+		load_loadout_cancel_button.pressed.connect(_play_click)
 		load_loadout_cancel_button.pressed.connect(_on_load_loadout_cancel)
 	if delete_loadout_button:
+		delete_loadout_button.pressed.connect(_play_click)
 		delete_loadout_button.pressed.connect(_on_delete_loadout)
 	
 	# Verificar si hay un loadout pendiente para editar desde el Mech Bay
@@ -81,6 +96,10 @@ func _ready():
 	# Cargar mech de prueba DESPUÉS de crear la UI (solo si no hay loadout para editar)
 	if not current_loadout:
 		_load_test_mech()
+
+func _play_click():
+	if AudioManager:
+		AudioManager.play_sfx(AudioManager.SFX_UI_CLICK)
 
 func _setup_ui():
 	# Configurar selector de mechs

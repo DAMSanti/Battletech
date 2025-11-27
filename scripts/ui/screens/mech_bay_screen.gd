@@ -20,16 +20,32 @@ var saved_loadouts: Dictionary = {}
 var selected_loadout_name: String = ""
 
 func _ready():
+	# Música del menú (continúa si ya está sonando)
+	if AudioManager:
+		AudioManager.play_music(AudioManager.MUSIC_MENU)
+	
 	_connect_signals()
 	_apply_custom_styles()
 	_load_saved_loadouts()
 
 func _connect_signals():
 	loadouts_list.item_selected.connect(_on_loadout_selected)
+	loadouts_list.item_selected.connect(_play_click_idx)
+	back_button.pressed.connect(_play_click)
 	back_button.pressed.connect(_on_back_pressed)
+	edit_button.pressed.connect(_play_click)
 	edit_button.pressed.connect(_on_edit_pressed)
+	delete_button.pressed.connect(_play_click)
 	delete_button.pressed.connect(_on_delete_pressed)
+	create_new_button.pressed.connect(_play_click)
 	create_new_button.pressed.connect(_on_create_new_pressed)
+
+func _play_click():
+	if AudioManager:
+		AudioManager.play_sfx(AudioManager.SFX_UI_CLICK)
+
+func _play_click_idx(_idx: int):
+	_play_click()
 
 func _apply_custom_styles():
 	# Estilo personalizado solo para el botón de eliminar (rojo peligro) - los demás usan el theme

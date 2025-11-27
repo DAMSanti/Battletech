@@ -22,6 +22,7 @@ run/main_scene_dedicated_server="res://scenes/server_main.tscn"
 MechBayManager="*res://scripts/managers/mech_bay_manager.gd"
 SelectedLoadoutManager="*res://scripts/managers/selected_loadout_manager.gd"
 NetworkManager="*res://scripts/network/network_manager.gd"
+AudioManager="*res://scripts/managers/audio_manager.gd"
 
 [display]
 

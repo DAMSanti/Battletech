@@ -15,6 +15,10 @@ extends Control
 var network_manager: Node = null
 
 func _ready():
+	# Música del menú (continúa si ya está sonando)
+	if AudioManager:
+		AudioManager.play_music(AudioManager.MUSIC_MENU)
+	
 	network_manager = get_node_or_null("/root/NetworkManager")
 	
 	if not network_manager:
@@ -29,9 +33,13 @@ func _ready():
 	network_manager.match_ready.connect(_on_match_ready)
 	
 	# Conectar botones
+	connect_button.pressed.connect(_play_click)
 	connect_button.pressed.connect(_on_connect_pressed)
+	join_lobby_button.pressed.connect(_play_click)
 	join_lobby_button.pressed.connect(_on_join_lobby_pressed)
+	leave_lobby_button.pressed.connect(_play_click)
 	leave_lobby_button.pressed.connect(_on_leave_lobby_pressed)
+	back_button.pressed.connect(_play_click)
 	back_button.pressed.connect(_on_back_pressed)
 	
 	# Estado inicial
@@ -39,6 +47,10 @@ func _ready():
 	
 	# AUTO-CONECTAR al servidor al entrar a la pantalla
 	_auto_connect()
+
+func _play_click():
+	if AudioManager:
+		AudioManager.play_sfx(AudioManager.SFX_UI_CLICK)
 
 func _update_ui_state():
 	var state = network_manager.connection_state if network_manager else 0

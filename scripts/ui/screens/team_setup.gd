@@ -13,6 +13,10 @@ var slot_labels: Array = []  # Labels que muestran info del mech en cada slot
 var saved_loadouts: Dictionary = {}  # Loadouts guardados del Mech Bay
 
 func _ready():
+	# Música del menú (continúa si ya está sonando)
+	if AudioManager:
+		AudioManager.play_music(AudioManager.MUSIC_MENU)
+	
 	# Obtener referencia al MechBayManager
 	mech_bay_manager = get_node_or_null("/root/MechBayManager")
 	if not mech_bay_manager:
@@ -37,11 +41,24 @@ func _ready():
 	# Poblar lista de mechs disponibles
 	_populate_available_mechs()
 	
-	# Conectar botones
-	$MarginContainer/VBoxContainer/ButtonsContainer/FillRandomButton.pressed.connect(_on_fill_random_pressed)
-	$MarginContainer/VBoxContainer/ButtonsContainer/ClearAllButton.pressed.connect(_on_clear_all_pressed)
-	$MarginContainer/VBoxContainer/ActionsContainer/BackButton.pressed.connect(_on_back_pressed)
-	$MarginContainer/VBoxContainer/ActionsContainer/StartBattleButton.pressed.connect(_on_start_battle_pressed)
+	# Conectar botones con sonido
+	var fill_btn = $MarginContainer/VBoxContainer/ButtonsContainer/FillRandomButton
+	var clear_btn = $MarginContainer/VBoxContainer/ButtonsContainer/ClearAllButton
+	var back_btn = $MarginContainer/VBoxContainer/ActionsContainer/BackButton
+	var start_btn = $MarginContainer/VBoxContainer/ActionsContainer/StartBattleButton
+	
+	fill_btn.pressed.connect(_play_click)
+	fill_btn.pressed.connect(_on_fill_random_pressed)
+	clear_btn.pressed.connect(_play_click)
+	clear_btn.pressed.connect(_on_clear_all_pressed)
+	back_btn.pressed.connect(_play_click)
+	back_btn.pressed.connect(_on_back_pressed)
+	start_btn.pressed.connect(_play_click)
+	start_btn.pressed.connect(_on_start_battle_pressed)
+
+func _play_click():
+	if AudioManager:
+		AudioManager.play_sfx(AudioManager.SFX_UI_CLICK)
 
 func _load_saved_loadouts():
 	# Cargar loadouts guardados desde saved_loadouts.json
@@ -115,6 +132,7 @@ func _setup_lance_slots():
 		var clear_btn = Button.new()
 		clear_btn.text = "Clear"
 		clear_btn.custom_minimum_size = Vector2(0, 30)
+		clear_btn.pressed.connect(_play_click)
 		clear_btn.pressed.connect(_on_clear_slot_pressed.bind(i))
 		vbox.add_child(clear_btn)
 
@@ -152,6 +170,7 @@ func _populate_available_mechs():
 			mech_button.text = "%s - %s (%d tons)" % [loadout_name, chassis, tonnage]
 		
 		mech_button.custom_minimum_size = Vector2(0, 40)
+		mech_button.pressed.connect(_play_click)
 		mech_button.pressed.connect(_on_mech_selected.bind(loadout_name))
 		mech_list.add_child(mech_button)
 

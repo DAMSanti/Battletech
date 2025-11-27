@@ -310,7 +310,11 @@ func _update_sprite():
 			modulate = Color(0.5, 0.5, 0.5)
 		else:
 			sprite.rotation_degrees = 0
-			modulate = Color.WHITE
+			# Tinte azul para mechs del jugador, normal para enemigos
+			if is_player_controlled:
+				modulate = Color(0.7, 0.85, 1.0)  # Tinte azul claro
+			else:
+				modulate = Color(1.0, 0.85, 0.8)  # Tinte rojizo para enemigos
 
 func reset_movement():
 	# Resetea el movimiento al inicio del turno
