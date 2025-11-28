@@ -249,11 +249,9 @@ func _sync_mech_visual(mech_node, mech_state) -> void:
 			mech_node.hex_position = mech_state.position
 			mech_node.position = battle_scene.hex_grid.hex_to_pixel(mech_state.position)
 	
-	# Sincronizar facing
-	if mech_node.has_method("set_facing"):
-		mech_node.set_facing(mech_state.facing)
-	elif mech_node.get("facing") != null:
-		mech_node.facing = mech_state.facing
+	# NOTA: NO sincronizar facing aquí - el mech visual es la fuente de verdad
+	# El facing del estado interno puede estar desactualizado (default 0)
+	# El facing se sincroniza solo cuando el servidor lo confirma via battle_scene
 	
 	# Sincronizar visibilidad/destrucción
 	if not mech_state.is_active:

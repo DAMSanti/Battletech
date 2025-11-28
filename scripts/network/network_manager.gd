@@ -426,6 +426,7 @@ signal battle_heat_result(results: Array)
 signal battle_ended(winner_team: String, reason: String)
 signal battle_action_rejected(reason: String)
 signal battle_opponent_disconnected()
+signal initiative_waiting_update(players_ready: int, players_total: int, wait_type: String)
 
 # Variable para guardar la semilla del mapa (usada por hex_grid)
 var current_map_seed: int = 0
@@ -588,6 +589,36 @@ func server_client_ready(match_id: int):
 		var sender = multiplayer.get_remote_sender_id()
 		server_battle._handle_client_ready(sender, match_id)
 
+@rpc("any_peer", "reliable")
+func server_initiative_roll_ready(match_id: int):
+	"""Cliente notifica que presionó Roll Dice"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_initiative_roll_ready(sender, match_id)
+
+@rpc("any_peer", "reliable")
+func server_start_battle_ready(match_id: int):
+	"""Cliente notifica que presionó Start Battle"""
+	if not is_server:
+		return
+	var server_battle = get_node_or_null("/root/ServerMain/ServerBattleManager")
+	if server_battle:
+		var sender = multiplayer.get_remote_sender_id()
+		server_battle._handle_start_battle_ready(sender, match_id)
+
+@rpc("authority", "reliable")
+func client_waiting_for_rolls(players_ready: int, players_total: int):
+	"""Servidor notifica cuántos jugadores han dado a Roll"""
+	initiative_waiting_update.emit(players_ready, players_total, "roll")
+
+@rpc("authority", "reliable")
+func client_waiting_for_start(players_ready: int, players_total: int):
+	"""Servidor notifica cuántos jugadores han dado a Start"""
+	initiative_waiting_update.emit(players_ready, players_total, "start")
+
 # Señal para notificar que ambos jugadores desplegaron
 signal battle_all_deployed()
 
@@ -596,6 +627,54 @@ func client_all_deployed():
 	"""Servidor notifica que ambos jugadores terminaron de desplegar"""
 	print("[CLIENT] Both players deployed!")
 	battle_all_deployed.emit()
+
+# ============================================================
+# CHAT MULTIPLAYER
+# ============================================================
+
+signal chat_message_received(sender_name: String, message: String)
+
+@rpc("any_peer", "reliable")
+func server_send_chat(match_id: int, message: String):
+	"""Cliente envía mensaje de chat al servidor"""
+	if not is_server:
+		return
+	
+	var sender_id = multiplayer.get_remote_sender_id()
+	if sender_id not in connected_players:
+		return
+	
+	var sender_name = connected_players[sender_id].get("name", "Unknown")
+	var player_match_id = connected_players[sender_id].get("match_id", -1)
+	
+	# Verificar que el mensaje es para la partida correcta
+	if player_match_id != match_id or match_id not in active_matches:
+		return
+	
+	var match_data = active_matches[match_id]
+	
+	# Reenviar al oponente
+	var opponent_id = match_data["player1"] if match_data["player2"] == sender_id else match_data["player2"]
+	if opponent_id in connected_players:
+		rpc_id(opponent_id, "client_chat_message", sender_name, message)
+	
+	print("[SERVER] Chat from %s: %s" % [sender_name, message])
+
+@rpc("authority", "reliable")
+func client_chat_message(sender_name: String, message: String):
+	"""Servidor reenvía mensaje de chat al cliente"""
+	print("[CLIENT] Chat from %s: %s" % [sender_name, message])
+	chat_message_received.emit(sender_name, message)
+
+func send_chat_message(message: String):
+	"""Envía un mensaje de chat al servidor para reenviar al oponente"""
+	if not is_in_match():
+		return
+	rpc_id(1, "server_send_chat", current_match_id, message)
+
+func get_local_player_name() -> String:
+	"""Obtiene el nombre del jugador local"""
+	return local_player_name
 
 # ============================================================
 # UTILIDADES

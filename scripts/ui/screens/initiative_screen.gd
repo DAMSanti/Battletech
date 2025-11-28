@@ -24,6 +24,12 @@ var enemy_mech_names = []
 var player_mech_destroyed = []  # Array de booleanos indicando si cada mech está destruido
 var enemy_mech_destroyed = []   # Array de booleanos indicando si cada mech está destruido
 
+# Variables para multiplayer
+var is_multiplayer_mode: bool = false
+var match_id: int = -1
+var waiting_for_opponent_roll: bool = false
+var waiting_for_opponent_start: bool = false
+
 func _ready():
 	visible = true
 	layer = 100
@@ -35,6 +41,48 @@ func _ready():
 	
 	# Verificar si estamos en modo servidor (multijugador)
 	call_deferred("_check_server_mode")
+	
+	# Conectar señales de multiplayer
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager:
+		if network_manager.is_in_match():
+			is_multiplayer_mode = true
+			match_id = network_manager.get_current_match_id()
+			print("[INITIATIVE] Multiplayer mode detected, match_id: %d" % match_id)
+			# Conectar señal de espera
+			if not network_manager.initiative_waiting_update.is_connected(_on_waiting_update):
+				network_manager.initiative_waiting_update.connect(_on_waiting_update)
+			# Conectar señal de resultado de iniciativa
+			if not network_manager.battle_initiative_result.is_connected(_on_server_initiative_result):
+				network_manager.battle_initiative_result.connect(_on_server_initiative_result)
+
+func _on_waiting_update(players_ready: int, players_total: int, wait_type: String):
+	"""Actualiza UI cuando el servidor notifica estado de espera"""
+	print("[INITIATIVE] Waiting update: %d/%d ready for %s (my_roll_sent=%s, my_start_sent=%s)" % [players_ready, players_total, wait_type, waiting_for_opponent_roll, waiting_for_opponent_start])
+	
+	if wait_type == "roll":
+		# Solo actualizar UI si YO ya presioné Roll
+		if waiting_for_opponent_roll:
+			roll_button.text = "⏳ WAITING (%d/%d)" % [players_ready, players_total]
+			roll_button.disabled = true
+			subtitle_label.text = "Waiting for opponent to roll..."
+		# Si ambos están listos, el servidor enviará client_initiative_result
+	elif wait_type == "start":
+		# Solo actualizar UI si YO ya presioné Start
+		if waiting_for_opponent_start:
+			continue_button.text = "⏳ WAITING (%d/%d)" % [players_ready, players_total]
+			continue_button.disabled = true
+		
+		if players_ready >= players_total:
+			# Ambos listos para empezar - cerrar pantalla
+			print("[INITIATIVE] Both players ready to start - closing screen")
+			_do_continue_animation()
+
+func _on_server_initiative_result(result: Dictionary):
+	"""Recibe el resultado de iniciativa del servidor"""
+	print("[INITIATIVE] Server result received: %s" % result)
+	waiting_for_opponent_roll = false
+	_show_server_results(result)
 
 func _update_mech_labels():
 	# Buscar todos los labels de mechs y actualizar sus nombres
@@ -139,48 +187,67 @@ func _check_server_mode():
 			_show_server_results(server_result)
 
 func _show_server_results(server_result: Dictionary):
-	"""Muestra los resultados del servidor directamente"""
+	"""Muestra los resultados del servidor con animación de dados"""
 	is_rolling = true
 	roll_button.disabled = true
-	roll_button.visible = false  # Ocultar botón de tirar en modo servidor
-	subtitle_label.text = "Server rolled initiative..."
+	roll_button.visible = false  # Ocultar botón de tirar
+	subtitle_label.text = "Rolling initiative..."
 	
-	# Extraer datos del servidor
-	var player_dice_values = server_result.get("player_dice", [6, 6])
-	var enemy_dice_values = server_result.get("enemy_dice", [1, 1])
+	# Extraer datos del servidor - ahora es un array de [die1, die2] por mech
+	var player_mech_rolls = server_result.get("player_mech_rolls", [])
+	var enemy_mech_rolls = server_result.get("enemy_mech_rolls", [])
 	
-	# Asignar los mismos dados a cada mech (simplificado para multijugador)
-	# En multijugador solo hay 1 tirada de dados por equipo
+	print("[INITIATIVE] Server rolls - Player mechs: %d, Enemy mechs: %d" % [player_mech_rolls.size(), enemy_mech_rolls.size()])
+	
+	# Asignar los dados de cada mech
 	for i in range(4):
-		player_results[i][0] = player_dice_values[0] if player_dice_values.size() > 0 else 1
-		player_results[i][1] = player_dice_values[1] if player_dice_values.size() > 1 else 1
-		enemy_results[i][0] = enemy_dice_values[0] if enemy_dice_values.size() > 0 else 1
-		enemy_results[i][1] = enemy_dice_values[1] if enemy_dice_values.size() > 1 else 1
+		if i < player_mech_rolls.size():
+			var rolls = player_mech_rolls[i]
+			player_results[i][0] = rolls[0] if rolls.size() > 0 else 1
+			player_results[i][1] = rolls[1] if rolls.size() > 1 else 1
+		else:
+			# Mech no existe o está destruido
+			player_results[i][0] = 0
+			player_results[i][1] = 0
 	
-	# Mostrar dados con animación rápida
-	for i in range(8):
-		if i < player_dice.size():
-			var dice = player_dice[i]
-			var mech_idx = i / 2
-			var dice_idx = i % 2
-			var value = player_results[mech_idx][dice_idx]
-			_show_dice_result(dice, value)
+	for i in range(4):
+		if i < enemy_mech_rolls.size():
+			var rolls = enemy_mech_rolls[i]
+			enemy_results[i][0] = rolls[0] if rolls.size() > 0 else 1
+			enemy_results[i][1] = rolls[1] if rolls.size() > 1 else 1
+		else:
+			# Mech no existe o está destruido
+			enemy_results[i][0] = 0
+			enemy_results[i][1] = 0
 	
-	for i in range(8):
-		if i < enemy_dice.size():
-			var dice = enemy_dice[i]
-			var mech_idx = i / 2
-			var dice_idx = i % 2
-			var value = enemy_results[mech_idx][dice_idx]
-			_show_dice_result(dice, value)
+	# Animar los dados con delays escalonados (como en single player)
+	var delay = 0.0
+	for i in range(4):
+		if i < player_mech_rolls.size():
+			# Dados del jugador (mech i)
+			if i * 2 < player_dice.size():
+				animate_dice_3d(player_dice[i * 2], player_results[i][0], delay)
+				delay += 0.1
+			if i * 2 + 1 < player_dice.size():
+				animate_dice_3d(player_dice[i * 2 + 1], player_results[i][1], delay)
+				delay += 0.1
 	
-	# Mostrar resultados después de un breve delay
-	await get_tree().create_timer(0.5).timeout
+	for i in range(4):
+		if i < enemy_mech_rolls.size():
+			# Dados del enemigo (mech i)
+			if i * 2 < enemy_dice.size():
+				animate_dice_3d(enemy_dice[i * 2], enemy_results[i][0], delay)
+				delay += 0.1
+			if i * 2 + 1 < enemy_dice.size():
+				animate_dice_3d(enemy_dice[i * 2 + 1], enemy_results[i][1], delay)
+				delay += 0.1
+	
+	# Esperar a que terminen las animaciones
+	await get_tree().create_timer(2.5).timeout
 	show_results()
 	
-	# En modo servidor, cerrar automáticamente después de mostrar resultados
-	await get_tree().create_timer(2.0).timeout
-	_auto_continue_server_mode()
+	# En multiplayer, NO cerrar automáticamente - esperar a que ambos presionen Start Battle
+	# El botón Start Battle ya se muestra en show_results()
 
 func _auto_continue_server_mode():
 	"""Cierra automáticamente la pantalla en modo servidor"""
@@ -456,6 +523,21 @@ func _on_roll_pressed():
 	if is_rolling:
 		return
 	
+	# En modo multiplayer, notificar al servidor y esperar
+	if is_multiplayer_mode:
+		print("[INITIATIVE] Multiplayer mode - sending roll ready to server")
+		is_rolling = true
+		roll_button.disabled = true
+		roll_button.text = "⏳ WAITING (1/2)"
+		subtitle_label.text = "Waiting for opponent to roll..."
+		waiting_for_opponent_roll = true
+		
+		var network_manager = get_node_or_null("/root/NetworkManager")
+		if network_manager:
+			network_manager.rpc_id(1, "server_initiative_roll_ready", match_id)
+		return
+	
+	# Modo singleplayer - comportamiento original
 	is_rolling = true
 	roll_button.disabled = true
 	subtitle_label.text = "Rolling dice for all mechs..."
@@ -863,6 +945,22 @@ func show_results():
 func _on_continue_pressed():
 	continue_button.disabled = true
 	
+	# En modo multiplayer, notificar al servidor y esperar
+	if is_multiplayer_mode:
+		print("[INITIATIVE] Multiplayer mode - sending start ready to server")
+		continue_button.text = "⏳ WAITING (1/2)"
+		waiting_for_opponent_start = true
+		
+		var network_manager = get_node_or_null("/root/NetworkManager")
+		if network_manager:
+			network_manager.rpc_id(1, "server_start_battle_ready", match_id)
+		return
+	
+	# Modo singleplayer - comportamiento original
+	_do_continue_animation()
+
+func _do_continue_animation():
+	"""Animación de salida y emitir señal de completado"""
 	# Calcular totales para cada mech (suma de 2D6)
 	var player_totals = []
 	var enemy_totals = []
@@ -878,19 +976,22 @@ func _on_continue_pressed():
 		"enemy_mech_names": enemy_mech_names.duplicate()
 	}
 	
-	
 	# Fade out
 	for dice in player_dice + enemy_dice:
-		var exit = create_tween()
-		exit.set_parallel(true)
-		exit.tween_property(dice, "position:y", -300, 0.8).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
-		exit.tween_property(dice, "modulate:a", 0.0, 0.8)
+		if is_instance_valid(dice):
+			var exit = create_tween()
+			exit.set_parallel(true)
+			exit.tween_property(dice, "position:y", -300, 0.8).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN)
+			exit.tween_property(dice, "modulate:a", 0.0, 0.8)
 	
 	var fade = create_tween()
 	fade.set_parallel(true)
-	fade.tween_property(roll_button, "modulate:a", 0.0, 0.6)
-	fade.tween_property(result_label, "modulate:a", 0.0, 0.6)
-	fade.tween_property(continue_button, "modulate:a", 0.0, 0.6)
+	if is_instance_valid(roll_button):
+		fade.tween_property(roll_button, "modulate:a", 0.0, 0.6)
+	if is_instance_valid(result_label):
+		fade.tween_property(result_label, "modulate:a", 0.0, 0.6)
+	if is_instance_valid(continue_button):
+		fade.tween_property(continue_button, "modulate:a", 0.0, 0.6)
 	
 	await fade.finished
 	

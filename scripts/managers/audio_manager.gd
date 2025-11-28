@@ -8,7 +8,7 @@ var music_volume: float = 0.7:
 	set(v):
 		music_volume = clamp(v, 0.0, 1.0)
 		if music_player:
-			music_player.volume_db = linear_to_db(music_volume)
+			music_player.volume_db = _safe_linear_to_db(music_volume)
 		_save_settings()
 
 var sfx_volume: float = 0.8:
@@ -19,8 +19,14 @@ var sfx_volume: float = 0.8:
 var master_volume: float = 1.0:
 	set(v):
 		master_volume = clamp(v, 0.0, 1.0)
-		AudioServer.set_bus_volume_db(0, linear_to_db(master_volume))
+		AudioServer.set_bus_volume_db(0, _safe_linear_to_db(master_volume))
 		_save_settings()
+
+## Convierte linear a dB de forma segura (evita NaN/inf)
+func _safe_linear_to_db(linear_val: float) -> float:
+	if linear_val <= 0.0:
+		return -80.0  # Silencio efectivo
+	return linear_to_db(linear_val)
 
 # Reproductor de música
 var music_player: AudioStreamPlayer
@@ -116,7 +122,7 @@ func _setup_music_player():
 	music_player = AudioStreamPlayer.new()
 	music_player.name = "MusicPlayer"
 	music_player.bus = "Music"  # Usa bus de música si existe, sino Master
-	music_player.volume_db = linear_to_db(music_volume)
+	music_player.volume_db = _safe_linear_to_db(music_volume)
 	add_child(music_player)
 	
 	# Crear bus de música si no existe
@@ -163,7 +169,7 @@ func play_music(music_id: int, fade_in: float = 1.0):
 		
 		current_music = path
 		music_player.stream = stream
-		music_player.volume_db = linear_to_db(0.0) if fade_in > 0 else linear_to_db(music_volume)
+		music_player.volume_db = -80.0 if fade_in > 0 else _safe_linear_to_db(music_volume)
 		music_player.play()
 		
 		if fade_in > 0:
@@ -177,7 +183,7 @@ func play_music_file(file_path: String, fade_in: float = 1.0):
 	if stream:
 		current_music = file_path
 		music_player.stream = stream
-		music_player.volume_db = linear_to_db(0.0) if fade_in > 0 else linear_to_db(music_volume)
+		music_player.volume_db = -80.0 if fade_in > 0 else _safe_linear_to_db(music_volume)
 		music_player.play()
 		
 		if fade_in > 0:
@@ -192,7 +198,7 @@ func stop_music(fade_out: float = 1.0):
 
 func _fade_music_in(duration: float):
 	var tween = create_tween()
-	tween.tween_property(music_player, "volume_db", linear_to_db(music_volume), duration)
+	tween.tween_property(music_player, "volume_db", _safe_linear_to_db(music_volume), duration)
 
 func _fade_music_out(duration: float):
 	var tween = create_tween()
@@ -222,7 +228,7 @@ func play_sfx_file(file_path: String, volume_scale: float = 1.0, pitch_variation
 	var player = _get_available_sfx_player()
 	if player:
 		player.stream = stream
-		player.volume_db = linear_to_db(sfx_volume * volume_scale)
+		player.volume_db = _safe_linear_to_db(sfx_volume * volume_scale)
 		
 		# Variación de pitch para más variedad
 		if pitch_variation > 0:

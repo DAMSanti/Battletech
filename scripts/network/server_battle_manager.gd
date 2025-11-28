@@ -55,6 +55,10 @@ func start_match(player1_peer: int, player2_peer: int, match_id: int = -1, map_s
 		"player2_deployed": false,
 		"player1_ready": false,  # Cliente 1 listo en escena de batalla
 		"player2_ready": false,  # Cliente 2 listo en escena de batalla
+		"player1_roll_ready": false,  # Cliente 1 presionó Roll Dice
+		"player2_roll_ready": false,  # Cliente 2 presionó Roll Dice
+		"player1_start_ready": false,  # Cliente 1 presionó Start Battle
+		"player2_start_ready": false,  # Cliente 2 presionó Start Battle
 		"units_to_activate": [],
 		"current_unit_index": 0,
 		"rng_seed": map_seed  # Semilla para reproducibilidad
@@ -111,6 +115,12 @@ func _generate_match_id(peer1: int, peer2: int) -> int:
 
 func _handle_deploy_request(sender_id: int, match_id: int, mech_data: Dictionary, hex_pos: Array, facing: int) -> void:
 	"""Procesa solicitud de despliegue recibida via NetworkManager"""
+	print("[SERVER_BATTLE] *** DEPLOY REQUEST ***")
+	print("[SERVER_BATTLE]   sender_id: %d" % sender_id)
+	print("[SERVER_BATTLE]   mech: %s" % mech_data.get("name", "Unknown"))
+	print("[SERVER_BATTLE]   hex_pos: %s" % str(hex_pos))
+	print("[SERVER_BATTLE]   facing: %d" % facing)
+	
 	if not _validate_match_participant(match_id, sender_id):
 		return
 	
@@ -218,12 +228,75 @@ func _handle_deployment_complete(sender_id: int, match_id: int) -> void:
 	
 	# Verificar si AMBOS terminaron
 	if match_data["player1_deployed"] and match_data["player2_deployed"]:
-		print("[SERVER_BATTLE] Both players deployed! Starting initiative...")
+		print("[SERVER_BATTLE] Both players deployed! Waiting for initiative rolls...")
 		# Notificar a ambos que pueden empezar
 		network_manager.rpc_id(match_data["player1_peer"], "client_all_deployed")
 		network_manager.rpc_id(match_data["player2_peer"], "client_all_deployed")
-		# Iniciar fase de iniciativa
-		_start_initiative_phase(match_id)
+		# Cambiar fase a esperar rolls
+		match_data["current_phase"] = "waiting_for_rolls"
+		# NO iniciar automáticamente - esperar a que ambos presionen Roll
+
+func _handle_initiative_roll_ready(sender_id: int, match_id: int) -> void:
+	"""Procesa cuando un jugador presiona Roll Dice"""
+	if not _validate_match_participant(match_id, sender_id):
+		return
+	
+	var match_data = active_battles[match_id]
+	
+	# Marcar qué jugador presionó Roll
+	if sender_id == match_data["player1_peer"]:
+		match_data["player1_roll_ready"] = true
+		print("[SERVER_BATTLE] Player 1 (peer %d) ready to roll" % sender_id)
+	elif sender_id == match_data["player2_peer"]:
+		match_data["player2_roll_ready"] = true
+		print("[SERVER_BATTLE] Player 2 (peer %d) ready to roll" % sender_id)
+	
+	# Contar cuántos están listos
+	var ready_count = 0
+	if match_data["player1_roll_ready"]:
+		ready_count += 1
+	if match_data["player2_roll_ready"]:
+		ready_count += 1
+	
+	# Notificar a ambos del estado de espera
+	network_manager.rpc_id(match_data["player1_peer"], "client_waiting_for_rolls", ready_count, 2)
+	network_manager.rpc_id(match_data["player2_peer"], "client_waiting_for_rolls", ready_count, 2)
+	
+	# Si ambos están listos, tirar dados
+	if match_data["player1_roll_ready"] and match_data["player2_roll_ready"]:
+		print("[SERVER_BATTLE] Both players ready! Rolling initiative...")
+		_execute_initiative_roll(match_id)
+
+func _handle_start_battle_ready(sender_id: int, match_id: int) -> void:
+	"""Procesa cuando un jugador presiona Start Battle"""
+	if not _validate_match_participant(match_id, sender_id):
+		return
+	
+	var match_data = active_battles[match_id]
+	
+	# Marcar qué jugador presionó Start
+	if sender_id == match_data["player1_peer"]:
+		match_data["player1_start_ready"] = true
+		print("[SERVER_BATTLE] Player 1 (peer %d) ready to start" % sender_id)
+	elif sender_id == match_data["player2_peer"]:
+		match_data["player2_start_ready"] = true
+		print("[SERVER_BATTLE] Player 2 (peer %d) ready to start" % sender_id)
+	
+	# Contar cuántos están listos
+	var ready_count = 0
+	if match_data["player1_start_ready"]:
+		ready_count += 1
+	if match_data["player2_start_ready"]:
+		ready_count += 1
+	
+	# Notificar a ambos del estado de espera
+	network_manager.rpc_id(match_data["player1_peer"], "client_waiting_for_start", ready_count, 2)
+	network_manager.rpc_id(match_data["player2_peer"], "client_waiting_for_start", ready_count, 2)
+	
+	# Si ambos están listos, iniciar batalla
+	if match_data["player1_start_ready"] and match_data["player2_start_ready"]:
+		print("[SERVER_BATTLE] Both players ready! Starting movement phase...")
+		_start_movement_phase(match_id)
 
 func _handle_move_request(sender_id: int, match_id: int, mech_id: int, target_hex: Array, movement_type: int) -> void:
 	"""Procesa solicitud de movimiento"""
@@ -258,8 +331,12 @@ func _handle_move_request(sender_id: int, match_id: int, mech_id: int, target_he
 	mech["hexes_moved"] = distance
 	mech["current_movement"] = max_mp - distance
 	
-	print("[SERVER_BATTLE] Mech %s moved from [%d,%d] to [%d,%d]" % [
-		mech["name"], old_pos.x, old_pos.y, hex.x, hex.y
+	# Actualizar facing según dirección del movimiento
+	var new_facing = _get_facing_to_hex(old_pos, hex)
+	mech["facing"] = new_facing
+	
+	print("[SERVER_BATTLE] Mech %s moved from [%d,%d] to [%d,%d], facing now %d" % [
+		mech["name"], old_pos.x, old_pos.y, hex.x, hex.y, new_facing
 	])
 	
 	var movement_heat = 0
@@ -277,7 +354,8 @@ func _handle_move_request(sender_id: int, match_id: int, mech_id: int, target_he
 		"to_hex": [hex.x, hex.y],
 		"movement_type": movement_type,
 		"movement_heat": movement_heat,
-		"remaining_mp": mech["current_movement"]
+		"remaining_mp": mech["current_movement"],
+		"facing": new_facing
 	}
 	
 	network_manager.rpc_id(sender_id, "client_mech_moved", move_result)
@@ -319,16 +397,22 @@ func _handle_rotate_request(sender_id: int, match_id: int, mech_id: int, new_fac
 
 func _handle_fire_request(sender_id: int, match_id: int, attacker_id: int, target_id: int, weapon_indices: Array) -> void:
 	"""Procesa solicitud de disparo"""
+	print("[SERVER_BATTLE] Fire request from peer %d: attacker=%d, target=%d, weapons=%s" % [sender_id, attacker_id, target_id, weapon_indices])
+	
 	if not _validate_match_participant(match_id, sender_id):
+		print("[SERVER_BATTLE] Fire request rejected: invalid match participant")
 		return
 	
 	var match_data = active_battles[match_id]
 	
 	if not _validate_mech_ownership(match_data, attacker_id, sender_id):
+		print("[SERVER_BATTLE] Fire request rejected: not mech owner")
 		network_manager.rpc_id(sender_id, "client_action_rejected", "Not your mech")
 		return
 	
+	print("[SERVER_BATTLE] Current phase: %s" % match_data["current_phase"])
 	if match_data["current_phase"] != "weapon_attack":
+		print("[SERVER_BATTLE] Fire request rejected: not weapon attack phase (current: %s)" % match_data["current_phase"])
 		network_manager.rpc_id(sender_id, "client_action_rejected", "Not weapon attack phase")
 		return
 	
@@ -426,14 +510,18 @@ func _handle_physical_request(sender_id: int, match_id: int, attacker_id: int, t
 
 func _handle_end_activation(sender_id: int, match_id: int, mech_id: int) -> void:
 	"""Procesa fin de activación"""
+	print("[SERVER_BATTLE] End activation request from peer %d for mech %d" % [sender_id, mech_id])
 	if not _validate_match_participant(match_id, sender_id):
+		print("[SERVER_BATTLE] End activation rejected: not a match participant")
 		return
 	
 	var match_data = active_battles[match_id]
 	
 	if not _validate_mech_ownership(match_data, mech_id, sender_id):
+		print("[SERVER_BATTLE] End activation rejected: not mech owner")
 		return
 	
+	print("[SERVER_BATTLE] End activation accepted, advancing to next unit")
 	_advance_to_next_unit(match_id)
 
 # ============================================================
@@ -532,8 +620,8 @@ func client_action_rejected(_reason: String):
 # LÓGICA DE FASES
 # ============================================================
 
-func _start_initiative_phase(match_id: int):
-	"""Inicia la fase de iniciativa"""
+func _execute_initiative_roll(match_id: int):
+	"""Ejecuta la tirada de iniciativa cuando ambos jugadores están listos"""
 	if match_id not in active_battles:
 		print("[SERVER_BATTLE] Match %d no longer exists, skipping initiative" % match_id)
 		return
@@ -541,38 +629,89 @@ func _start_initiative_phase(match_id: int):
 	match_data["current_turn"] += 1
 	match_data["current_phase"] = "initiative"
 	
-	# Tirar dados en el servidor
+	# Tirar 2D6 por CADA mech (no por equipo)
 	seed(match_data["rng_seed"])
-	var player_dice = [randi() % 6 + 1, randi() % 6 + 1]
-	var enemy_dice = [randi() % 6 + 1, randi() % 6 + 1]
-	var player_total = player_dice[0] + player_dice[1]
-	var enemy_total = enemy_dice[0] + enemy_dice[1]
+	
+	var player_mech_rolls = []  # Array de [die1, die2] por cada mech del player
+	var enemy_mech_rolls = []   # Array de [die1, die2] por cada mech del enemy
+	var player_total = 0
+	var enemy_total = 0
+	
+	# Recopilar mechs por equipo
+	var player_mechs_list = []
+	var enemy_mechs_list = []
+	for mech_id in match_data["mechs"]:
+		var mech = match_data["mechs"][mech_id]
+		if mech["is_destroyed"]:
+			continue
+		if mech["team"] == "player":
+			player_mechs_list.append(mech)
+		else:
+			enemy_mechs_list.append(mech)
+	
+	# Tirar dados para cada mech del player
+	for mech in player_mechs_list:
+		var die1 = randi() % 6 + 1
+		var die2 = randi() % 6 + 1
+		player_mech_rolls.append([die1, die2])
+		player_total += die1 + die2
+		print("[SERVER_BATTLE] Player mech %s rolled %d + %d = %d" % [mech["name"], die1, die2, die1 + die2])
+	
+	# Tirar dados para cada mech del enemy
+	for mech in enemy_mechs_list:
+		var die1 = randi() % 6 + 1
+		var die2 = randi() % 6 + 1
+		enemy_mech_rolls.append([die1, die2])
+		enemy_total += die1 + die2
+		print("[SERVER_BATTLE] Enemy mech %s rolled %d + %d = %d" % [mech["name"], die1, die2, die1 + die2])
 	
 	match_data["rng_seed"] = randi()
 	
+	# El ganador tiene el total más alto (empate va al player)
 	var winner = "player" if player_total >= enemy_total else "enemy"
 	match_data["initiative_winner"] = winner
 	
 	var init_result = {
 		"turn": match_data["current_turn"],
-		"player_dice": player_dice,
+		"player_mech_rolls": player_mech_rolls,  # Array de [die1, die2] por mech
+		"enemy_mech_rolls": enemy_mech_rolls,    # Array de [die1, die2] por mech
 		"player_total": player_total,
-		"enemy_dice": enemy_dice,
 		"enemy_total": enemy_total,
 		"winner": winner
 	}
 	
-	print("[SERVER_BATTLE] Initiative: Player %d vs Enemy %d -> %s wins" % [player_total, enemy_total, winner])
+	print("[SERVER_BATTLE] Initiative: Player total %d vs Enemy total %d -> %s wins" % [player_total, enemy_total, winner])
 	
 	# Notificar a ambos jugadores via NetworkManager
 	network_manager.rpc_id(match_data["player1_peer"], "client_initiative_result", init_result)
 	network_manager.rpc_id(match_data["player2_peer"], "client_initiative_result", init_result)
 	
-	# Iniciar fase de movimiento después de un delay
-	await get_tree().create_timer(2.0).timeout
+	# Cambiar fase a esperar Start Battle
+	match_data["current_phase"] = "waiting_for_start"
+	# NO iniciar movimiento automáticamente - esperar a que ambos presionen Start Battle
+
+func _start_initiative_phase(match_id: int):
+	"""Inicia la fase de iniciativa para un nuevo turno"""
 	if match_id not in active_battles:
 		return
-	_start_movement_phase(match_id)
+	
+	var match_data = active_battles[match_id]
+	
+	# Incrementar turno
+	match_data["current_turn"] += 1
+	
+	# Resetear estados de ready para nuevo turno
+	match_data["player1_roll_ready"] = false
+	match_data["player2_roll_ready"] = false
+	match_data["player1_start_ready"] = false
+	match_data["player2_start_ready"] = false
+	match_data["current_phase"] = "waiting_for_rolls"
+	
+	print("[SERVER_BATTLE] Starting initiative phase for turn %d" % match_data["current_turn"])
+	
+	# Notificar a los clientes que deben mostrar la pantalla de iniciativa
+	network_manager.rpc_id(match_data["player1_peer"], "client_phase_changed", "initiative", match_data["current_turn"])
+	network_manager.rpc_id(match_data["player2_peer"], "client_phase_changed", "initiative", match_data["current_turn"])
 
 func _start_movement_phase(match_id: int):
 	"""Inicia la fase de movimiento"""
@@ -627,10 +766,12 @@ func _start_movement_phase(match_id: int):
 
 func _start_weapon_phase(match_id: int):
 	"""Inicia la fase de ataque con armas"""
+	print("[SERVER_BATTLE] *** STARTING WEAPON ATTACK PHASE for match %d ***" % match_id)
 	if match_id not in active_battles:
 		return
 	var match_data = active_battles[match_id]
 	match_data["current_phase"] = "weapon_attack"
+	print("[SERVER_BATTLE] current_phase set to: weapon_attack")
 	
 	# Resetear flags de disparo
 	for mech_id in match_data["mechs"]:
@@ -669,6 +810,18 @@ func _start_heat_phase(match_id: int):
 		return
 	var match_data = active_battles[match_id]
 	match_data["current_phase"] = "heat"
+	
+	print("[SERVER_BATTLE] Starting heat phase for match %d" % match_id)
+	
+	# Notificar cambio de fase a los clientes ANTES de procesar
+	network_manager.rpc_id(match_data["player1_peer"], "client_phase_changed", "heat", match_data["current_turn"])
+	network_manager.rpc_id(match_data["player2_peer"], "client_phase_changed", "heat", match_data["current_turn"])
+	
+	# Pequeña pausa para que los clientes muestren la fase
+	await get_tree().create_timer(0.5).timeout
+	
+	if match_id not in active_battles:
+		return
 	
 	var heat_results = []
 	
@@ -751,11 +904,15 @@ func _activate_next_unit(match_id: int):
 	"""Activa la siguiente unidad"""
 	var match_data = active_battles[match_id]
 	
+	print("[SERVER_BATTLE] _activate_next_unit: index=%d, total=%d, phase=%s" % [match_data["current_unit_index"], match_data["units_to_activate"].size(), match_data["current_phase"]])
+	
 	if match_data["units_to_activate"].is_empty():
+		print("[SERVER_BATTLE] No units to activate, advancing phase")
 		_advance_phase(match_id)
 		return
 	
 	if match_data["current_unit_index"] >= match_data["units_to_activate"].size():
+		print("[SERVER_BATTLE] All units activated (%d/%d), advancing phase" % [match_data["current_unit_index"], match_data["units_to_activate"].size()])
 		_advance_phase(match_id)
 		return
 	
@@ -790,20 +947,26 @@ func _advance_to_next_unit(match_id: int):
 	"""Avanza al siguiente mech en la lista de activación"""
 	var match_data = active_battles[match_id]
 	match_data["current_unit_index"] += 1
+	print("[SERVER_BATTLE] _advance_to_next_unit: index now %d of %d, phase=%s" % [match_data["current_unit_index"], match_data["units_to_activate"].size(), match_data["current_phase"]])
 	_activate_next_unit(match_id)
 
 func _advance_phase(match_id: int):
 	"""Avanza a la siguiente fase"""
 	var match_data = active_battles[match_id]
+	print("[SERVER_BATTLE] _advance_phase called, current phase: %s" % match_data["current_phase"])
 	
 	match match_data["current_phase"]:
 		"movement":
+			print("[SERVER_BATTLE] Advancing from movement -> weapon_attack")
 			_start_weapon_phase(match_id)
 		"weapon_attack":
+			print("[SERVER_BATTLE] Advancing from weapon_attack -> physical_attack")
 			_start_physical_phase(match_id)
 		"physical_attack":
+			print("[SERVER_BATTLE] Advancing from physical_attack -> heat")
 			_start_heat_phase(match_id)
 		"heat":
+			print("[SERVER_BATTLE] Advancing from heat -> initiative")
 			_start_initiative_phase(match_id)
 
 # ============================================================
@@ -1056,6 +1219,35 @@ func _hex_distance(a: Vector2i, b: Vector2i) -> int:
 	var dx = abs(a.x - b.x)
 	var dy = abs(a.y - b.y)
 	return max(dx, dy)
+
+func _get_facing_to_hex(from: Vector2i, to: Vector2i) -> int:
+	"""Calcula el facing desde una posición hacia otra (hexagonal offset coordinates)"""
+	var dx = to.x - from.x
+	var dy = to.y - from.y
+	
+	# Hexagonal offset coordinates directions:
+	# 0 = Norte (dy < 0)
+	# 1 = Noreste (dx > 0, dy <= 0 o dy < 0 para columnas pares/impares)
+	# 2 = Sureste (dx > 0, dy >= 0)
+	# 3 = Sur (dy > 0)
+	# 4 = Suroeste (dx < 0, dy >= 0)
+	# 5 = Noroeste (dx < 0, dy <= 0)
+	
+	if dx == 0:
+		if dy < 0:
+			return 0  # Norte
+		else:
+			return 3  # Sur
+	elif dx > 0:
+		if dy <= 0:
+			return 1  # Noreste
+		else:
+			return 2  # Sureste
+	else:  # dx < 0
+		if dy <= 0:
+			return 5  # Noroeste
+		else:
+			return 4  # Suroeste
 
 func _get_max_movement(mech: Dictionary, movement_type: int) -> int:
 	match movement_type:

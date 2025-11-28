@@ -411,12 +411,14 @@ func _calculate_rotation_cost(from_facing: int, to_facing: int) -> int:
 	return min(clockwise, counter_clockwise)
 
 func _on_facing_button_pressed(facing: int):
+	print("[FACING_SELECTOR] Button pressed for facing: %d" % facing)
 	# Esconder y resetear antes de emitir para evitar condiciones de carrera
 	visible = false
 	# Resetear estado para evitar que se vuelva a mostrar
 	_position_check_counter = 0
 	_last_screen_pos = Vector2.ZERO
 	target_hex = Vector2i(-1, -1)
+	print("[FACING_SELECTOR] Emitting facing_selected signal with facing: %d" % facing)
 	facing_selected.emit(facing)
 
 func _on_cancel_pressed():

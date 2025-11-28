@@ -197,9 +197,18 @@ static func get_reachable_hexes_with_details(start_hex: Vector2i, max_distance: 
 			if not results.has(current_hex) or current_cost < int(results[current_hex]["cost"]):
 				results[current_hex] = {"cost": current_cost, "path": current_path.duplicate(), "end_facing": current_facing}
 
-		var neighbors = hex_grid.get_neighbors(current_hex)
-		for i in range(neighbors.size()):
-			var nb = neighbors[i]
+		# Iterar sobre las 6 direcciones hexagonales directamente para preservar el índice
+		var hex_directions = [
+			Vector2i(0, -1),   # 0: N
+			Vector2i(1, -1),   # 1: NE
+			Vector2i(-1, 0),   # 2: NW
+			Vector2i(0, 1),    # 3: S
+			Vector2i(-1, 1),   # 4: SW
+			Vector2i(1, 0)     # 5: SE
+		]
+		
+		for i in range(6):
+			var nb = current_hex + hex_directions[i]
 			if not hex_grid.is_valid_hex(nb):
 				continue
 

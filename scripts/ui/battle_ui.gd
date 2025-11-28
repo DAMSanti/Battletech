@@ -125,6 +125,16 @@ func _ready():
 			turn_manager.turn_changed.connect(_on_turn_changed)
 			turn_manager.phase_changed.connect(_on_phase_changed)
 			turn_manager.unit_activated.connect(_on_unit_activated)
+	
+	# Conectar señal de chat del NetworkManager
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager and network_manager.has_signal("chat_message_received"):
+		if not network_manager.chat_message_received.is_connected(_on_chat_message_received):
+			network_manager.chat_message_received.connect(_on_chat_message_received)
+
+func _on_chat_message_received(sender_name: String, message: String):
+	"""Callback cuando se recibe un mensaje de chat del oponente"""
+	add_chat_message(sender_name, message, Color(1, 0.8, 0.5, 1))  # Color naranja para oponente
 
 func _setup_ui():
 	# Obtener tamaño de la pantalla
@@ -1688,21 +1698,20 @@ func _on_send_chat_pressed():
 		chat_input.clear()
 
 func _send_chat_message(text: String):
-	"""Envía un mensaje de chat. En multiplayer, esto se enviaría por red."""
+	"""Envía un mensaje de chat. En multiplayer, se envía por red."""
 	# Obtener nombre del jugador local
 	var sender_name = "Jugador"
-	var battle_scene = get_parent()
-	if battle_scene and battle_scene.has_method("get"):
-		var network_manager = battle_scene.get("network_manager")
-		if network_manager and network_manager.has_method("get_local_player_name"):
-			sender_name = network_manager.get_local_player_name()
+	var network_manager = get_node_or_null("/root/NetworkManager")
 	
-	# Añadir mensaje local
+	if network_manager and network_manager.has_method("get_local_player_name"):
+		sender_name = network_manager.get_local_player_name()
+	
+	# Añadir mensaje local inmediatamente
 	add_chat_message(sender_name, text, Color(0.7, 0.9, 1, 1))
 	
-	# En multiplayer, enviar por RPC (esto se implementará en network_manager)
-	if battle_scene and battle_scene.has_method("send_chat_message"):
-		battle_scene.send_chat_message(text)
+	# En multiplayer, enviar por RPC al oponente
+	if network_manager and network_manager.is_in_match():
+		network_manager.send_chat_message(text)
 
 func set_help_text(text: String):
 	if help_label:
@@ -1802,6 +1811,7 @@ func is_facing_selector_visible() -> bool:
 
 func _on_facing_selected(facing: int):
 	"""Maneja la selección de una orientación"""
+	print("[BATTLE_UI] _on_facing_selected called with facing: %d" % facing)
 	# Evitar que el release del click del botón pase al mapa (causando selección de hex accidental)
 	if battle_scene:
 		# Indica al battle_scene que ignore el siguiente click de mouse/touch.
@@ -1817,6 +1827,7 @@ func _on_facing_selected(facing: int):
 	# Pequeño delay para evitar clics accidentales
 	await get_tree().create_timer(0.1).timeout
 	
+	print("[BATTLE_UI] Calling battle_scene.on_facing_selected with facing: %d" % facing)
 	if battle_scene and battle_scene.has_method("on_facing_selected"):
 		battle_scene.on_facing_selected(facing)
 
@@ -3084,17 +3095,22 @@ func _update_los_overlay(hex_grid):
 	if not los_overlay_visible or not hex_grid:
 		return
 	
-	# Obtener turn_manager para acceder a los mechs del jugador
-	var turn_manager = null
-	if battle_scene and battle_scene.has_method("get_turn_manager"):
-		turn_manager = battle_scene.get_turn_manager()
+	# Obtener los mechs del jugador (diferentes en singleplayer vs multiplayer)
+	var player_units: Array = []
 	
-	if not turn_manager:
-		print("[UI] No turn_manager found for LOS overlay")
-		return
+	if battle_scene:
+		# En multiplayer usar is_player_controlled, en singleplayer usar player_mechs
+		if battle_scene.is_multiplayer_mode:
+			# Combinar todos los mechs y filtrar por is_player_controlled
+			var all_mechs = battle_scene.player_mechs + battle_scene.enemy_mechs
+			for mech in all_mechs:
+				if mech.is_player_controlled:
+					player_units.append(mech)
+		else:
+			player_units = battle_scene.player_mechs
 	
-	var player_units = turn_manager.player_units
 	if player_units.size() == 0:
+		print("[UI] No player units found for LOS overlay")
 		return
 	
 	# Recolectar todos los hexes visibles por cualquier mech del jugador
