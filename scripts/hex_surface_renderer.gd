@@ -262,13 +262,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		# else:
 		#	visible_surfaces.append(s)
 
-	var total = visible_surfaces.size()
-
-	_ensure_pool_count(depth_pool, total, depth_root)
-	_ensure_pool_count(main_pool, total, main_root)
-	_ensure_border_pool_count(total)
-	
-	# print_debug("HexSurfaceRenderer: total=%d depth_pool_size=%d" % [total, depth_pool.size()])
+	# NO dimensionamos los pools aquí todavía - esperamos a contar overlays también
 
 	var idx = 0
 	var stats_processed = 0
@@ -329,39 +323,32 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 			# Buscar el tile "top" correspondiente
 			var tile_elevation = base_elevation
 			var tile_depth = null
+			var tile_poly_points = null  # Usar los mismos puntos del tile
 			for entry in surf_entries:
 				if entry.has("surf"):
 					var s = entry["surf"]
 					if s.has("type") and s["type"] == "top" and s.has("hex") and s["hex"] == hex:
 						tile_elevation = s.get("elevation", base_elevation)
 						tile_depth = entry.get("depth", 0.0)
+						tile_poly_points = entry.get("poly_points", null)
 						break
 			
-			if tile_depth == null:
+			if tile_depth == null or tile_poly_points == null:
 				continue  # No encontramos el tile, skip este overlay
 			
-			# Get base pixel position WITHOUT elevation
-			var pixel_pos = pending_overlays_hex_grid.hex_to_pixel(hex, false)
+			# USAR LOS MISMOS PUNTOS DEL TILE - esto garantiza que coincidan exactamente
+			var points = tile_poly_points
 			
-			# Calculate vertices at TILE elevation
-			var elevation_offset = Vector2(0, -tile_elevation * 10.0)
-			var top_center = pixel_pos + elevation_offset
+			# Calcular avg_y de los puntos reales
+			var avg_y = 0.0
+			for p in points:
+				avg_y += p.y
+			avg_y /= max(1, points.size())
 			
-			var points = PackedVector2Array()
-			for j in range(6):
-				var angle = deg_to_rad(60 * j)
-				var v = Vector2(
-					top_center.x + pending_overlays_hex_grid.hex_size * cos(angle),
-					top_center.y + pending_overlays_hex_grid.hex_size * sin(angle)
-				)
-				points.append(v)
-			
-			var avg_y = top_center.y
 			# El height del overlay debe coincidir con el del tile top
-			# height = (tile_elevation - base_elevation) * 10.0
 			var height = (tile_elevation - base_elevation) * 10.0
-			# depth debe ser igual al del tile + pequeño offset
-			var depth = avg_y + height + 0.01
+			# depth debe ser igual al del tile + pequeño offset para que se dibuje encima
+			var depth = avg_y + height + 0.5
 			
 			overlays_to_add.append({
 				"is_overlay": true,
@@ -386,11 +373,11 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		# Clear pending overlays
 		pending_overlays.clear()
 	
-	# Ensure overlay pools have enough items
-	if overlay_count > 0:
-		_ensure_pool_count(overlay_depth_pool, overlay_count, depth_root)
-		_ensure_pool_count(overlay_main_pool, overlay_count, main_root)
-		_ensure_border_pool_count_overlay(overlay_count)
+	# AHORA dimensionamos los pools con el TOTAL (tiles + overlays)
+	var total = surf_entries.size()
+	_ensure_pool_count(depth_pool, total, depth_root)
+	_ensure_pool_count(main_pool, total, main_root)
+	_ensure_border_pool_count(total)
 
 	# Calculate bounds including both tiles and overlays
 	for s_entry in surf_entries:
@@ -429,22 +416,52 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	var depth_uv_scale = Vector2(fit_scale / viewport_size.x, fit_scale / viewport_size.y)
 	var depth_uv_offset = Vector2(-bounds_min.x * depth_uv_scale.x, -bounds_min.y * depth_uv_scale.y)
 	
-	# print_debug("Bounds: %s to %s, scale: %f" % [bounds_min, bounds_max, fit_scale])
-	# print_debug("Depth viewport: %s, depth_root children: %d, pools: depth=%d main=%d" % [depth_viewport.size, depth_root.get_child_count(), depth_pool.size(), main_pool.size()])
-	
-	var overlay_idx = 0  # Separate counter for overlay pools
+	# Renderizar TODO en orden intercalado: tiles y overlays usan el mismo pool
 	for s_entry in surf_entries:
-		# Check if this is an overlay (not a tile)
-		if s_entry.get("is_overlay", false):
-			# Render overlay
-			_render_single_overlay(s_entry, overlay_idx, bounds_min, bounds_max, bounds_size, fit_scale, depth_uv_scale, depth_uv_offset)
-			overlay_idx += 1
-			continue
-		
-		var s = s_entry["surf"]
 		# limit worst-case per-frame work
 		if idx >= max_polygons_per_frame:
 			break
+		
+		# Check if this is an overlay (not a tile)
+		if s_entry.get("is_overlay", false):
+			# ══════════════════════════════════════════════════════════════
+			# RENDERIZAR OVERLAY usando el mismo pool que los tiles
+			# ══════════════════════════════════════════════════════════════
+			var overlay_points = s_entry.get("poly_points", PackedVector2Array())
+			if overlay_points.size() == 0:
+				continue
+			
+			var overlay_color = s_entry.get("color", Color(1.0, 0.0, 0.0, 0.5))
+			var overlay_depth = s_entry.get("depth", 0.0)
+			var overlay_zidx = int(overlay_depth) + 1  # +1 para estar justo encima del tile
+			
+			# DEPTH PASS: Los overlays NO escriben en depth buffer
+			var depth_poly: Polygon2D = depth_pool[idx]
+			depth_poly.visible = false  # No escribir en depth
+			
+			# MAIN PASS: Renderizar overlay con color semi-transparente
+			var main_poly: Polygon2D = main_pool[idx]
+			main_poly.polygon = overlay_points
+			main_poly.position = Vector2.ZERO
+			main_poly.visible = true
+			main_poly.color = overlay_color
+			main_poly.z_index = overlay_zidx
+			main_poly.texture = null
+			main_poly.material = null  # Sin shader, color directo
+			main_poly.modulate = Color.WHITE
+			
+			# Ocultar borde de tile para overlays
+			if idx < border_pool.size():
+				border_pool[idx].visible = false
+			
+			idx += 1
+			stats_processed += 1
+			continue
+		
+		# ══════════════════════════════════════════════════════════════
+		# RENDERIZAR TILE normal
+		# ══════════════════════════════════════════════════════════════
+		var s = s_entry["surf"]
 
 		var poly_points: PackedVector2Array = s_entry["poly_points"]
 
@@ -656,19 +673,13 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 		idx += 1
 		stats_processed += 1
 	
-	# Hide any unused pool nodes
+	# Hide any unused pool nodes (tiles + overlays usan el mismo pool ahora)
 	for i in range(idx, depth_pool.size()):
 		depth_pool[i].visible = false
 	for i in range(idx, main_pool.size()):
 		main_pool[i].visible = false
-	
-	# Hide any unused overlay pool nodes
-	for i in range(overlay_idx, overlay_depth_pool.size()):
-		overlay_depth_pool[i].visible = false
-	for i in range(overlay_idx, overlay_main_pool.size()):
-		overlay_main_pool[i].visible = false
-	for i in range(overlay_idx, overlay_border_pool.size()):
-		overlay_border_pool[i].visible = false
+	for i in range(idx, border_pool.size()):
+		border_pool[i].visible = false
 	
 	# NUEVA LÓGICA DE LABELS: Crear labels SOLO para tiles "top" después de procesar todo
 	# Cachear para poder regenerar cuando cambian los settings de overlay

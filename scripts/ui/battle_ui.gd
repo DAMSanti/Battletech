@@ -1946,6 +1946,10 @@ func show_weapon_selector(attacker, target, range_hexes: int):
 	weapon_buttons.clear()
 	selected_weapons.clear()
 	
+	# Deshabilitar botón de disparo hasta que se seleccione algún arma
+	if fire_button:
+		fire_button.disabled = true
+	
 	# Almacenar información del ataque actual
 	weapon_selector_panel.set_meta("attacker", attacker)
 	weapon_selector_panel.set_meta("target", target)

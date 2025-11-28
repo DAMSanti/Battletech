@@ -1046,6 +1046,9 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 			ui.add_combat_message("", Color.WHITE)
 	else:
 		enemy_mechs.append(mech)
+	
+	# Actualizar overlays inmediatamente para mostrar el mech recién colocado
+	update_overlays()
 
 func _on_my_deployment_complete():
 	"""Llamado en multiplayer cuando este cliente termina de desplegar todos sus mechs"""
@@ -1066,7 +1069,8 @@ func _on_my_deployment_complete():
 	if network_battle_client and network_battle_client.has_method("notify_deployment_complete"):
 		network_battle_client.notify_deployment_complete()
 	
-	update_overlays()
+	# NO llamar update_overlays() aquí - los overlays ya se limpiaron al cambiar deployment_phase
+	# y queremos mantener el último estado visible
 
 func _on_both_players_deployed():
 	"""Llamado por el servidor cuando AMBOS jugadores terminaron de desplegar"""
@@ -1793,8 +1797,8 @@ func on_facing_selected(facing: int):
 		# Estamos en fase de despliegue
 		_place_mech(current_deploying_mech, selected_hex, facing)
 		
-		# Quitar el hex ocupado de la lista de hexes válidos para el overlay
-		valid_deployment_hexes.erase(selected_hex)
+		# NO borrar el hex - dejar que el overlay gris se muestre para el mech colocado
+		# El overlay se actualizará y mostrará gris porque hay un mech ahí
 		update_overlays()
 		
 		selected_hex = Vector2i(-1, -1)  # Reset
@@ -1805,8 +1809,16 @@ func on_facing_selected(facing: int):
 		elif _local_facing_selector:
 			_ui_hide_facing_selector()
 		
+		# Verificar si era el último mech
+		var was_last_mech = mechs_to_deploy.is_empty()
+		
 		# Pequeño delay para asegurar que el selector se cerró completamente
 		await get_tree().create_timer(0.1).timeout
+		
+		# Si era el último mech, esperar un frame extra para que el overlay se renderice
+		if was_last_mech:
+			await get_tree().process_frame
+			await get_tree().process_frame  # Dos frames para asegurar
 		
 		# Siguiente mech
 		_deploy_next_mech()
