@@ -83,6 +83,10 @@ var cancel_weapon_button: Button
 # Panel de información de arma
 var weapon_info_panel: Panel
 var weapon_info_label: RichTextLabel
+var weapon_info_name_label: Label
+var weapon_info_type_label: Label
+var weapon_info_content: VBoxContainer
+var weapon_info_scroll: ScrollContainer
 
 # Selector de ataque físico
 var physical_attack_panel: Panel
@@ -765,7 +769,7 @@ func _setup_ui():
 	var weapon_panel_width = screen_width * 0.85
 	var weapon_panel_height = screen_height * 0.50
 	weapon_selector_panel = Panel.new()
-	weapon_selector_panel.position = Vector2((screen_width - weapon_panel_width) / 2, (screen_height - weapon_panel_height) / 2)
+	weapon_selector_panel.position = Vector2((screen_width - weapon_panel_width) / 2, (screen_height - weapon_panel_height) / 2 - 60 * scale_factor)
 	weapon_selector_panel.size = Vector2(weapon_panel_width, weapon_panel_height)
 	weapon_selector_panel.visible = false
 	# IMPORTANTE: Bloquear eventos de mouse/touch para que no pasen al battle_scene
@@ -807,116 +811,185 @@ func _setup_ui():
 	
 	# Los botones de armas se crearán dinámicamente en show_weapon_selector()
 	
+	# Estilo para botones con skew (igual que el panel)
+	var weapon_fire_style = StyleBoxFlat.new()
+	weapon_fire_style.bg_color = Color(0.15, 0.35, 0.15, 0.9)  # Verde oscuro
+	weapon_fire_style.border_width_left = int(2 * scale_factor)
+	weapon_fire_style.border_width_top = int(2 * scale_factor)
+	weapon_fire_style.border_width_right = int(2 * scale_factor)
+	weapon_fire_style.border_width_bottom = int(2 * scale_factor)
+	weapon_fire_style.border_color = Color(0.3, 0.8, 0.3, 1)  # Verde brillante
+	weapon_fire_style.corner_radius_top_left = int(6 * scale_factor)
+	weapon_fire_style.corner_radius_top_right = int(6 * scale_factor)
+	weapon_fire_style.corner_radius_bottom_left = int(6 * scale_factor)
+	weapon_fire_style.corner_radius_bottom_right = int(6 * scale_factor)
+	weapon_fire_style.skew = Vector2(0.05, 0)  # Mismo skew que el panel
+	
+	var weapon_fire_hover = weapon_fire_style.duplicate()
+	weapon_fire_hover.bg_color = Color(0.2, 0.45, 0.2, 0.95)
+	
+	var weapon_cancel_style = StyleBoxFlat.new()
+	weapon_cancel_style.bg_color = Color(0.35, 0.15, 0.15, 0.9)  # Rojo oscuro
+	weapon_cancel_style.border_width_left = int(2 * scale_factor)
+	weapon_cancel_style.border_width_top = int(2 * scale_factor)
+	weapon_cancel_style.border_width_right = int(2 * scale_factor)
+	weapon_cancel_style.border_width_bottom = int(2 * scale_factor)
+	weapon_cancel_style.border_color = Color(0.8, 0.3, 0.3, 1)  # Rojo brillante
+	weapon_cancel_style.corner_radius_top_left = int(6 * scale_factor)
+	weapon_cancel_style.corner_radius_top_right = int(6 * scale_factor)
+	weapon_cancel_style.corner_radius_bottom_left = int(6 * scale_factor)
+	weapon_cancel_style.corner_radius_bottom_right = int(6 * scale_factor)
+	weapon_cancel_style.skew = Vector2(0.05, 0)  # Mismo skew que el panel
+	
+	var weapon_cancel_hover = weapon_cancel_style.duplicate()
+	weapon_cancel_hover.bg_color = Color(0.45, 0.2, 0.2, 0.95)
+	
 	# Botón para confirmar disparo
+	var weapon_btn_height = 50 * scale_factor
+	var weapon_btn_spacing = 8 * scale_factor
+	var btn_margin = margin * 1.5  # Margen extra para compensar skew
 	fire_button = Button.new()
 	fire_button.text = "FIRE SELECTED WEAPONS"
-	fire_button.position = Vector2(margin, weapon_panel_height - 120 * scale_factor)
-	fire_button.size = Vector2(weapon_panel_width - margin * 2, 55 * scale_factor)
+	fire_button.position = Vector2(btn_margin, weapon_panel_height - (weapon_btn_height * 2 + weapon_btn_spacing + margin))
+	fire_button.size = Vector2(weapon_panel_width - btn_margin * 2 - 20 * scale_factor, weapon_btn_height)
 	fire_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	fire_button.add_theme_stylebox_override("normal", weapon_fire_style)
+	fire_button.add_theme_stylebox_override("hover", weapon_fire_hover)
+	fire_button.add_theme_stylebox_override("pressed", weapon_fire_hover)
 	fire_button.pressed.connect(_on_fire_weapons_pressed)
 	weapon_selector_panel.add_child(fire_button)
 	
 	# Botón para cancelar
 	cancel_weapon_button = Button.new()
 	cancel_weapon_button.text = "CANCEL"
-	cancel_weapon_button.position = Vector2(margin, weapon_panel_height - 60 * scale_factor)
-	cancel_weapon_button.size = Vector2(weapon_panel_width - margin * 2, 55 * scale_factor)
+	cancel_weapon_button.position = Vector2(btn_margin, weapon_panel_height - (weapon_btn_height + margin))
+	cancel_weapon_button.size = Vector2(weapon_panel_width - btn_margin * 2 - 20 * scale_factor, weapon_btn_height)
 	cancel_weapon_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	cancel_weapon_button.add_theme_stylebox_override("normal", weapon_cancel_style)
+	cancel_weapon_button.add_theme_stylebox_override("hover", weapon_cancel_hover)
+	cancel_weapon_button.add_theme_stylebox_override("pressed", weapon_cancel_hover)
 	cancel_weapon_button.pressed.connect(_on_cancel_weapons_pressed)
 	weapon_selector_panel.add_child(cancel_weapon_button)
 	
-	# Panel de información detallada de arma (PANEL INDEPENDIENTE CENTRADO)
-	# Tamaño optimizado: 60% ancho x 55% alto
-	var info_panel_width = screen_width * 0.60
-	var info_panel_height = screen_height * 0.55
+	# ═══════════════════════════════════════════════════════════════════════════
+	# PANEL DE INFORMACIÓN DE ARMA - REDISEÑO COMPLETO
+	# ═══════════════════════════════════════════════════════════════════════════
+	var info_panel_width = screen_width * 0.75
+	var info_panel_height = screen_height * 0.65
 	weapon_info_panel = Panel.new()
-	# Centrado en la pantalla
-	weapon_info_panel.position = Vector2((screen_width - info_panel_width) / 2, (screen_height - info_panel_height) / 2)
+	weapon_info_panel.position = Vector2((screen_width - info_panel_width) / 2, (screen_height - info_panel_height) / 2 - 30 * scale_factor)
 	weapon_info_panel.size = Vector2(info_panel_width, info_panel_height)
 	weapon_info_panel.visible = false
-	weapon_info_panel.z_index = 100  # MUY por encima para asegurar visibilidad
+	weapon_info_panel.z_index = 100
+	weapon_info_panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	
-	# Crear StyleBox modernizado estilo BattleTech con ROMBOIDE (skew)
-	var style_box = StyleBoxFlat.new()
-	style_box.bg_color = Color(0.05, 0.08, 0.12, 0.96)  # Azul muy oscuro casi opaco
-	style_box.border_width_left = int(4 * scale_factor)
-	style_box.border_width_right = int(4 * scale_factor)
-	style_box.border_width_top = int(4 * scale_factor)
-	style_box.border_width_bottom = int(4 * scale_factor)
-	style_box.border_color = Color(0.3, 0.7, 1.0, 1.0)  # Cian brillante
-	style_box.corner_radius_top_left = int(2 * scale_factor)
-	style_box.corner_radius_top_right = int(12 * scale_factor)
-	style_box.corner_radius_bottom_left = int(12 * scale_factor)
-	style_box.corner_radius_bottom_right = int(2 * scale_factor)
-	style_box.border_blend = true
-	style_box.anti_aliasing = true
-	style_box.shadow_color = Color(0.2, 0.6, 0.9, 0.7)
-	style_box.shadow_size = int(12 * scale_factor)
-	style_box.shadow_offset = Vector2(2, 4)
-	style_box.skew = Vector2(0.08, 0)  # ROMBOIDE - Inclinación futurista más pronunciada
-	weapon_info_panel.add_theme_stylebox_override("panel", style_box)
-	
-	# Añadir como hijo directo de battle_ui, NO del weapon_selector_panel
+	# Estilo del panel principal con skew
+	var info_panel_style = StyleBoxFlat.new()
+	info_panel_style.bg_color = Color(0.04, 0.06, 0.10, 0.98)
+	info_panel_style.border_width_left = int(3 * scale_factor)
+	info_panel_style.border_width_right = int(3 * scale_factor)
+	info_panel_style.border_width_top = int(3 * scale_factor)
+	info_panel_style.border_width_bottom = int(3 * scale_factor)
+	info_panel_style.border_color = Color(0.3, 0.7, 1.0, 1.0)
+	info_panel_style.corner_radius_top_left = int(4 * scale_factor)
+	info_panel_style.corner_radius_top_right = int(12 * scale_factor)
+	info_panel_style.corner_radius_bottom_left = int(12 * scale_factor)
+	info_panel_style.corner_radius_bottom_right = int(4 * scale_factor)
+	info_panel_style.shadow_color = Color(0.2, 0.5, 0.8, 0.5)
+	info_panel_style.shadow_size = int(8 * scale_factor)
+	info_panel_style.skew = Vector2(0.03, 0)
+	weapon_info_panel.add_theme_stylebox_override("panel", info_panel_style)
 	add_child(weapon_info_panel)
 	
-	var header_bar = Panel.new()
-	header_bar.position = Vector2(0, 0)
-	header_bar.size = Vector2(info_panel_width, 40 * scale_factor)
-	var header_style = StyleBoxFlat.new()
-	header_style.bg_color = Color(0.12, 0.22, 0.35, 0.9)
-	header_style.border_width_bottom = int(3 * scale_factor)
-	header_style.border_color = Color(0.3, 0.7, 1.0, 1.0)
-	header_style.skew = Vector2(0.08, 0)  # Mismo skew que el panel principal
-	header_bar.add_theme_stylebox_override("panel", header_style)
-	weapon_info_panel.add_child(header_bar)
+	# Header del panel
+	var info_header = Panel.new()
+	info_header.position = Vector2(0, 0)
+	info_header.size = Vector2(info_panel_width, 50 * scale_factor)
+	var info_header_style = StyleBoxFlat.new()
+	info_header_style.bg_color = Color(0.08, 0.15, 0.25, 0.95)
+	info_header_style.border_width_bottom = int(2 * scale_factor)
+	info_header_style.border_color = Color(0.3, 0.7, 1.0, 0.8)
+	info_header_style.skew = Vector2(0.03, 0)
+	info_header.add_theme_stylebox_override("panel", info_header_style)
+	weapon_info_panel.add_child(info_header)
 	
-	var info_title = Label.new()
-	info_title.text = "◢ WEAPON DATA ◣"
-	# Centrado normal sin compensación excesiva
-	info_title.position = Vector2(margin, 6 * scale_factor)
-	info_title.size = Vector2(info_panel_width - margin * 2 - 50 * scale_factor, 28 * scale_factor)
-	info_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	info_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	info_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
-	info_title.add_theme_color_override("font_color", Color(0.5, 0.9, 1.0, 1.0))
-	info_title.add_theme_color_override("font_outline_color", Color(0, 0.1, 0.2, 1))
-	info_title.add_theme_constant_override("outline_size", 2)
-	weapon_info_panel.add_child(info_title)
+	# Nombre del arma (se actualiza dinámicamente)
+	weapon_info_name_label = Label.new()
+	weapon_info_name_label.text = "WEAPON NAME"
+	weapon_info_name_label.position = Vector2(margin * 2, 8 * scale_factor)
+	weapon_info_name_label.size = Vector2(info_panel_width - margin * 4 - 50 * scale_factor, 35 * scale_factor)
+	weapon_info_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	weapon_info_name_label.add_theme_font_size_override("font_size", int(22 * scale_factor))
+	weapon_info_name_label.add_theme_color_override("font_color", Color(0.9, 0.95, 1.0))
+	weapon_info_name_label.add_theme_color_override("font_outline_color", Color(0.1, 0.2, 0.3))
+	weapon_info_name_label.add_theme_constant_override("outline_size", 2)
+	weapon_info_panel.add_child(weapon_info_name_label)
 	
-	# Botón para cerrar el panel de info
-	var close_info_button = Button.new()
-	close_info_button.text = "✕"
-	close_info_button.position = Vector2(info_panel_width - 45 * scale_factor, 4 * scale_factor)
-	close_info_button.size = Vector2(36 * scale_factor, 32 * scale_factor)
-	close_info_button.add_theme_font_size_override("font_size", int(22 * scale_factor))
-	close_info_button.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3, 1.0))
-	close_info_button.add_theme_color_override("font_hover_color", Color(1.0, 0.5, 0.5, 1.0))
-	close_info_button.pressed.connect(_on_close_weapon_info_pressed)
-	weapon_info_panel.add_child(close_info_button)
+	# Botón cerrar
+	var close_btn = Button.new()
+	close_btn.text = "✕"
+	close_btn.position = Vector2(info_panel_width - 48 * scale_factor, 8 * scale_factor)
+	close_btn.size = Vector2(38 * scale_factor, 34 * scale_factor)
+	var close_style = StyleBoxFlat.new()
+	close_style.bg_color = Color(0.4, 0.15, 0.15, 0.8)
+	close_style.border_color = Color(0.8, 0.3, 0.3, 0.8)
+	close_style.border_width_left = int(2 * scale_factor)
+	close_style.border_width_right = int(2 * scale_factor)
+	close_style.border_width_top = int(2 * scale_factor)
+	close_style.border_width_bottom = int(2 * scale_factor)
+	close_style.corner_radius_top_left = int(4 * scale_factor)
+	close_style.corner_radius_top_right = int(4 * scale_factor)
+	close_style.corner_radius_bottom_left = int(4 * scale_factor)
+	close_style.corner_radius_bottom_right = int(4 * scale_factor)
+	close_style.skew = Vector2(0.03, 0)
+	close_btn.add_theme_stylebox_override("normal", close_style)
+	var close_hover = close_style.duplicate()
+	close_hover.bg_color = Color(0.6, 0.2, 0.2, 0.9)
+	close_btn.add_theme_stylebox_override("hover", close_hover)
+	close_btn.add_theme_font_size_override("font_size", int(20 * scale_factor))
+	close_btn.add_theme_color_override("font_color", Color.WHITE)
+	close_btn.pressed.connect(_on_close_weapon_info_pressed)
+	weapon_info_panel.add_child(close_btn)
 	
+	# Tipo de arma (debajo del nombre)
+	weapon_info_type_label = Label.new()
+	weapon_info_type_label.text = "ENERGY WEAPON"
+	weapon_info_type_label.position = Vector2(margin * 2, 42 * scale_factor)
+	weapon_info_type_label.size = Vector2(info_panel_width - margin * 4, 20 * scale_factor)
+	weapon_info_type_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	weapon_info_type_label.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	weapon_info_type_label.add_theme_color_override("font_color", Color(0.5, 0.8, 0.5))
+	weapon_info_panel.add_child(weapon_info_type_label)
+	
+	# ScrollContainer para el contenido
+	weapon_info_scroll = ScrollContainer.new()
+	weapon_info_scroll.position = Vector2(margin, 58 * scale_factor)
+	weapon_info_scroll.size = Vector2(info_panel_width - margin * 2, info_panel_height - 68 * scale_factor)
+	weapon_info_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	weapon_info_panel.add_child(weapon_info_scroll)
+	
+	# Contenedor principal del contenido
+	weapon_info_content = VBoxContainer.new()
+	weapon_info_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	weapon_info_scroll.add_child(weapon_info_content)
+	
+	# RichTextLabel para el contenido (se usa para mostrar info formateada)
 	weapon_info_label = RichTextLabel.new()
-	weapon_info_label.position = Vector2(margin * 2, 48 * scale_factor)
-	weapon_info_label.size = Vector2(info_panel_width - margin * 4, info_panel_height - 60 * scale_factor)
 	weapon_info_label.bbcode_enabled = true
 	weapon_info_label.fit_content = true
-	weapon_info_label.scroll_following = true
-	# Fondo semi-transparente SIN skew (el skew del panel principal ya da el efecto)
-	var text_bg = StyleBoxFlat.new()
-	text_bg.bg_color = Color(0.02, 0.04, 0.08, 0.5)
-	text_bg.border_width_left = 1
-	text_bg.border_width_right = 1
-	text_bg.border_width_top = 1
-	text_bg.border_width_bottom = 1
-	text_bg.border_color = Color(0.2, 0.4, 0.6, 0.3)
-	# NO aplicar skew al texto para evitar deformación
-	weapon_info_label.add_theme_stylebox_override("normal", text_bg)
-	weapon_info_panel.add_child(weapon_info_label)
+	weapon_info_label.scroll_active = false
+	weapon_info_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	weapon_info_label.add_theme_font_size_override("normal_font_size", int(16 * scale_factor))
+	weapon_info_label.add_theme_font_size_override("bold_font_size", int(17 * scale_factor))
+	weapon_info_content.add_child(weapon_info_label)
 	
-	# Panel selector de ataque físico (85% del ancho, 50% de la altura)
+	# ═══════════════════════════════════════════════════════════════════════════
+	# PANEL SELECTOR DE ATAQUE FÍSICO
+	# ═══════════════════════════════════════════════════════════════════════════
 	var physical_panel_width = screen_width * 0.85
 	var physical_panel_height = screen_height * 0.50
 	physical_attack_panel = Panel.new()
-	physical_attack_panel.position = Vector2((screen_width - physical_panel_width) / 2, (screen_height - physical_panel_height) / 2)
+	physical_attack_panel.position = Vector2((screen_width - physical_panel_width) / 2, (screen_height - physical_panel_height) / 2 - 60 * scale_factor)
 	physical_attack_panel.size = Vector2(physical_panel_width, physical_panel_height)
 	physical_attack_panel.visible = false
 	add_child(physical_attack_panel)
@@ -1961,6 +2034,30 @@ func hide_weapon_selector():
 	if battle_scene and battle_scene.has_method("notify_ui_interaction"):
 		battle_scene.notify_ui_interaction()
 
+func is_weapon_selector_visible() -> bool:
+	"""Verifica si el panel de selección de armas está visible"""
+	return weapon_selector_panel != null and weapon_selector_panel.visible
+
+func is_physical_attack_panel_visible() -> bool:
+	"""Verifica si el panel de ataques físicos está visible"""
+	return physical_attack_panel != null and physical_attack_panel.visible
+
+func is_point_over_attack_panels(screen_pos: Vector2) -> bool:
+	"""Verifica si un punto de pantalla está sobre algún panel de ataque"""
+	if weapon_selector_panel and weapon_selector_panel.visible:
+		var rect = weapon_selector_panel.get_global_rect()
+		if rect.has_point(screen_pos):
+			return true
+	if physical_attack_panel and physical_attack_panel.visible:
+		var rect = physical_attack_panel.get_global_rect()
+		if rect.has_point(screen_pos):
+			return true
+	if weapon_info_panel and weapon_info_panel.visible:
+		var rect = weapon_info_panel.get_global_rect()
+		if rect.has_point(screen_pos):
+			return true
+	return false
+
 func _on_weapon_label_clicked(event: InputEvent, weapon_index: int, weapon: Dictionary, breakdown: String, to_hit_data: Dictionary):
 	# Mostrar info solo cuando se hace clic en el label (no en el checkbox)
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
@@ -1975,120 +2072,93 @@ func _on_weapon_clicked(_weapon_index: int, weapon: Dictionary, breakdown: Strin
 	
 	weapon_info_panel.visible = true
 	
-	# Construir información detallada con BBCode modernizado en dos columnas
-	var info_text = ""
-	
-	# Nombre del arma con icono según tipo
+	# Actualizar nombre del arma en el header
 	var weapon_icon = _get_weapon_type_icon(weapon.get("type", "energy"))
-	info_text += "[center][font_size=20][b][color=#50D0FF]%s %s[/color][/b][/font_size][/center]\n" % [weapon_icon, weapon.get("name", "Unknown Weapon")]
-	info_text += "[center][color=#406080]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/color][/center]\n"
+	var weapon_name = weapon.get("name", "Unknown Weapon")
+	if weapon_info_name_label:
+		weapon_info_name_label.text = "%s  %s" % [weapon_icon, weapon_name]
 	
-	# Tipo de arma
+	# Actualizar tipo de arma
 	var weapon_type = weapon.get("type", "energy")
 	var weapon_type_str = _get_weapon_type_name(weapon_type)
 	var type_color = _get_weapon_type_color(weapon_type)
-	info_text += "[center][color=%s]▸ %s WEAPON ◂[/color][/center]\n\n" % [type_color, weapon_type_str.to_upper()]
+	if weapon_info_type_label:
+		weapon_info_type_label.text = "▸ %s WEAPON ◂" % weapon_type_str.to_upper()
+		weapon_info_type_label.add_theme_color_override("font_color", Color.from_string(type_color, Color.WHITE))
 	
-	# Usar tabla para organizar en dos columnas
-	info_text += "[table=2]\n"
+	# Construir contenido con BBCode limpio
+	var info_text = ""
 	
-	# COLUMNA IZQUIERDA: Combat Specs
-	info_text += "[cell]"
-	info_text += "[color=#FFC040]┏━ COMBAT SPECS ━━━━━━━┓[/color]\n"
-	info_text += "[color=#909090]┃[/color] Damage Output\n"
-	info_text += "[color=#909090]┃[/color]   [color=#FF4040][b]%d[/b][/color] points\n" % weapon.get("damage", 0)
-	info_text += "[color=#909090]┃[/color]\n"
-	info_text += "[color=#909090]┃[/color] Heat Generated\n"
-	info_text += "[color=#909090]┃[/color]   [color=#FF9030][b]%d[/b][/color] heat\n" % weapon.get("heat", 0)
+	# ═══ SECCIÓN: COMBAT STATS ═══
+	info_text += "[color=#50A0D0]╔════════════════════════════════════════════════════════╗[/color]\n"
+	info_text += "[color=#50A0D0]║[/color]  [color=#FFB030][b]⚔ COMBAT STATISTICS[/b][/color]\n"
+	info_text += "[color=#50A0D0]╠════════════════════════════════════════════════════════╣[/color]\n"
 	
-	# Información de munición si requiere
+	# Daño
+	var damage = weapon.get("damage", 0)
+	info_text += "[color=#50A0D0]║[/color]  [color=#A0A0A0]Damage Output:[/color]      [color=#FF5050][b]%d[/b][/color] [color=#808080]points[/color]\n" % damage
+	
+	# Calor
+	var heat = weapon.get("heat", 0)
+	info_text += "[color=#50A0D0]║[/color]  [color=#A0A0A0]Heat Generated:[/color]     [color=#FF8030][b]%d[/b][/color] [color=#808080]heat[/color]\n" % heat
+	
+	# Munición si aplica
 	if weapon.get("requires_ammo", false):
 		var ammo = weapon.get("ammo", 0)
 		var ammo_color = "#40FF40" if ammo > 5 else ("#FFFF40" if ammo > 2 else "#FF4040")
-		info_text += "[color=#909090]┃[/color]\n"
-		info_text += "[color=#909090]┃[/color] Ammunition\n"
-		info_text += "[color=#909090]┃[/color]   [color=%s][b]%d[/b] rounds[/color]\n" % [ammo_color, ammo]
+		info_text += "[color=#50A0D0]║[/color]  [color=#A0A0A0]Ammunition:[/color]         [color=%s][b]%d[/b][/color] [color=#808080]rounds remaining[/color]\n" % [ammo_color, ammo]
 	
-	info_text += "[color=#FFC040]┗━━━━━━━━━━━━━━━━━━━━━━┛[/color]"
-	info_text += "[/cell]\n"
+	info_text += "[color=#50A0D0]╚════════════════════════════════════════════════════════╝[/color]\n\n"
 	
-	# COLUMNA DERECHA: Range Profile
-	info_text += "[cell]"
-	info_text += "[color=#40C0FF]┏━ RANGE PROFILE ━━━━━┓[/color]\n"
+	# ═══ SECCIÓN: RANGE PROFILE ═══
+	info_text += "[color=#40B0A0]╔════════════════════════════════════════════════════════╗[/color]\n"
+	info_text += "[color=#40B0A0]║[/color]  [color=#40E0D0][b]◎ RANGE PROFILE[/b][/color]\n"
+	info_text += "[color=#40B0A0]╠════════════════════════════════════════════════════════╣[/color]\n"
+	
 	var min_range = weapon.get("min_range", 0)
 	var short_range = weapon.get("short_range", 3)
 	var medium_range = weapon.get("medium_range", 6)
 	var long_range = weapon.get("long_range", 9)
 	
 	if min_range > 0:
-		info_text += "[color=#909090]┃[/color] Dead Zone\n"
-		info_text += "[color=#909090]┃[/color]   [color=#FF4040][b]< %d[/b][/color] hexes\n" % min_range
-		info_text += "[color=#909090]┃[/color]\n"
+		info_text += "[color=#40B0A0]║[/color]  [color=#FF4040]⊘ Minimum Range:[/color]    [color=#FF4040][b]%d[/b][/color] [color=#808080]hexes (cannot fire)[/color]\n" % min_range
 	
-	info_text += "[color=#909090]┃[/color] Short Range\n"
-	info_text += "[color=#909090]┃[/color]   [color=#40FF40][b]%d[/b][/color] hexes [color=#60A060](+0)[/color]\n" % short_range
-	info_text += "[color=#909090]┃[/color]\n"
-	info_text += "[color=#909090]┃[/color] Medium Range\n"
-	info_text += "[color=#909090]┃[/color]   [color=#FFFF40][b]%d[/b][/color] hexes [color=#A0A040](+2)[/color]\n" % medium_range
-	info_text += "[color=#909090]┃[/color]\n"
-	info_text += "[color=#909090]┃[/color] Long Range\n"
-	info_text += "[color=#909090]┃[/color]   [color=#FFA040][b]%d[/b][/color] hexes [color=#A06040](+4)[/color]\n" % long_range
-	info_text += "[color=#40C0FF]┗━━━━━━━━━━━━━━━━━━━━━┛[/color]"
-	info_text += "[/cell]\n"
+	info_text += "[color=#40B0A0]║[/color]  [color=#40FF40]● Short Range:[/color]      [color=#40FF40][b]1-%d[/b][/color] [color=#808080]hexes[/color] [color=#60A060](+0 modifier)[/color]\n" % short_range
+	info_text += "[color=#40B0A0]║[/color]  [color=#FFFF40]● Medium Range:[/color]     [color=#FFFF40][b]%d-%d[/b][/color] [color=#808080]hexes[/color] [color=#A0A040](+2 modifier)[/color]\n" % [short_range + 1, medium_range]
+	info_text += "[color=#40B0A0]║[/color]  [color=#FFA040]● Long Range:[/color]       [color=#FFA040][b]%d-%d[/b][/color] [color=#808080]hexes[/color] [color=#A06040](+4 modifier)[/color]\n" % [medium_range + 1, long_range]
 	
-	info_text += "[/table]\n"
+	info_text += "[color=#40B0A0]╚════════════════════════════════════════════════════════╝[/color]\n\n"
 	
-	# TO-HIT ANALYSIS - Ancho completo debajo (sin espacio extra)
-	info_text += "[color=#FF80FF]┏━ TO-HIT ANALYSIS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓[/color]\n"
+	# ═══ SECCIÓN: TO-HIT ANALYSIS ═══
+	info_text += "[color=#B050D0]╔════════════════════════════════════════════════════════╗[/color]\n"
+	info_text += "[color=#B050D0]║[/color]  [color=#E080FF][b]⎯ TO-HIT ANALYSIS[/b][/color]\n"
+	info_text += "[color=#B050D0]╠════════════════════════════════════════════════════════╣[/color]\n"
 	
-	# Parse del breakdown para mejor formato
-	var breakdown_lines = breakdown.split("\n")
-	for line in breakdown_lines:
-		if line.strip_edges() != "":
-			# Detectar número target
-			if "Target Number" in line or "Final" in line:
-				info_text += "[color=#909090]┃[/color] [color=#FFD040][b]%s[/b][/color]\n" % line.strip_edges()
-			else:
-				info_text += "[color=#909090]┃[/color] [color=#D0D0D0]%s[/color]\n" % line.strip_edges()
-	
-	# Modifiers individuales con mejor formato
+	# Modifiers
 	var modifiers = to_hit_data.get("modifiers", {})
-	if modifiers.size() > 0:
-		info_text += "[color=#909090]┃[/color]\n"
-		info_text += "[color=#909090]┃[/color] [color=#C0C0FF][b]Modifier Breakdown:[/b][/color]\n"
-		
-		# Organizar modificadores en dos columnas si hay muchos
-		var mod_keys = modifiers.keys()
-		if mod_keys.size() > 6:
-			# Dos columnas para muchos modificadores
-			var half = ceili(mod_keys.size() / 2.0)
-			for i in range(half):
-				var left_key = mod_keys[i]
-				var left_val = modifiers[left_key]
-				var left_color = "#40FF80" if left_val <= 0 else "#FF6060"
-				var left_name = str(left_key).replace("_", " ").capitalize()
-				
-				var line_text = "[color=#909090]┃[/color]  • %-20s [color=%s]%+d[/color]" % [left_name, left_color, left_val]
-				
-				# Añadir segunda columna si existe
-				var right_idx = i + half
-				if right_idx < mod_keys.size():
-					var right_key = mod_keys[right_idx]
-					var right_val = modifiers[right_key]
-					var right_color = "#40FF80" if right_val <= 0 else "#FF6060"
-					var right_name = str(right_key).replace("_", " ").capitalize()
-					line_text += "  • %s [color=%s]%+d[/color]" % [right_name, right_color, right_val]
-				
-				info_text += line_text + "\n"
-		else:
-			# Una columna para pocos modificadores
-			for mod_name in mod_keys:
-				var mod_val = modifiers[mod_name]
-				var color = "#40FF80" if mod_val <= 0 else "#FF6060"
-				var formatted_name = str(mod_name).replace("_", " ").capitalize()
-				info_text += "[color=#909090]┃[/color]  • %s [color=%s]%+d[/color]\n" % [formatted_name, color, mod_val]
+	var total_mod = 0
+	for mod_name in modifiers.keys():
+		var mod_val = modifiers[mod_name]
+		total_mod += mod_val
+		var color = "#50FF80" if mod_val <= 0 else "#FF6060"
+		var formatted_name = str(mod_name).replace("_", " ").capitalize()
+		var sign_str = "+" if mod_val > 0 else ""
+		info_text += "[color=#B050D0]║[/color]  [color=#A0A0A0]%s:[/color] [color=%s][b]%s%d[/b][/color]\n" % [formatted_name, color, sign_str, mod_val]
 	
-	info_text += "[color=#FF80FF]┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛[/color]\n"
+	info_text += "[color=#B050D0]╠════════════════════════════════════════════════════════╣[/color]\n"
+	
+	# Target number final
+	var base_to_hit = to_hit_data.get("base_to_hit", 4)
+	var final_to_hit = to_hit_data.get("final_to_hit", base_to_hit + total_mod)
+	
+	info_text += "[color=#B050D0]║[/color]  [color=#FFD040][b]TARGET NUMBER: %d+[/b][/color] [color=#808080]on 2D6[/color]\n" % final_to_hit
+	
+	# Color según dificultad
+	var difficulty_color = "#40FF40" if final_to_hit <= 6 else ("#FFFF40" if final_to_hit <= 9 else "#FF4040")
+	var difficulty_text = "Easy" if final_to_hit <= 6 else ("Moderate" if final_to_hit <= 9 else "Difficult")
+	info_text += "[color=#B050D0]║[/color]  [color=#808080]Difficulty:[/color] [color=%s][b]%s[/b][/color]\n" % [difficulty_color, difficulty_text]
+	
+	info_text += "[color=#B050D0]╚════════════════════════════════════════════════════════╝[/color]\n"
 	
 	weapon_info_label.text = info_text
 

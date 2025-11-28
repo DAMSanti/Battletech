@@ -1501,6 +1501,11 @@ func _is_click_over_ui(screen_pos: Vector2) -> bool:
 		print("[INPUT] Click blocked - over log panel")
 		return true
 	
+	# Verificar si está sobre los paneles de selección de ataque
+	if ui.has_method("is_point_over_attack_panels") and ui.is_point_over_attack_panels(screen_pos):
+		print("[INPUT] Click blocked - over attack panel")
+		return true
+	
 	# Buscar botones visibles en la UI que realmente estén en pantalla
 	var buttons = _get_visible_buttons(ui)
 	for button in buttons:
@@ -1513,6 +1518,18 @@ func _is_click_over_ui(screen_pos: Vector2) -> bool:
 func _get_visible_buttons(node: Node) -> Array:
 	"""Obtiene recursivamente todos los botones realmente visibles"""
 	var buttons = []
+	
+	# IMPORTANTE: No buscar botones dentro del facing_selector
+	# El facing_selector maneja sus propios eventos y no debe ser bloqueado
+	if node.name == "FacingSelector" or node.get_class() == "FacingSelector":
+		return buttons
+	# También verificar si es el facing_selector local de battle_scene
+	if _local_facing_selector and node == _local_facing_selector:
+		return buttons
+	# Verificar por script
+	if node.get_script() and node.get_script().resource_path.ends_with("facing_selector.gd"):
+		return buttons
+	
 	if node is Button:
 		# Verificar que el botón Y todos sus ancestros estén visibles
 		if _is_truly_visible(node):
@@ -1996,13 +2013,19 @@ func _preview_movement_path(unit, hex: Vector2i):
 	"""Muestra el camino de movimiento y pide confirmación"""
 	print("[PREVIEW_MOVE] Starting preview to hex=%s for unit=%s" % [hex, unit.mech_name])
 	
+	var is_jumping = unit.movement_type_used == GameEnums.MovementType.JUMP
+	
 	# Usar el path pre-calculado de reachable_hexes_details si está disponible
 	var path: Array = []
-	if reachable_hexes_details.has(hex):
+	if is_jumping:
+		# JUMP: El path es simplemente origen -> destino (línea recta en el aire)
+		path = [unit.hex_position, hex]
+		print("[PREVIEW_MOVE] Using direct jump path (no terrain pathfinding)")
+	elif reachable_hexes_details.has(hex):
 		path = reachable_hexes_details[hex]["path"]
 		print("[PREVIEW_MOVE] Using pre-calculated path from reachable_hexes_details")
 	else:
-		# Fallback a find_path para saltos u otros casos
+		# Fallback a find_path para Walk/Run
 		path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
 		print("[PREVIEW_MOVE] Using hex_grid.find_path (fallback)")
 	
@@ -2021,22 +2044,29 @@ func _preview_movement_path(unit, hex: Vector2i):
 	var rotation_cost = 0
 	var current_facing = unit.facing
 	
-	for i in range(1, path.size()):
-		var from_hex = path[i - 1]
-		var to_hex = path[i]
-		
-		# Calcular facing necesario para este paso
-		var step_facing = FacingSystem.get_facing_to_hex(from_hex, to_hex)
-		
-		# Calcular costo de rotación
-		var step_rotation = MovementSystem.get_rotation_cost(current_facing, step_facing)
-		rotation_cost += step_rotation
-		
-		# Calcular costo de terreno
-		var step_cost = MovementSystem.calculate_movement_cost(from_hex, to_hex, unit.movement_type_used, hex_grid)
-		movement_cost += step_cost
-		
-		current_facing = step_facing
+	if is_jumping:
+		# JUMP: Costo = distancia en hexes (ignora terreno y elevación)
+		movement_cost = hex_grid.hex_distance(unit.hex_position, hex)
+		rotation_cost = 0  # Jump permite cambiar facing gratis al aterrizar
+		print("[PREVIEW_MOVE] Jump cost: %d hexes" % movement_cost)
+	else:
+		# WALK/RUN: Calcular costo normal paso a paso
+		for i in range(1, path.size()):
+			var from_hex = path[i - 1]
+			var to_hex = path[i]
+			
+			# Calcular facing necesario para este paso
+			var step_facing = FacingSystem.get_facing_to_hex(from_hex, to_hex)
+			
+			# Calcular costo de rotación
+			var step_rotation = MovementSystem.get_rotation_cost(current_facing, step_facing)
+			rotation_cost += step_rotation
+			
+			# Calcular costo de terreno
+			var step_cost = MovementSystem.calculate_movement_cost(from_hex, to_hex, unit.movement_type_used, hex_grid)
+			movement_cost += step_cost
+			
+			current_facing = step_facing
 	
 	var total_cost = movement_cost + rotation_cost
 	
@@ -2138,34 +2168,48 @@ func _on_movement_cancelled():
 
 func _execute_movement(unit, hex: Vector2i, path: Array):
 	"""Ejecuta el movimiento del mech"""
+	var is_jumping = unit.movement_type_used == GameEnums.MovementType.JUMP
+	
 	# Calcular camino si no se proporciona
 	if path.size() == 0:
-		path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
+		if is_jumping:
+			# JUMP: El path es simplemente origen -> destino
+			path = [unit.hex_position, hex]
+		else:
+			path = hex_grid.find_path(unit.hex_position, hex, unit.current_movement)
 	
 	if path.size() == 0:
 		return
 	
-	# Calcular coste REAL de movimiento recorriendo el path
+	# Calcular coste REAL de movimiento
 	var movement_cost = 0
 	var rotation_cost = 0
 	var current_facing = unit.facing
 	
-	for i in range(1, path.size()):
-		var from_hex = path[i - 1]
-		var to_hex = path[i]
-		
-		# Calcular facing necesario para este paso
-		var step_facing = FacingSystem.get_facing_to_hex(from_hex, to_hex)
-		
-		# Calcular costo de rotación
-		var step_rotation = MovementSystem.get_rotation_cost(current_facing, step_facing)
-		rotation_cost += step_rotation
-		
-		# Calcular costo de terreno
-		var step_cost = MovementSystem.calculate_movement_cost(from_hex, to_hex, unit.movement_type_used, hex_grid)
-		movement_cost += step_cost
-		
-		current_facing = step_facing
+	if is_jumping:
+		# JUMP: Costo = distancia en hexes (ignora terreno y elevación)
+		movement_cost = hex_grid.hex_distance(unit.hex_position, hex)
+		rotation_cost = 0  # Jump permite cambiar facing gratis al aterrizar
+		# El facing final se selecciona al aterrizar (no durante el salto)
+		current_facing = FacingSystem.get_facing_to_hex(unit.hex_position, hex)
+	else:
+		# WALK/RUN: Calcular costo normal paso a paso
+		for i in range(1, path.size()):
+			var from_hex = path[i - 1]
+			var to_hex = path[i]
+			
+			# Calcular facing necesario para este paso
+			var step_facing = FacingSystem.get_facing_to_hex(from_hex, to_hex)
+			
+			# Calcular costo de rotación
+			var step_rotation = MovementSystem.get_rotation_cost(current_facing, step_facing)
+			rotation_cost += step_rotation
+			
+			# Calcular costo de terreno
+			var step_cost = MovementSystem.calculate_movement_cost(from_hex, to_hex, unit.movement_type_used, hex_grid)
+			movement_cost += step_cost
+			
+			current_facing = step_facing
 	
 	var total_cost = movement_cost + rotation_cost
 	
