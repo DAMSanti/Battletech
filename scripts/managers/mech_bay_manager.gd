@@ -289,16 +289,27 @@ func add_mech_to_hangar(mech_type: String, variant: String) -> bool:
 func get_mech_data(mech_type: String, variant: String) -> Dictionary:
 	# Obtiene una copia de los datos de un mech específico
 	if not mech_library.has(mech_type):
+		print("[MechBayManager] Mech type '%s' not found in library" % mech_type)
 		return {}
 	
-	if not mech_library[mech_type]["variants"].has(variant):
-		return {}
+	var variants = mech_library[mech_type]["variants"]
+	var selected_variant = variant
 	
-	var mech_data = mech_library[mech_type]["variants"][variant].duplicate(true)
+	# Si no se especifica variante o no existe, usar la primera disponible
+	if variant.is_empty() or not variants.has(variant):
+		if variants.size() > 0:
+			selected_variant = variants.keys()[0]
+			print("[MechBayManager] Using default variant '%s' for mech '%s'" % [selected_variant, mech_type])
+		else:
+			print("[MechBayManager] No variants available for mech '%s'" % mech_type)
+			return {}
+	
+	var mech_data = variants[selected_variant].duplicate(true)
 	mech_data["mech_type"] = mech_type
-	mech_data["variant"] = variant
+	mech_data["variant"] = selected_variant
 	mech_data["tonnage"] = mech_library[mech_type]["tonnage"]
 	
+	print("[MechBayManager] get_mech_data returning '%s' with %d weapons" % [mech_data.get("name", "Unknown"), mech_data.get("weapons", []).size()])
 	return mech_data
 
 func get_player_hangar() -> Array:

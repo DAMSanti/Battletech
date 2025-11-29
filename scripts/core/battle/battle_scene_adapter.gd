@@ -329,7 +329,117 @@ func _on_facing_changed(mech_id: String, new_facing: int, _mp_cost: int) -> void
 
 func _on_attack_resolved(result: Dictionary) -> void:
 	print("[ADAPTER] Attack resolved: %s" % result)
-	# TODO: Actualizar UI con resultado del ataque
+	
+	# Obtener los nodos de mech
+	var attacker_id = str(result.get("attacker_id", ""))
+	var target_id = str(result.get("target_id", ""))
+	var attacker_node = get_mech_node(attacker_id)
+	var target_node = get_mech_node(target_id)
+	
+	var attacker_name = attacker_node.mech_name if attacker_node and attacker_node.get("mech_name") else "Unknown"
+	var target_name = target_node.mech_name if target_node and target_node.get("mech_name") else "Unknown"
+	
+	# Procesar resultados de armas (weapon attack)
+	var weapon_results = result.get("results", [])
+	for weapon_result in weapon_results:
+		_display_weapon_result(attacker_name, target_name, weapon_result, target_node)
+	
+	# Procesar resultado de ataque físico
+	if result.has("attack_type"):
+		_display_physical_result(attacker_name, target_name, result, target_node)
+	
+	# Actualizar el calor del atacante si lo tenemos
+	if attacker_node and result.has("attacker_heat"):
+		attacker_node.heat = result.get("attacker_heat", 0)
+		attacker_node.queue_redraw()
+	
+	# Verificar si el objetivo fue destruido
+	if result.get("target_destroyed", false) and target_node:
+		target_node.is_destroyed = true
+		if battle_scene.ui and battle_scene.ui.has_method("add_combat_message"):
+			battle_scene.ui.add_combat_message(">>> %s DESTROYED! <<<" % target_name, Color.RED)
+
+func _display_weapon_result(attacker_name: String, target_name: String, weapon_result: Dictionary, target_node) -> void:
+	"""Muestra el resultado de un disparo de arma en la UI"""
+	if not battle_scene.ui or not battle_scene.ui.has_method("add_combat_message"):
+		return
+	
+	var weapon_name = weapon_result.get("weapon_name", "Unknown Weapon")
+	var roll = weapon_result.get("roll", 0)
+	var target_number = weapon_result.get("target_number", 0)
+	var dice = weapon_result.get("dice", [0, 0])
+	var hit = weapon_result.get("hit", false)
+	
+	# Mostrar tirada
+	battle_scene.ui.add_combat_message("", Color.WHITE)
+	battle_scene.ui.add_combat_message("=== %s fires %s at %s ===" % [attacker_name, weapon_name, target_name], Color.CYAN)
+	battle_scene.ui.add_combat_message("Roll: %d + %d = %d (need %d+)" % [dice[0], dice[1], roll, target_number], Color.WHITE)
+	
+	if weapon_result.get("reason", "") == "out_of_range":
+		battle_scene.ui.add_combat_message("OUT OF RANGE!", Color.ORANGE)
+		return
+	
+	if weapon_result.get("critical_miss", false):
+		battle_scene.ui.add_combat_message("CRITICAL MISS!", Color.RED)
+		return
+	
+	if hit:
+		var location = weapon_result.get("location", "unknown")
+		var damage = weapon_result.get("damage", 0)
+		var damage_result = weapon_result.get("damage_result", {})
+		
+		battle_scene.ui.add_combat_message("HIT! Location: %s" % location.replace("_", " ").capitalize(), Color.GREEN)
+		battle_scene.ui.add_combat_message("Damage: %d" % damage, Color.YELLOW)
+		
+		# Aplicar daño al mech visual
+		if target_node and target_node.has_method("take_damage"):
+			target_node.take_damage(location, damage)
+			target_node.queue_redraw()
+		
+		# Mostrar información adicional del daño
+		if damage_result.get("critical_hit", false):
+			battle_scene.ui.add_combat_message("CRITICAL HIT! Structure damaged!", Color.ORANGE)
+		
+		if damage_result.get("location_destroyed", false):
+			battle_scene.ui.add_combat_message("%s DESTROYED!" % location.replace("_", " ").capitalize(), Color.RED)
+		
+		if damage_result.get("mech_destroyed", false):
+			battle_scene.ui.add_combat_message(">>> MECH DESTROYED! <<<", Color.RED)
+	else:
+		battle_scene.ui.add_combat_message("MISS!", Color.GRAY)
+
+func _display_physical_result(attacker_name: String, target_name: String, result: Dictionary, target_node) -> void:
+	"""Muestra el resultado de un ataque físico en la UI"""
+	if not battle_scene.ui or not battle_scene.ui.has_method("add_combat_message"):
+		return
+	
+	var attack_type = result.get("attack_type", "physical")
+	var attack_result = result.get("result", {})
+	var roll = attack_result.get("roll", 0)
+	var target_number = attack_result.get("target_number", 0)
+	var dice = attack_result.get("dice", [0, 0])
+	var hit = attack_result.get("hit", false)
+	
+	# Formatear nombre del ataque
+	var attack_name = attack_type.replace("_", " ").capitalize()
+	
+	battle_scene.ui.add_combat_message("", Color.WHITE)
+	battle_scene.ui.add_combat_message("=== %s uses %s on %s ===" % [attacker_name, attack_name, target_name], Color.MAGENTA)
+	battle_scene.ui.add_combat_message("Roll: %d + %d = %d (need %d+)" % [dice[0], dice[1], roll, target_number], Color.WHITE)
+	
+	if hit:
+		var location = attack_result.get("location", "unknown")
+		var damage = attack_result.get("damage", 0)
+		
+		battle_scene.ui.add_combat_message("HIT! Location: %s" % location.replace("_", " ").capitalize(), Color.GREEN)
+		battle_scene.ui.add_combat_message("Damage: %d" % damage, Color.YELLOW)
+		
+		# Aplicar daño al mech visual
+		if target_node and target_node.has_method("take_damage"):
+			target_node.take_damage(location, damage)
+			target_node.queue_redraw()
+	else:
+		battle_scene.ui.add_combat_message("MISS!", Color.GRAY)
 
 func _on_initiative_rolled(results: Dictionary) -> void:
 	var player_roll = results.get("player", 0)

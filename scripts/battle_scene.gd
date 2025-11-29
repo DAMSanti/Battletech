@@ -778,12 +778,148 @@ func _setup_battle():
 	# Array para almacenar todos los mechs del jugador (4 mechs)
 	var player_mechs_data: Array = []
 	
-	# Lance del jugador - 4 mechs diferentes
+	# Lance del jugador - 4 mechs diferentes con datos completos de combate
 	var player_lance_configs = [
-		{"name": "Atlas", "tonnage": 100, "walk_mp": 3, "run_mp": 5, "jump_mp": 0},
-		{"name": "Timber Wolf", "tonnage": 75, "walk_mp": 5, "run_mp": 8, "jump_mp": 0},
-		{"name": "Hunchback", "tonnage": 50, "walk_mp": 4, "run_mp": 6, "jump_mp": 0},
-		{"name": "Jenner", "tonnage": 35, "walk_mp": 7, "run_mp": 11, "jump_mp": 5}
+		{
+			"name": "Atlas", "tonnage": 100, "walk_mp": 3, "run_mp": 5, "jump_mp": 0,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 30, "heat_dissipation": 20,
+			"weapons": [
+				{"name": "AC/20", "damage": 20, "heat": 7, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "ballistic", "location": "right_torso"},
+				{"name": "LRM 20", "damage": 20, "heat": 6, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "left_torso"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "left_arm"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "right_arm"},
+				{"name": "SRM 6", "damage": 12, "heat": 4, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "missile", "location": "left_torso"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 47, "max": 47},
+				"center_torso_rear": {"current": 14, "max": 14},
+				"left_torso": {"current": 32, "max": 32},
+				"left_torso_rear": {"current": 10, "max": 10},
+				"right_torso": {"current": 32, "max": 32},
+				"right_torso_rear": {"current": 10, "max": 10},
+				"left_arm": {"current": 34, "max": 34},
+				"right_arm": {"current": 34, "max": 34},
+				"left_leg": {"current": 41, "max": 41},
+				"right_leg": {"current": 41, "max": 41}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 31, "max": 31},
+				"left_torso": {"current": 21, "max": 21},
+				"right_torso": {"current": 21, "max": 21},
+				"left_arm": {"current": 17, "max": 17},
+				"right_arm": {"current": 17, "max": 17},
+				"left_leg": {"current": 21, "max": 21},
+				"right_leg": {"current": 21, "max": 21}
+			}
+		},
+		{
+			"name": "Timber Wolf", "tonnage": 75, "walk_mp": 5, "run_mp": 8, "jump_mp": 0,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 26, "heat_dissipation": 20,
+			"weapons": [
+				{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy", "location": "left_arm"},
+				{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy", "location": "right_arm"},
+				{"name": "LRM 20", "damage": 20, "heat": 6, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "left_torso"},
+				{"name": "LRM 20", "damage": 20, "heat": 6, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "right_torso"},
+				{"name": "Medium Pulse Laser", "damage": 6, "heat": 4, "min_range": 0, "short_range": 2, "medium_range": 4, "long_range": 6, "type": "energy", "location": "center_torso"},
+				{"name": "Medium Pulse Laser", "damage": 6, "heat": 4, "min_range": 0, "short_range": 2, "medium_range": 4, "long_range": 6, "type": "energy", "location": "center_torso"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 34, "max": 34},
+				"center_torso_rear": {"current": 11, "max": 11},
+				"left_torso": {"current": 25, "max": 25},
+				"left_torso_rear": {"current": 8, "max": 8},
+				"right_torso": {"current": 25, "max": 25},
+				"right_torso_rear": {"current": 8, "max": 8},
+				"left_arm": {"current": 24, "max": 24},
+				"right_arm": {"current": 24, "max": 24},
+				"left_leg": {"current": 32, "max": 32},
+				"right_leg": {"current": 32, "max": 32}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 23, "max": 23},
+				"left_torso": {"current": 16, "max": 16},
+				"right_torso": {"current": 16, "max": 16},
+				"left_arm": {"current": 12, "max": 12},
+				"right_arm": {"current": 12, "max": 12},
+				"left_leg": {"current": 16, "max": 16},
+				"right_leg": {"current": 16, "max": 16}
+			}
+		},
+		{
+			"name": "Hunchback", "tonnage": 50, "walk_mp": 4, "run_mp": 6, "jump_mp": 0,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 13, "heat_dissipation": 10,
+			"weapons": [
+				{"name": "AC/20", "damage": 20, "heat": 7, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "ballistic", "location": "right_torso"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "left_arm"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "right_arm"},
+				{"name": "Small Laser", "damage": 3, "heat": 1, "min_range": 0, "short_range": 1, "medium_range": 2, "long_range": 3, "type": "energy", "location": "head"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 21, "max": 21},
+				"center_torso_rear": {"current": 7, "max": 7},
+				"left_torso": {"current": 16, "max": 16},
+				"left_torso_rear": {"current": 6, "max": 6},
+				"right_torso": {"current": 16, "max": 16},
+				"right_torso_rear": {"current": 6, "max": 6},
+				"left_arm": {"current": 16, "max": 16},
+				"right_arm": {"current": 16, "max": 16},
+				"left_leg": {"current": 20, "max": 20},
+				"right_leg": {"current": 20, "max": 20}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 16, "max": 16},
+				"left_torso": {"current": 12, "max": 12},
+				"right_torso": {"current": 12, "max": 12},
+				"left_arm": {"current": 8, "max": 8},
+				"right_arm": {"current": 8, "max": 8},
+				"left_leg": {"current": 12, "max": 12},
+				"right_leg": {"current": 12, "max": 12}
+			}
+		},
+		{
+			"name": "Jenner", "tonnage": 35, "walk_mp": 7, "run_mp": 11, "jump_mp": 5,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 10, "heat_dissipation": 10,
+			"weapons": [
+				{"name": "SRM 4", "damage": 8, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "missile", "location": "center_torso"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "left_arm"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "right_arm"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "right_arm"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "left_arm"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 16, "max": 16},
+				"center_torso_rear": {"current": 5, "max": 5},
+				"left_torso": {"current": 12, "max": 12},
+				"left_torso_rear": {"current": 4, "max": 4},
+				"right_torso": {"current": 12, "max": 12},
+				"right_torso_rear": {"current": 4, "max": 4},
+				"left_arm": {"current": 11, "max": 11},
+				"right_arm": {"current": 11, "max": 11},
+				"left_leg": {"current": 15, "max": 15},
+				"right_leg": {"current": 15, "max": 15}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 11, "max": 11},
+				"left_torso": {"current": 8, "max": 8},
+				"right_torso": {"current": 8, "max": 8},
+				"left_arm": {"current": 6, "max": 6},
+				"right_arm": {"current": 6, "max": 6},
+				"left_leg": {"current": 8, "max": 8},
+				"right_leg": {"current": 8, "max": 8}
+			}
+		}
 	]
 	
 	if loadout_manager and loadout_manager.has_loadout():
@@ -825,12 +961,148 @@ func _setup_battle():
 	# Crear 4 mechs para el enemigo
 	var enemy_mechs_data: Array = []
 	
-	# Lance enemigo - 4 mechs diferentes
+	# Lance enemigo - 4 mechs diferentes con datos completos de combate
 	var enemy_lance_configs = [
-		{"name": "Daishi", "tonnage": 100, "walk_mp": 3, "run_mp": 5, "jump_mp": 0},
-		{"name": "Mad Cat", "tonnage": 75, "walk_mp": 5, "run_mp": 8, "jump_mp": 0},
-		{"name": "Catapult", "tonnage": 65, "walk_mp": 4, "run_mp": 6, "jump_mp": 4},
-		{"name": "Kit Fox", "tonnage": 30, "walk_mp": 8, "run_mp": 12, "jump_mp": 0}
+		{
+			"name": "Daishi", "tonnage": 100, "walk_mp": 3, "run_mp": 5, "jump_mp": 0,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 30, "heat_dissipation": 20,
+			"weapons": [
+				{"name": "ER PPC", "damage": 10, "heat": 15, "min_range": 0, "short_range": 7, "medium_range": 14, "long_range": 23, "type": "energy", "location": "right_arm"},
+				{"name": "ER PPC", "damage": 10, "heat": 15, "min_range": 0, "short_range": 7, "medium_range": 14, "long_range": 23, "type": "energy", "location": "left_arm"},
+				{"name": "LRM 10", "damage": 10, "heat": 4, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "left_torso"},
+				{"name": "LRM 10", "damage": 10, "heat": 4, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "right_torso"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "center_torso"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "center_torso"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 50, "max": 50},
+				"center_torso_rear": {"current": 16, "max": 16},
+				"left_torso": {"current": 35, "max": 35},
+				"left_torso_rear": {"current": 12, "max": 12},
+				"right_torso": {"current": 35, "max": 35},
+				"right_torso_rear": {"current": 12, "max": 12},
+				"left_arm": {"current": 34, "max": 34},
+				"right_arm": {"current": 34, "max": 34},
+				"left_leg": {"current": 42, "max": 42},
+				"right_leg": {"current": 42, "max": 42}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 31, "max": 31},
+				"left_torso": {"current": 21, "max": 21},
+				"right_torso": {"current": 21, "max": 21},
+				"left_arm": {"current": 17, "max": 17},
+				"right_arm": {"current": 17, "max": 17},
+				"left_leg": {"current": 21, "max": 21},
+				"right_leg": {"current": 21, "max": 21}
+			}
+		},
+		{
+			"name": "Mad Cat", "tonnage": 75, "walk_mp": 5, "run_mp": 8, "jump_mp": 0,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 26, "heat_dissipation": 20,
+			"weapons": [
+				{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy", "location": "left_arm"},
+				{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy", "location": "right_arm"},
+				{"name": "LRM 20", "damage": 20, "heat": 6, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "left_torso"},
+				{"name": "LRM 20", "damage": 20, "heat": 6, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "right_torso"},
+				{"name": "Medium Pulse Laser", "damage": 6, "heat": 4, "min_range": 0, "short_range": 2, "medium_range": 4, "long_range": 6, "type": "energy", "location": "center_torso"},
+				{"name": "Medium Pulse Laser", "damage": 6, "heat": 4, "min_range": 0, "short_range": 2, "medium_range": 4, "long_range": 6, "type": "energy", "location": "center_torso"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 34, "max": 34},
+				"center_torso_rear": {"current": 11, "max": 11},
+				"left_torso": {"current": 25, "max": 25},
+				"left_torso_rear": {"current": 8, "max": 8},
+				"right_torso": {"current": 25, "max": 25},
+				"right_torso_rear": {"current": 8, "max": 8},
+				"left_arm": {"current": 24, "max": 24},
+				"right_arm": {"current": 24, "max": 24},
+				"left_leg": {"current": 32, "max": 32},
+				"right_leg": {"current": 32, "max": 32}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 23, "max": 23},
+				"left_torso": {"current": 16, "max": 16},
+				"right_torso": {"current": 16, "max": 16},
+				"left_arm": {"current": 12, "max": 12},
+				"right_arm": {"current": 12, "max": 12},
+				"left_leg": {"current": 16, "max": 16},
+				"right_leg": {"current": 16, "max": 16}
+			}
+		},
+		{
+			"name": "Catapult", "tonnage": 65, "walk_mp": 4, "run_mp": 6, "jump_mp": 4,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 20, "heat_dissipation": 16,
+			"weapons": [
+				{"name": "LRM 15", "damage": 15, "heat": 5, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "left_arm"},
+				{"name": "LRM 15", "damage": 15, "heat": 5, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile", "location": "right_arm"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "center_torso"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "center_torso"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 31, "max": 31},
+				"center_torso_rear": {"current": 10, "max": 10},
+				"left_torso": {"current": 24, "max": 24},
+				"left_torso_rear": {"current": 6, "max": 6},
+				"right_torso": {"current": 24, "max": 24},
+				"right_torso_rear": {"current": 6, "max": 6},
+				"left_arm": {"current": 20, "max": 20},
+				"right_arm": {"current": 20, "max": 20},
+				"left_leg": {"current": 30, "max": 30},
+				"right_leg": {"current": 30, "max": 30}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 21, "max": 21},
+				"left_torso": {"current": 15, "max": 15},
+				"right_torso": {"current": 15, "max": 15},
+				"left_arm": {"current": 10, "max": 10},
+				"right_arm": {"current": 10, "max": 10},
+				"left_leg": {"current": 15, "max": 15},
+				"right_leg": {"current": 15, "max": 15}
+			}
+		},
+		{
+			"name": "Kit Fox", "tonnage": 30, "walk_mp": 8, "run_mp": 12, "jump_mp": 0,
+			"gunnery_skill": 4, "piloting_skill": 5,
+			"heat_capacity": 12, "heat_dissipation": 10,
+			"weapons": [
+				{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy", "location": "right_arm"},
+				{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy", "location": "left_arm"},
+				{"name": "Machine Gun", "damage": 2, "heat": 0, "min_range": 0, "short_range": 1, "medium_range": 2, "long_range": 3, "type": "ballistic", "location": "left_torso"},
+				{"name": "Machine Gun", "damage": 2, "heat": 0, "min_range": 0, "short_range": 1, "medium_range": 2, "long_range": 3, "type": "ballistic", "location": "right_torso"}
+			],
+			"armor": {
+				"head": {"current": 9, "max": 9},
+				"center_torso": {"current": 14, "max": 14},
+				"center_torso_rear": {"current": 4, "max": 4},
+				"left_torso": {"current": 11, "max": 11},
+				"left_torso_rear": {"current": 3, "max": 3},
+				"right_torso": {"current": 11, "max": 11},
+				"right_torso_rear": {"current": 3, "max": 3},
+				"left_arm": {"current": 10, "max": 10},
+				"right_arm": {"current": 10, "max": 10},
+				"left_leg": {"current": 13, "max": 13},
+				"right_leg": {"current": 13, "max": 13}
+			},
+			"internal_structure": {
+				"head": {"current": 3, "max": 3},
+				"center_torso": {"current": 10, "max": 10},
+				"left_torso": {"current": 7, "max": 7},
+				"right_torso": {"current": 7, "max": 7},
+				"left_arm": {"current": 5, "max": 5},
+				"right_arm": {"current": 5, "max": 5},
+				"left_leg": {"current": 7, "max": 7},
+				"right_leg": {"current": 7, "max": 7}
+			}
+		}
 	]
 	
 	if should_create_enemy_mechs:
@@ -897,9 +1169,33 @@ func _create_mech_for_deployment(mech_data: Dictionary, team: String) -> Mech:
 	if mech_data.has("armor"):
 		mech.armor = mech_data["armor"].duplicate(true)
 	
+	# Copiar estructura interna
+	if mech_data.has("internal_structure"):
+		mech.structure = mech_data["internal_structure"].duplicate(true)
+	elif mech_data.has("structure"):
+		mech.structure = mech_data["structure"].duplicate(true)
+	
 	# Copiar armas
 	if mech_data.has("weapons"):
 		mech.weapons = mech_data["weapons"].duplicate(true)
+		print("[CREATE_MECH] %s created with %d weapons" % [mech.mech_name, mech.weapons.size()])
+	else:
+		print("[CREATE_MECH] WARNING: %s has NO weapons in mech_data!" % mech.mech_name)
+	
+	# Copiar equipamiento (CASE, ECM, AMS, etc.)
+	if mech_data.has("equipment"):
+		mech.equipment = mech_data["equipment"].duplicate(true)
+		print("[CREATE_MECH] %s has %d equipment items" % [mech.mech_name, mech.equipment.size()])
+	
+	# Copiar critical slots
+	if mech_data.has("critical_slots"):
+		mech.critical_slots = mech_data["critical_slots"].duplicate(true)
+	
+	# Copiar munición
+	if mech_data.has("ammo"):
+		# La munición se almacena en equipment o como propiedad separada
+		for ammo_item in mech_data["ammo"]:
+			mech.equipment.append(ammo_item.duplicate(true))
 	
 	# Copiar heat capacity y dissipation
 	if mech_data.has("heat_capacity"):
@@ -907,9 +1203,11 @@ func _create_mech_for_deployment(mech_data: Dictionary, team: String) -> Mech:
 	if mech_data.has("heat_dissipation"):
 		mech.heat_dissipation = mech_data["heat_dissipation"]
 	
-	# Copiar gunnery skill
+	# Copiar gunnery y piloting skill
 	if mech_data.has("gunnery_skill"):
 		mech.pilot_skill = mech_data["gunnery_skill"]
+	if mech_data.has("piloting_skill"):
+		mech.piloting_skill = mech_data["piloting_skill"]
 	
 	mech.z_index = 10
 	mech.set_meta("team", team)  # Guardar el equipo como metadata
@@ -1084,7 +1382,7 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 	
 	# En modo multijugador, enviar al servidor ANTES de colocar localmente
 	if is_multiplayer_mode and network_battle_client and team == my_team:
-		# Construir datos del mech para enviar al servidor
+		# Construir datos COMPLETOS del mech para enviar al servidor
 		var mech_data = {
 			"name": mech.mech_name,
 			"tonnage": mech.tonnage,
@@ -1092,12 +1390,22 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 			"run_mp": mech.run_mp,
 			"jump_mp": mech.jump_mp,
 			"armor": mech.armor.duplicate(true) if mech.armor else {},
+			"internal_structure": mech.structure.duplicate(true) if mech.structure else {},
 			"weapons": mech.weapons.duplicate(true) if mech.weapons else [],
+			"equipment": mech.equipment.duplicate(true) if mech.equipment else [],
+			"critical_slots": mech.critical_slots.duplicate(true) if mech.critical_slots else {},
 			"heat_capacity": mech.heat_capacity,
 			"heat_dissipation": mech.heat_dissipation,
-			"gunnery_skill": mech.pilot_skill
+			"gunnery_skill": mech.pilot_skill,
+			"piloting_skill": mech.piloting_skill
 		}
 		print("[DEPLOY] Sending mech %s to server at [%d,%d]" % [mech.mech_name, hex.x, hex.y])
+		print("[DEPLOY]   Weapons: %d, Equipment: %d" % [mech_data["weapons"].size(), mech_data["equipment"].size()])
+		if mech_data["weapons"].size() > 0:
+			print("[DEPLOY]   Weapon list: %s" % str(mech_data["weapons"].map(func(w): return w.get("name", "?"))))
+		else:
+			print("[DEPLOY] WARNING: No weapons in mech data!")
+			print("[DEPLOY] mech.weapons = %s" % str(mech.weapons))
 		network_battle_client.request_deploy_mech(mech_data, hex, facing)
 		# En multijugador, el mech se añadirá cuando el servidor confirme via _on_net_mech_deployed
 		# Pero también lo añadimos localmente para feedback inmediato
@@ -1309,22 +1617,55 @@ func _convert_loadout_to_mech_data(loadout: Dictionary) -> Dictionary:
 	
 	# Extraer armas del loadout
 	var weapons = []
+	# Extraer equipamiento (CASE, ECM, AMS, etc.)
+	var equipment = []
+	# Extraer critical slots por ubicación
+	var critical_slots = {
+		"head": [],
+		"center_torso": [],
+		"left_torso": [],
+		"right_torso": [],
+		"left_arm": [],
+		"right_arm": [],
+		"left_leg": [],
+		"right_leg": []
+	}
+	# Extraer munición
+	var ammo = []
+	
 	for location in loadout_components.keys():
+		var location_str = _convert_location_to_string(location)
 		for component in loadout_components[location]:
 			var comp_type = component.get("type", -1)
-			# Solo añadir armas (no equipamiento)
+			var comp_copy = component.duplicate(true)
+			comp_copy["location"] = location_str
+			
+			# Añadir a critical slots de la ubicación
+			if critical_slots.has(location_str):
+				critical_slots[location_str].append(comp_copy)
+			
+			# Clasificar por tipo
 			if comp_type in [
 				ComponentDatabase.ComponentType.WEAPON_ENERGY,
 				ComponentDatabase.ComponentType.WEAPON_BALLISTIC,
 				ComponentDatabase.ComponentType.WEAPON_MISSILE
 			]:
-				# Crear copia del arma con datos completos
-				var weapon = component.duplicate(true)
-				# Convertir location enum a string para compatibilidad con battle system
-				weapon["location"] = _convert_location_to_string(location)
-				weapons.append(weapon)
+				weapons.append(comp_copy)
+			elif comp_type == ComponentDatabase.ComponentType.EQUIPMENT_AMMO:
+				ammo.append(comp_copy)
+			elif comp_type in [
+				ComponentDatabase.ComponentType.EQUIPMENT_ECM,
+				ComponentDatabase.ComponentType.EQUIPMENT_SENSOR,
+				ComponentDatabase.ComponentType.EQUIPMENT_TARGETING,
+				ComponentDatabase.ComponentType.EQUIPMENT_SPECIAL,
+				ComponentDatabase.ComponentType.EQUIPMENT_ARMOR
+			]:
+				equipment.append(comp_copy)
 	
 	mech_data["weapons"] = weapons
+	mech_data["equipment"] = equipment
+	mech_data["critical_slots"] = critical_slots
+	mech_data["ammo"] = ammo
 	
 	# Calcular heat capacity basado en heat sinks
 	var heat_sink_count = 10  # Engine incluye 10 por defecto
@@ -1341,12 +1682,19 @@ func _convert_loadout_to_mech_data(loadout: Dictionary) -> Dictionary:
 	# Cada heat sink disipa 1 punto de calor por turno
 	mech_data["heat_dissipation"] = heat_sink_count
 	
-	# Gunnery skill por defecto
+	# Gunnery y Piloting skill por defecto
 	mech_data["gunnery_skill"] = 4
+	mech_data["piloting_skill"] = 5
 	
 	# TODO: Armadura - por ahora usar valores por defecto basados en tonnage
 	# En el futuro, el loadout debería incluir configuración de armadura
 	mech_data["armor"] = _generate_default_armor(mech_data["tonnage"])
+	
+	# Estructura interna por defecto
+	mech_data["structure"] = _generate_default_structure(mech_data["tonnage"])
+	
+	print("[CONVERT_LOADOUT] Created mech_data for %s: %d weapons, %d equipment, %d ammo" % [
+		mech_data["name"], weapons.size(), equipment.size(), ammo.size()])
 	
 	return mech_data
 
@@ -1359,12 +1707,57 @@ func _generate_default_armor(tonnage: int) -> Dictionary:
 	return {
 		"head": {"current": max(9, int(armor_points * 0.04)), "max": max(9, int(armor_points * 0.04))},
 		"center_torso": {"current": int(armor_points * 0.20), "max": int(armor_points * 0.20)},
-		"left_torso": {"current": int(armor_points * 0.15), "max": int(armor_points * 0.15)},
-		"right_torso": {"current": int(armor_points * 0.15), "max": int(armor_points * 0.15)},
-		"left_arm": {"current": int(armor_points * 0.12), "max": int(armor_points * 0.12)},
-		"right_arm": {"current": int(armor_points * 0.12), "max": int(armor_points * 0.12)},
-		"left_leg": {"current": int(armor_points * 0.11), "max": int(armor_points * 0.11)},
-		"right_leg": {"current": int(armor_points * 0.11), "max": int(armor_points * 0.11)}
+		"center_torso_rear": {"current": int(armor_points * 0.05), "max": int(armor_points * 0.05)},
+		"left_torso": {"current": int(armor_points * 0.13), "max": int(armor_points * 0.13)},
+		"left_torso_rear": {"current": int(armor_points * 0.04), "max": int(armor_points * 0.04)},
+		"right_torso": {"current": int(armor_points * 0.13), "max": int(armor_points * 0.13)},
+		"right_torso_rear": {"current": int(armor_points * 0.04), "max": int(armor_points * 0.04)},
+		"left_arm": {"current": int(armor_points * 0.10), "max": int(armor_points * 0.10)},
+		"right_arm": {"current": int(armor_points * 0.10), "max": int(armor_points * 0.10)},
+		"left_leg": {"current": int(armor_points * 0.09), "max": int(armor_points * 0.09)},
+		"right_leg": {"current": int(armor_points * 0.09), "max": int(armor_points * 0.09)}
+	}
+
+## Genera valores de estructura interna por defecto basados en tonnage
+func _generate_default_structure(tonnage: int) -> Dictionary:
+	# Internal Structure points según BattleTech Total Warfare
+	# Basado en la tabla de estructura interna por tonelaje
+	var structure_table = {
+		20: {"head": 3, "ct": 6, "st": 5, "arm": 3, "leg": 4},
+		25: {"head": 3, "ct": 8, "st": 6, "arm": 4, "leg": 6},
+		30: {"head": 3, "ct": 10, "st": 7, "arm": 5, "leg": 7},
+		35: {"head": 3, "ct": 11, "st": 8, "arm": 6, "leg": 8},
+		40: {"head": 3, "ct": 12, "st": 10, "arm": 6, "leg": 10},
+		45: {"head": 3, "ct": 14, "st": 11, "arm": 7, "leg": 11},
+		50: {"head": 3, "ct": 16, "st": 12, "arm": 8, "leg": 12},
+		55: {"head": 3, "ct": 18, "st": 13, "arm": 9, "leg": 13},
+		60: {"head": 3, "ct": 20, "st": 14, "arm": 10, "leg": 14},
+		65: {"head": 3, "ct": 21, "st": 15, "arm": 10, "leg": 15},
+		70: {"head": 3, "ct": 22, "st": 15, "arm": 11, "leg": 15},
+		75: {"head": 3, "ct": 23, "st": 16, "arm": 12, "leg": 16},
+		80: {"head": 3, "ct": 25, "st": 17, "arm": 13, "leg": 17},
+		85: {"head": 3, "ct": 27, "st": 18, "arm": 14, "leg": 18},
+		90: {"head": 3, "ct": 29, "st": 19, "arm": 15, "leg": 19},
+		95: {"head": 3, "ct": 30, "st": 20, "arm": 16, "leg": 20},
+		100: {"head": 3, "ct": 31, "st": 21, "arm": 17, "leg": 21}
+	}
+	
+	# Encontrar el tonnage más cercano
+	var closest_tonnage = 50
+	for t in structure_table.keys():
+		if abs(t - tonnage) < abs(closest_tonnage - tonnage):
+			closest_tonnage = t
+	
+	var base = structure_table[closest_tonnage]
+	return {
+		"head": {"current": base["head"], "max": base["head"]},
+		"center_torso": {"current": base["ct"], "max": base["ct"]},
+		"left_torso": {"current": base["st"], "max": base["st"]},
+		"right_torso": {"current": base["st"], "max": base["st"]},
+		"left_arm": {"current": base["arm"], "max": base["arm"]},
+		"right_arm": {"current": base["arm"], "max": base["arm"]},
+		"left_leg": {"current": base["leg"], "max": base["leg"]},
+		"right_leg": {"current": base["leg"], "max": base["leg"]}
 	}
 
 ## Convierte location enum (del loadout) a string (para battle system)
@@ -3608,7 +4001,6 @@ func _on_net_mech_deployed(mech_id: int, mech_data: Dictionary, hex_pos: Vector2
 		# Buscar el mech local por posición y nombre
 		for mech in player_mechs:
 			if mech.hex_position == hex_pos and mech.mech_name == mech_data.get("name", ""):
-				print("[BATTLE_NET] Found my mech %s, current facing=%d, server facing=%d" % [mech.mech_name, mech.facing, facing])
 				mech.set_meta("network_id", mech_id)
 				# IMPORTANTE: Sincronizar facing con el servidor
 				if mech.facing != facing:
@@ -4229,14 +4621,26 @@ func _create_mech_from_network_data(mech_id: int, mech_data: Dictionary, hex_pos
 
 func _show_hit_effect(target):
 	"""Muestra efecto visual de impacto"""
-	if not target:
+	if not target or not is_instance_valid(target):
 		return
-	# Flash rojo
+	
+	# Marcar que hay efecto visual activo
+	if target.get("is_in_visual_effect") != null:
+		target.is_in_visual_effect = true
+	
+	# Guardar color original
 	var original_modulate = target.modulate
-	target.modulate = Color.RED
-	await get_tree().create_timer(0.2).timeout
-	if is_instance_valid(target):
-		target.modulate = original_modulate
+	
+	# Usar tween para garantizar que el color se restaure
+	var tween = create_tween()
+	tween.tween_property(target, "modulate", Color.RED, 0.05)
+	tween.tween_property(target, "modulate", original_modulate, 0.15)
+	
+	# Restaurar bandera al terminar
+	tween.tween_callback(func():
+		if is_instance_valid(target) and target.get("is_in_visual_effect") != null:
+			target.is_in_visual_effect = false
+	)
 
 func _show_miss_effect(_target):
 	"""Muestra efecto visual de fallo"""

@@ -74,8 +74,10 @@ var is_destroyed: bool = false
 var is_prone: bool = false  # Caído en el suelo
 var death_reason: String = ""  # Descripción de cómo fue destruido
 var destroyed_by: String = ""  # Nombre del mech que lo destruyó
+var is_in_visual_effect: bool = false  # True cuando hay un efecto visual activo (flash, etc.)
 var pilot_name: String = "Pilot"
-var pilot_skill: int = 4  # Gunnery/Piloting skill
+var pilot_skill: int = 4  # Gunnery skill
+var piloting_skill: int = 5  # Piloting skill (para chequeos de caídas, etc.)
 
 # Sistema de visibilidad (Line of Sight / Fog of War)
 var is_visible_to_player: bool = true  # Controlado por sistema de LoS
@@ -302,19 +304,24 @@ func _update_sprite():
 			print("[MECH] WARNING: No texture returned for facing %d" % facing)
 		
 		# Aplicar efectos visuales según estado
-		if is_prone:
-			sprite.rotation_degrees = 90
-			modulate = Color(0.7, 0.7, 0.7)
-		elif is_shutdown:
-			sprite.rotation_degrees = 0
-			modulate = Color(0.5, 0.5, 0.5)
-		else:
-			sprite.rotation_degrees = 0
-			# Tinte azul para mechs del jugador, normal para enemigos
-			if is_player_controlled:
-				modulate = Color(0.7, 0.85, 1.0)  # Tinte azul claro
+		# No cambiar modulate si hay un efecto visual activo (flash de daño, etc.)
+		if not is_in_visual_effect:
+			if is_prone:
+				sprite.rotation_degrees = 90
+				modulate = Color(0.7, 0.7, 0.7)
+			elif is_shutdown:
+				sprite.rotation_degrees = 0
+				modulate = Color(0.5, 0.5, 0.5)
 			else:
-				modulate = Color(1.0, 0.85, 0.8)  # Tinte rojizo para enemigos
+				sprite.rotation_degrees = 0
+				# Sin tinte de color - mostrar sprite tal cual
+				modulate = Color.WHITE
+		else:
+			# Solo actualizar rotación, no color
+			if is_prone:
+				sprite.rotation_degrees = 90
+			else:
+				sprite.rotation_degrees = 0
 
 func reset_movement():
 	# Resetea el movimiento al inicio del turno

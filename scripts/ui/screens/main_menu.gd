@@ -2,12 +2,15 @@ extends Control
 
 # Panel de opciones
 var options_panel: Panel = null
+var _is_server_mode: bool = false
 
 func _ready():
 	# Si estamos en modo headless (servidor dedicado), cambiar a escena de servidor
 	if DisplayServer.get_name() == "headless" or OS.has_feature("dedicated_server"):
 		print("[MAIN_MENU] Detected headless/server mode, switching to server scene...")
-		get_tree().change_scene_to_file("res://scenes/server_main.tscn")
+		_is_server_mode = true
+		# Programar cambio de escena para el próximo frame
+		call_deferred("_switch_to_server_scene")
 		return
 	
 	# TEMPORAL: Regenerar hangar para limpiar datos corruptos
@@ -232,3 +235,7 @@ func _on_options_pressed():
 
 func _on_quit_pressed():
 	get_tree().quit()
+
+func _switch_to_server_scene():
+	"""Cambia a la escena del servidor (llamado de forma diferida)"""
+	get_tree().change_scene_to_file("res://scenes/server_main.tscn")

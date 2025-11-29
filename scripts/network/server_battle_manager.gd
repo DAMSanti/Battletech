@@ -154,7 +154,12 @@ func _handle_deploy_request(sender_id: int, match_id: int, mech_data: Dictionary
 		"heat_capacity": mech_data.get("heat_capacity", 30),
 		"heat_dissipation": mech_data.get("heat_dissipation", 10),
 		"armor": mech_data.get("armor", {}).duplicate(true),
+		"internal_structure": mech_data.get("internal_structure", {}).duplicate(true),
 		"weapons": mech_data.get("weapons", []).duplicate(true),
+		"equipment": mech_data.get("equipment", []).duplicate(true),
+		"critical_slots": mech_data.get("critical_slots", {}).duplicate(true),
+		"gunnery_skill": mech_data.get("gunnery_skill", 4),
+		"piloting_skill": mech_data.get("piloting_skill", 5),
 		"is_destroyed": false,
 		"is_prone": false,
 		"is_shutdown": false,
@@ -181,6 +186,11 @@ func _handle_deploy_request(sender_id: int, match_id: int, mech_data: Dictionary
 		server_mech["name"], hex.x, hex.y, facing,
 		match_data["player1_mech_count"], match_data["player2_mech_count"]
 	])
+	print("[SERVER_BATTLE] Mech has: %d weapons, %d equipment" % [server_mech["weapons"].size(), server_mech["equipment"].size()])
+	for i in range(server_mech["weapons"].size()):
+		print("[SERVER_BATTLE]   Weapon %d: %s (dmg=%s)" % [i, server_mech["weapons"][i].get("name", "?"), server_mech["weapons"][i].get("damage", "?")])
+	for equip in server_mech["equipment"]:
+		print("[SERVER_BATTLE]   Equipment: %s in %s" % [equip.get("name", "?"), equip.get("location", "?")])
 	
 	# Notificar a ambos jugadores via NetworkManager
 	var opponent_peer = _get_opponent_peer(match_data, sender_id)
@@ -419,6 +429,9 @@ func _handle_fire_request(sender_id: int, match_id: int, attacker_id: int, targe
 	var attacker = match_data["mechs"][attacker_id]
 	var target = match_data["mechs"].get(target_id)
 	
+	print("[SERVER_BATTLE] Attacker: %s, weapons count: %d" % [attacker.get("name", "?"), attacker.get("weapons", []).size()])
+	print("[SERVER_BATTLE] Attacker weapons: %s" % str(attacker.get("weapons", [])))
+	
 	if not target:
 		network_manager.rpc_id(sender_id, "client_action_rejected", "Invalid target")
 		return
@@ -428,16 +441,21 @@ func _handle_fire_request(sender_id: int, match_id: int, attacker_id: int, targe
 		return
 	
 	var range_hexes = _hex_distance(attacker["hex_position"], target["hex_position"])
+	print("[SERVER_BATTLE] Range: %d hexes" % range_hexes)
 	
 	var attack_results = []
 	var total_heat = 0
 	
 	for weapon_idx in weapon_indices:
+		print("[SERVER_BATTLE] Processing weapon index %d (attacker has %d weapons)" % [weapon_idx, attacker["weapons"].size()])
 		if weapon_idx >= attacker["weapons"].size():
+			print("[SERVER_BATTLE] SKIPPING weapon index %d - out of bounds!" % weapon_idx)
 			continue
 		
 		var weapon = attacker["weapons"][weapon_idx]
+		print("[SERVER_BATTLE] Firing weapon: %s" % weapon.get("name", "Unknown"))
 		var result = _execute_weapon_attack(attacker, target, weapon, range_hexes, match_data["rng_seed"])
+		print("[SERVER_BATTLE] Weapon result: %s" % str(result))
 		attack_results.append(result)
 		total_heat += weapon.get("heat", 0)
 		
