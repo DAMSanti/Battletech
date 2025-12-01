@@ -29,6 +29,8 @@ ignore = [
     "B008",   # function call in default argument (FastAPI Depends)
     "B904",   # raise without from (okay in HTTP exceptions)
     "ARG001", # unused function argument (common in FastAPI)
+    "W293",   # blank line contains whitespace
+    "UP045",  # use X | None instead of Optional[X]
 ]
 
 [tool.ruff.lint.isort]

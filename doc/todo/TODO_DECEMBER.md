@@ -89,7 +89,6 @@
 | 4.3 | CI/CD pipeline básico (GitHub Actions) | 🟡 | 4h | ✅ |
 | 4.4 | Tests: cobertura >80% core | 🟡 | 6h | ⬜ |
 | 4.5 | Cleanup: tech debt TD-001 a TD-005 | 🟢 | 8h | ⬜ |
-| 4.6 | **Review y retrospectiva del mes** | 🟡 | 2h | ⬜ |
 
 **Entregable Semana 4:** Infraestructura documentada y pulida
 
