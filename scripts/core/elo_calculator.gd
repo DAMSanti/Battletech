@@ -85,8 +85,8 @@ class EloChange:
 		performance_bonus = p_bonus
 
 
-## Datos de jugador para cálculo
-class PlayerData:
+## Datos de jugador para cálculo ELO
+class EloPlayerData:
 	var user_id: String
 	var elo: int
 	var team: int
@@ -241,15 +241,15 @@ static func calculate_1v1(
 
 ## Calcula cambios de ELO para partida en equipo
 static func calculate_team_match(
-	players: Array[PlayerData],
+	players: Array[EloPlayerData],
 	winning_team: int  # 0 = empate, 1 o 2 = equipo ganador
 ) -> Array[EloChange]:
 	
 	var results: Array[EloChange] = []
 	
 	# Separar equipos
-	var team1: Array[PlayerData] = []
-	var team2: Array[PlayerData] = []
+	var team1: Array[EloPlayerData] = []
+	var team2: Array[EloPlayerData] = []
 	
 	for player in players:
 		if player.team == 1:
