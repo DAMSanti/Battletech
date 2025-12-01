@@ -4,16 +4,16 @@ Steel Titans API - Audit Log System
 Sistema de registro de auditoría para acciones importantes.
 """
 
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any
-from uuid import UUID, uuid4
+from datetime import datetime
 from enum import Enum
+from typing import Any, Optional
+from uuid import UUID, uuid4
 
-from sqlalchemy import select, func, Index
+from sqlalchemy import Boolean, DateTime, Index, String, Text, func
+from sqlalchemy.dialects.postgresql import INET, JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.dialects.postgresql import UUID as PGUUID, INET, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import String, Text, DateTime, Boolean
 
 from models import Base
 from redis_manager import redis_manager
@@ -28,32 +28,32 @@ class AuditAction(str, Enum):
     REGISTER = "auth.register"
     PASSWORD_CHANGE = "auth.password_change"
     TOKEN_REFRESH = "auth.token_refresh"
-    
+
     # User
     USER_UPDATE = "user.update"
     USER_DELETE = "user.delete"
-    
+
     # Ban
     BAN_CREATE = "ban.create"
     BAN_REVOKE = "ban.revoke"
-    
+
     # Admin
     ADMIN_ACTION = "admin.action"
     ADMIN_USER_MODIFY = "admin.user_modify"
     ADMIN_CONFIG_CHANGE = "admin.config_change"
-    
+
     # Match
     MATCH_CREATE = "match.create"
     MATCH_CREATED = "match.created"
     MATCH_JOIN = "match.join"
     MATCH_LEAVE = "match.leave"
     MATCH_END = "match.end"
-    
+
     # ELO
     ELO_UPDATE = "elo.update"
     ELO_RESET = "elo.reset"
     ELO_ADJUST = "elo.adjust"
-    
+
     # Matchmaking
     USER_QUEUE_JOIN = "matchmaking.queue_join"
     USER_QUEUE_LEAVE = "matchmaking.queue_leave"
