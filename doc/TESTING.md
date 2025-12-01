@@ -1,6 +1,51 @@
-# BATTLETECH - Test Coverage Report
+# 🧪 STEEL TITANS - Test Framework Guide
 
-## 📊 Test Summary
+## Framework: GUT (Godot Unit Test) v9.3.0
+
+Este proyecto utiliza GUT para testing profesional unitario e integración.
+
+---
+
+## 📁 Estructura de Tests
+
+```
+tests/
+├── unit/                          # Tests unitarios
+│   ├── test_movement_system.gd    # Tests de movimiento
+│   ├── test_combat_system.gd      # Tests de combate (to-hit, daño, críticos)
+│   └── test_heat_system.gd        # Tests de calor
+├── integration/                   # Tests de integración
+│   └── (tests de flujo completo)
+└── run_tests.gd                   # Script de ejecución CLI
+```
+
+---
+
+## 🚀 Ejecutar Tests
+
+### Desde el Editor de Godot
+
+1. Abrir el proyecto en Godot
+2. Ir a **Project > Tools > GUT**
+3. Configurar directorios si es necesario
+4. Click en **Run All**
+
+### Desde Línea de Comandos (PowerShell)
+
+```powershell
+# Ejecutar todos los tests
+G:\godot\Godot_v4.5.1-stable_win64.exe --headless -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gexit
+
+# Ejecutar un test específico
+G:\godot\Godot_v4.5.1-stable_win64.exe --headless -s addons/gut/gut_cmdln.gd -gtest=res://tests/unit/test_combat_system.gd -gexit
+
+# Con output detallado
+G:\godot\Godot_v4.5.1-stable_win64.exe --headless -s addons/gut/gut_cmdln.gd -gdir=res://tests/unit -gexit -glog=3
+```
+
+---
+
+## 📊 Cobertura Actual
 
 | Component | Tests | Status | Coverage |
 |-----------|-------|--------|----------|

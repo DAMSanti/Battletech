@@ -88,4 +88,4 @@ func is_movement_selection_pending() -> bool:
 
 func _log(message: String):
 	if GameConstants.ENABLE_DEBUG_LOGS:
-		print("[BattleState] ", message)
+		Log.debug("Combat", message)

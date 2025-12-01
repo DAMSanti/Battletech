@@ -54,4 +54,5 @@ func _update_sprites():
 	assault_mech.texture = sprite_manager.get_sprite_for_mech(100, current_facing)
 	
 	# Debug info
-	print("Facing: %d" % current_facing)
+	if Log:
+		Log.debug("Mech", "Test sprites facing: %d" % current_facing)

@@ -1,138 +1,123 @@
-# Battletech Mobile - Godot Game
+# Steel Titans: Tactical Warfare
 
-Un juego táctico de combate de mechs para móvil basado en Battletech.
+Un juego táctico competitivo de combate de mechs (Steel Titans) para móvil.
 
-## 📊 Project Statistics
+> **Nota de desarrollo:** Este proyecto fue originalmente prototipado como "Battletech Mobile" y está siendo migrado a una IP original para cumplir con requisitos legales de publicación comercial.
 
-**Total Lines of Code**: 3,664
-- Production Code: 2,562 lines (70%)
-- Test Code: 1,102 lines (30%)
-- Test Coverage: **100%** (core systems)
+## 🎮 Sobre el Juego
 
-## Características Implementadas
+**Steel Titans** es un juego de combate táctico por turnos con mechs gigantes para dispositivos móviles. Ofrece:
 
-### Sistema de Mechs
-- **Sistema completo de armadura y estructura** por localizaciones (cabeza, brazos, piernas, torsos)
-- **Sistema de calor** con efectos en rendimiento
-- **Múltiples tipos de armas**:
-  - Autocannons (AC/20)
-  - Misiles (LRM-20)
-  - Láseres (Medium Laser)
-- **Munición y gestión de recursos**
-- **Sistema de daño realista** siguiendo reglas de Battletech
+- **Combate PvP competitivo** (1v1, 2v2, 4v4)
+- **Partidas rápidas** de 10-15 minutos
+- **Personalización profunda** de mechs
+- **Sistema de ranking** con ELO y temporadas
+- **Modelo justo**: Compra única, sin pay-to-win
 
-### Sistema de Combate
-- **Grid hexagonal** para movimiento táctico
-- **Pathfinding** con cálculo de costes de movimiento
-- **Sistema completo de Line of Sight (LoS)**:
-  - Cálculo de visibilidad con elevación
-  - Cobertura por terreno (bosques, edificios)
-  - Hull-down mechanics
-  - Modificadores de altura
-- **Combate por turnos** con fases:
-  - **Iniciativa** - Ambos bandos tiran 2D6, el ganador mueve primero
-  - Movimiento
-  - Ataque con armas
-  - Ataque físico (puñetazos, patadas, empujes, cargas)
-  - Disipación de calor
-- **Sistema de resolución de ataques completo**:
-  - Verificación de LoS y rango
-  - Cálculo de To-Hit con todos los modificadores (movimiento, calor, rango, terreno)
-  - Tirada 2D6 con reglas especiales (2=fallo automático, 12=impacto automático)
-  - Tabla de localización de impactos (2D6)
-  - Cluster tables para misiles (LRM/SRM)
-  - Armor depletion → daño a estructura interna
-  - **Sistema de críticos completo**:
-    - Tirada por cada punto de daño a estructura
-    - Destrucción de componentes (armas, equipamiento)
-    - Explosión de munición con/sin CASE
-    - Daño al motor, gyro, actuadores
-- **Modificadores de equipamiento**:
-  - ECM Suite (interferencia con misiles)
-  - Beagle Active Probe (mejor targeting)
-- **Ataques físicos completos** con mecánicas de derribo
+## 📊 Estado del Proyecto
 
-### IA Básica
-- Movimiento táctico hacia objetivos
-- Selección de blancos y combate automático
+**Fase:** Pre-Alpha  
+**Versión:** 0.1.0  
 
-### UI Móvil
-- Controles táctiles optimizados
-- Información de turno y fase
-- Stats de unidades en tiempo real
-- Botones de acción
+### Características Implementadas ✅
 
-## Estructura del Proyecto
+- [x] Sistema de combate por turnos (fiel a reglas clásicas)
+- [x] Grid hexagonal con pathfinding
+- [x] Sistema de Line of Sight (LoS) y cobertura
+- [x] Sistema de calor y disipación
+- [x] Daño por localizaciones (cabeza, torsos, brazos, piernas)
+- [x] Sistema de críticos y destrucción de componentes
+- [x] Multijugador básico (servidor dedicado)
+- [x] Editor de loadout
+- [x] Generación procedural de mapas
+- [x] UI táctil para móvil
+
+### En Desarrollo 🔄
+
+- [ ] Sistema de niveles y progresión
+- [ ] Sistema de cuentas y autenticación
+- [ ] Matchmaking con ELO
+- [ ] Tutorial interactivo
+- [ ] Arte y audio profesional
+
+## 📁 Estructura del Proyecto
 
 ```
 scripts/
-  - mech.gd              # Clase principal del Mech
-  - hex_grid.gd          # Sistema de grid hexagonal
-  - battle_scene.gd      # Escena principal de batalla
-  
-  core/
-    - game_enums.gd           # Enumeraciones centralizadas
-    - game_constants.gd       # Constantes del juego
-    - component_database.gd   # Base de datos de armas y equipamiento
-    - mech_loadout.gd        # Sistema de configuración de mechs
-    
-    combat/
-      - weapon_attack_system.gd  # Sistema completo de resolución de ataques
-      - line_of_sight.gd         # Sistema de LoS y cobertura
-      - physical_attack_system.gd # Ataques físicos
-      - weapon_system.gd          # Sistema de armas base
-      - heat_system.gd            # Gestión de calor
-    
-    movement/
-      - movement_system.gd    # Sistema de movimiento
-    
-    terrain/
-      - terrain_type.gd      # Tipos de terreno
-  
-  managers/
-    - battle_ai.gd           # IA de combate
-    - battle_input_handler.gd # Gestión de input
+├── core/                    # Sistemas centrales
+│   ├── combat/             # Resolución de combate
+│   ├── movement/           # Sistema de movimiento
+│   └── terrain/            # Tipos de terreno
+├── entities/               # Mechs y unidades
+├── managers/               # Gestores globales
+├── network/                # Networking y multijugador
+├── ui/                     # Interfaz de usuario
+└── utils/                  # Utilidades
 
-scenes/
-  - main_menu.tscn       # Escena del menú
-  - battle_scene.tscn    # Escena de batalla
-  - mech_bay.tscn        # Hangar de mechs
-
-doc/
-  - WEAPON_ATTACK_RESOLUTION.md    # Documentación completa del sistema de combate
-  - COMBAT_INTEGRATION_EXAMPLE.gd  # Ejemplos de integración
-  - ARCHITECTURE.md                 # Arquitectura del proyecto
-  - (y muchos más...)
+scenes/                     # Escenas de Godot
+assets/                     # Recursos (sprites, audio, etc.)
+doc/                        # Documentación
+tests/                      # Tests unitarios
+server/                     # Configuración del servidor
 ```
 
-## Próximas Características a Añadir
+## 📚 Documentación
 
-1. **Más tipos de mechs** (Light, Medium, Heavy, Assault)
-2. **Más armas** (PPCs, Flamers, Gauss Rifles, más variantes)
-3. **Integración completa del sistema de combate en la UI**
-4. **Efectos visuales** de disparos, impactos y explosiones
-5. **Terreno avanzado** (agua profunda, edificios destructibles)
-6. **Sistema de campaña** con progresión y salvamento
-7. **Animaciones** de mechs y armas
-8. **Sonido y música**
-9. **Customización avanzada** en el Mech Bay
-10. **Multiplayer** local/online
+- [GDD (Game Design Document)](doc/GDD.md) - Diseño completo del juego
+- [ROADMAP](doc/ROADMAP.md) - Plan de desarrollo
+- [TODO Producción](doc/TODO_PRODUCTION.md) - Tareas pendientes
+- [Arquitectura](doc/ARCHITECTURE.md) - Arquitectura técnica
 
-## Cómo Ejecutar
+## 🚀 Cómo Ejecutar
 
-1. Abre el proyecto en Godot 4.5+ (recomendado)
-2. Ejecuta la escena principal (main_menu.tscn)
-3. Click en "New Battle" para empezar
+### Requisitos
+- Godot 4.5.1 o superior
+- (Opcional) Android SDK para builds móviles
 
-## Controles
+### Desarrollo Local
+```bash
+# Clonar repositorio
+git clone https://github.com/DAMSanti/Battletech.git
+cd Battletech
 
-- **Touch/Click** en hexágono para mover unidad
-- **Touch/Click** en enemigo para atacar
-- **Botón "End Activation"** para terminar turno de la unidad actual
+# Abrir en Godot
+# File -> Open Project -> Seleccionar carpeta
+```
 
-## Notas Técnicas
+### Servidor Dedicado
+```bash
+# Exportar pack del servidor
+godot --headless --export-pack "Linux Server" exports/steeltitans.pck
 
-- Optimizado para pantallas móviles (1080x1920)
-- Modo de renderizado: Mobile
-- Orientación: Vertical
-- Emulación táctil activada para pruebas con ratón
+# Ejecutar en servidor
+./Godot_v4.5.1-stable_linux.x86_64 --main-pack steeltitans.pck --headless
+```
+
+## 🎯 Controles
+
+| Acción | Control |
+|--------|---------|
+| Mover cámara | Arrastrar |
+| Zoom | Pinch / Scroll |
+| Seleccionar | Tap / Click |
+| Info detallada | Tap largo |
+
+## 🛠️ Stack Tecnológico
+
+| Componente | Tecnología |
+|------------|------------|
+| Motor | Godot 4.5.1 |
+| Lenguaje | GDScript |
+| Networking | ENet (UDP) |
+| Servidor | Linux (DigitalOcean) |
+| CI/CD | GitHub Actions (próximamente) |
+
+## 📄 Licencia
+
+Este proyecto está en desarrollo privado. Todos los derechos reservados.
+
+**Steel Titans** es una IP original. Cualquier similitud con otras propiedades intelectuales es coincidencia o inspiración del género.
+
+---
+
+*Desarrollado por DAMSanti - 2025*

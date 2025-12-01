@@ -74,11 +74,9 @@ func use_precalculated_initiative(_data: Dictionary):
 ## Avanza a la siguiente fase del turno
 func advance_phase():
 	if is_phase_transitioning:
-		# print("[TURN_MGR] advance_phase() blocked - already transitioning")
 		return
 	
 	is_phase_transitioning = true
-	# print("[TURN_MGR] Advancing from phase: %s" % GameEnums.phase_to_string(current_phase))
 	
 	match current_phase:
 		GameEnums.TurnPhase.INITIATIVE:
@@ -118,14 +116,11 @@ func advance_phase():
 
 ## Inicia la fase de movimiento
 func start_movement_phase():
-	# print("[TURN_MGR] === MOVEMENT PHASE START ===")
 	_build_activation_order()
 	current_unit_index = 0
 	
-	# print("[TURN_MGR] Waiting for phase transition delay...")
 	# Pequeño delay para que phase_changed se procese
 	await get_tree().create_timer(GameConstants.PHASE_TRANSITION_DELAY).timeout
-	# print("[TURN_MGR] Delay finished, calling activate_next_unit(), units_to_activate.size()=%d" % units_to_activate.size())
 	activate_next_unit()
 
 ## Inicia la fase de ataque con armas
@@ -188,15 +183,12 @@ func _build_activation_order():
 
 ## Activa la siguiente unidad en el orden
 func activate_next_unit():
-	# print("[TURN_MGR] activate_next_unit(): current_unit_index=%d, units_to_activate.size()=%d" % [current_unit_index, units_to_activate.size()])
 	# Si no hay unidades para activar y es el inicio de la fase, hay un problema
 	if units_to_activate.size() == 0:
-		# print("[TURN_MGR] WARNING: No units to activate in phase %s!" % GameEnums.phase_to_string(current_phase))
 		advance_phase()
 		return
 	
 	if current_unit_index >= units_to_activate.size():
-		# print("[TURN_MGR] All units activated, advancing phase")
 		advance_phase()
 		return
 	
@@ -206,7 +198,6 @@ func activate_next_unit():
 	if current_phase == GameEnums.TurnPhase.MOVEMENT and unit.has_method("reset_movement"):
 		unit.reset_movement()
 	
-	# print("[TURN_MGR] Activating unit: %s [%d/%d]" % [unit.mech_name, current_unit_index + 1, units_to_activate.size()])
 	unit_activated.emit(unit)
 
 ## Completa la activación de la unidad actual

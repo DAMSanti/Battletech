@@ -63,7 +63,7 @@ func _play_click():
 func _load_saved_loadouts():
 	# Cargar loadouts guardados desde saved_loadouts.json
 	if not FileAccess.file_exists(SAVED_LOADOUTS_PATH):
-		print("[TeamSetup] No saved loadouts found")
+		Log.debug("Save", "No saved loadouts found")
 		saved_loadouts = {}
 		return
 	
@@ -83,11 +83,11 @@ func _load_saved_loadouts():
 		return
 	
 	saved_loadouts = loaded_data
-	print("[TeamSetup] Loaded %d saved loadouts" % saved_loadouts.size())
+	Log.info("Save", "Loaded saved loadouts", {"count": saved_loadouts.size()})
 	
 	# Debug: mostrar nombres de loadouts
 	for loadout_name in saved_loadouts.keys():
-		print("[TeamSetup] - Found loadout: %s" % loadout_name)
+		Log.debug("Save", "Found loadout", {"name": loadout_name})
 
 func _setup_lance_slots():
 	# Configurar los 4 slots de la lance
@@ -144,7 +144,7 @@ func _populate_available_mechs():
 	for child in mech_list.get_children():
 		child.queue_free()
 	
-	print("[TeamSetup] DEBUG - Saved loadouts count: %d" % saved_loadouts.size())
+	Log.debug("Save", "Saved loadouts count", {"count": saved_loadouts.size()})
 	
 	if saved_loadouts.size() == 0:
 		var empty_label = Label.new()
@@ -444,7 +444,7 @@ func _save_lance_configuration():
 		# Temporalmente guardar en metadata del manager
 		mech_bay_manager.set_meta("battle_lance", lance_data)
 	
-	print("[TeamSetup] Lance configuration saved: %d mechs" % lance_data.size())
+	Log.info("Match", "Lance configuration saved", {"mech_count": lance_data.size()})
 
 func _convert_loadout_to_battle_format(loadout: Dictionary, custom_name: String) -> Dictionary:
 	# Convertir un loadout guardado al formato que espera la batalla

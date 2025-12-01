@@ -474,7 +474,7 @@ func _on_installed_component_clicked(index: int, at_position: Vector2, mouse_but
 
 func _refresh_location_display(location: MechLoadout.MechLocation):
 	if not location_panels.has(location):
-		print("[DEBUG] Location panel not found for: ", MechLoadout.MechLocation.keys()[location])
+		Log.debug("UI", "Location panel not found", {"location": MechLoadout.MechLocation.keys()[location]})
 		return
 	
 	var panel = location_panels[location]
@@ -492,19 +492,18 @@ func _refresh_location_display(location: MechLoadout.MechLocation):
 					slots_label = subchild
 	
 	if not components_list:
-		print("[DEBUG] ComponentsList not found in panel!")
-		print("[DEBUG] Panel children: ", panel.get_children())
+		Log.debug("UI", "ComponentsList not found in panel", {"children": str(panel.get_children())})
 		return
 		
 	if not slots_label:
-		print("[DEBUG] SlotsLabel not found in panel!")
+		Log.debug("UI", "SlotsLabel not found in panel")
 		return
 		
 	if not current_loadout:
-		print("[DEBUG] No current_loadout!")
+		Log.debug("UI", "No current_loadout")
 		return
 	
-	print("[DEBUG] Refreshing location: ", MechLoadout.MechLocation.keys()[location])
+	Log.debug("UI", "Refreshing location", {"location": MechLoadout.MechLocation.keys()[location]})
 	
 	# Actualizar lista de componentes (formato compacto)
 	components_list.clear()
@@ -532,16 +531,16 @@ func _refresh_location_display(location: MechLoadout.MechLocation):
 	
 	# Luego añadir componentes instalados por el usuario
 	if current_loadout.loadout.has(location):
-		print("[DEBUG] Components in location: ", current_loadout.loadout[location].size())
+		Log.debug("UI", "Components in location", {"count": current_loadout.loadout[location].size()})
 		for component in current_loadout.loadout[location]:
 			var display_text = "%s" % component.get("name", "?")
 			# Añadir solo info crítica
 			if component.has("damage"):
 				display_text += " [D%d]" % component.get("damage", 0)
 			components_list.add_item(display_text)
-			print("[DEBUG] Added component to list: ", display_text)
+			Log.debug("UI", "Added component to list", {"text": display_text})
 	else:
-		print("[DEBUG] Location has no components yet")
+		Log.debug("UI", "Location has no components yet")
 	
 	# Actualizar contador de slots
 	var available = current_loadout.get_available_slots(location)
@@ -549,7 +548,7 @@ func _refresh_location_display(location: MechLoadout.MechLocation):
 	var used = total - available
 	
 	slots_label.text = "Slots: %d/%d" % [used, total]
-	print("[DEBUG] Slots updated: ", slots_label.text)
+	Log.debug("UI", "Slots updated", {"text": slots_label.text})
 	
 	# Color coding
 	if available < 0:
@@ -619,7 +618,7 @@ func _validate_loadout():
 
 func _show_message(message: String, color: Color = COLOR_NORMAL):
 	# Mostrar mensaje temporal
-	print("[MechBay] ", message)
+	Log.debug("UI", "MechBay message", {"message": message})
 	# TODO: Añadir toast notification visual
 
 func _load_test_mech():
@@ -678,7 +677,7 @@ func _check_for_loadout_to_edit():
 		var loadout_data = manager.get_selected_loadout()
 		
 		if loadout_data != null and not loadout_data.is_empty():
-			print("[MechBayUI] Cargando loadout para editar: ", loadout_data.get("mech_name", "Unknown"))
+			Log.info("Mech", "Cargando loadout para editar", {"name": loadout_data.get("mech_name", "Unknown")})
 			load_loadout_from_dict(loadout_data)
 			# Limpiar el manager después de cargar
 			manager.clear_selection()
@@ -689,12 +688,14 @@ func load_loadout_from_dict(data: Dictionary) -> bool:
 		push_error("Datos de loadout inválidos o vacíos")
 		return false
 	
-	print("[MechBayUI] Creando MechLoadout desde diccionario...")
+	Log.debug("Mech", "Creando MechLoadout desde diccionario...")
 	current_loadout = MechLoadout.new()
 	current_loadout.from_dict(data)
 	
-	print("[MechBayUI] Loadout cargado: ", current_loadout.mech_name)
-	print("[MechBayUI] Peso actual: ", current_loadout.current_weight)
+	Log.info("Mech", "Loadout cargado", {
+		"name": current_loadout.mech_name,
+		"weight": current_loadout.current_weight
+	})
 	
 	_refresh_all_locations()
 	_update_weight_display()
@@ -865,9 +866,11 @@ func _on_save_loadout_confirm():
 			file.close()
 	
 	# Añadir/actualizar el loadout actual
-	saved_loadouts[loadout_name] = current_loadout.to_dict()
+	var loadout_dict: Dictionary = current_loadout.to_dict()
+	loadout_dict["name"] = loadout_name  # Añadir nombre al dict
+	saved_loadouts[loadout_name] = loadout_dict
 	
-	# Guardar de vuelta
+	# Guardar en archivo local (fallback)
 	var file = FileAccess.open(save_path, FileAccess.WRITE)
 	if file:
 		file.store_var(saved_loadouts)
@@ -876,6 +879,31 @@ func _on_save_loadout_confirm():
 		save_loadout_popup.hide()
 	else:
 		_show_message("Error al guardar", COLOR_ERROR)
+		return
+	
+	# También guardar en PlayerDataManager si está disponible
+	var player_data = get_node_or_null("/root/PlayerData")
+	if player_data:
+		var mech_id: String = loadout_dict.get("mech_id", loadout_dict.get("mech_name", "unknown"))
+		# Buscar slot disponible o sobrescribir
+		var slot_index: int = -1
+		if player_data.inventory and mech_id in player_data.inventory.saved_loadouts:
+			# Buscar si ya existe este loadout por nombre
+			var mech_loadouts: Array = player_data.inventory.saved_loadouts[mech_id]
+			for i in range(mech_loadouts.size()):
+				if mech_loadouts[i].get("name", "") == loadout_name:
+					slot_index = i
+					break
+		
+		# Si no encontramos el slot, usar nuevo índice
+		if slot_index < 0:
+			if player_data.inventory and mech_id in player_data.inventory.saved_loadouts:
+				slot_index = player_data.inventory.saved_loadouts[mech_id].size()
+			else:
+				slot_index = 0
+		
+		player_data.save_loadout(mech_id, loadout_dict, slot_index)
+		Log.info("MechBay", "Loadout '%s' saved to PlayerDataManager (slot %d)" % [loadout_name, slot_index])
 
 func _on_save_loadout_cancel():
 	if save_loadout_popup:

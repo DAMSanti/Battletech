@@ -31,9 +31,9 @@ func generate_new_map():
 	var generator = ProceduralMapGenerator.new(12, 16, current_seed)
 	map_data = generator.generate_map()
 	
-	print("\n========================================")
-	print("Mapa generado con seed: ", current_seed)
-	print("========================================")
+	Log.info("System", "========================================")
+	Log.info("System", "Mapa generado con seed: %d" % current_seed)
+	Log.info("System", "========================================")
 	
 	# Analizar y mostrar estadísticas
 	_print_statistics()
@@ -62,7 +62,7 @@ func _print_statistics():
 		if elevation > max_elev:
 			max_elev = elevation
 	
-	print("\n📊 Distribución de terrenos:")
+	Log.info("System", "📊 Distribución de terrenos:")
 	var terrain_names = {
 		TerrainType.Type.CLEAR: "Clear (Despejado)",
 		TerrainType.Type.LIGHT_WOODS: "Light Woods (Bosque Ligero)",
@@ -80,23 +80,23 @@ func _print_statistics():
 		var count = terrain_counts[terrain]
 		var percentage = float(count) / float(map_data.size()) * 100.0
 		var terrain_name = terrain_names.get(terrain, "Unknown")
-		print("  %s: %d hexes (%.1f%%)" % [terrain_name, count, percentage])
+		Log.info("System", "  %s: %d hexes (%.1f%%)" % [terrain_name, count, percentage])
 	
-	print("\n🏔️ Distribución de elevaciones:")
-	print("  Rango: %d a %d niveles" % [min_elev, max_elev])
+	Log.info("System", "🏔️ Distribución de elevaciones:")
+	Log.info("System", "  Rango: %d a %d niveles" % [min_elev, max_elev])
 	var sorted_elevations = elevation_counts.keys()
 	sorted_elevations.sort()
 	for elev in sorted_elevations:
 		var count = elevation_counts[elev]
 		var percentage = float(count) / float(map_data.size()) * 100.0
-		print("  Nivel %+d: %d hexes (%.1f%%)" % [elev, count, percentage])
+		Log.info("System", "  Nivel %+d: %d hexes (%.1f%%)" % [elev, count, percentage])
 	
 	# Validar transiciones
 	var violations = _check_elevation_transitions()
 	if violations.size() > 0:
-		print("\n⚠️ Advertencia: %d transiciones bruscas (≥4 niveles)" % violations.size())
+		Log.warning("System", "⚠️ Advertencia: %d transiciones bruscas (≥4 niveles)" % violations.size())
 	else:
-		print("\n✅ Todas las transiciones de elevación son válidas (≤3 niveles)")
+		Log.info("System", "✅ Todas las transiciones de elevación son válidas (≤3 niveles)")
 
 func _check_elevation_transitions() -> Array:
 	var violations = []

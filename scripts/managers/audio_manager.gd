@@ -116,7 +116,7 @@ func _ready():
 	_load_settings()
 	_setup_music_player()
 	_setup_sfx_pool()
-	print("[AudioManager] Initialized with music_vol=%.1f, sfx_vol=%.1f" % [music_volume, sfx_volume])
+	Log.info("Audio", "AudioManager initialized", {"music_vol": music_volume, "sfx_vol": sfx_volume})
 
 func _setup_music_player():
 	music_player = AudioStreamPlayer.new()
@@ -149,7 +149,7 @@ func _setup_sfx_pool():
 ## Reproducir música
 func play_music(music_id: int, fade_in: float = 1.0):
 	if not music_files.has(music_id):
-		push_warning("[AudioManager] Music ID not found: %d" % music_id)
+		Log.warning("Audio", "Music ID not found", {"music_id": music_id})
 		return
 	
 	var file_name = music_files[music_id]
@@ -175,7 +175,7 @@ func play_music(music_id: int, fade_in: float = 1.0):
 		if fade_in > 0:
 			_fade_music_in(fade_in)
 		
-		print("[AudioManager] Playing music: %s" % file_name)
+		Log.debug("Audio", "Playing music", {"file": file_name})
 
 func play_music_file(file_path: String, fade_in: float = 1.0):
 	"""Reproduce un archivo de música directamente por ruta"""
@@ -211,7 +211,7 @@ func _fade_music_out(duration: float):
 ## Reproducir efecto de sonido
 func play_sfx(sfx_id: int, volume_scale: float = 1.0, pitch_variation: float = 0.0):
 	if not sfx_files.has(sfx_id):
-		push_warning("[AudioManager] SFX ID not found: %d" % sfx_id)
+		Log.warning("Audio", "SFX ID not found", {"sfx_id": sfx_id})
 		return
 	
 	var file_name = sfx_files[sfx_id]
@@ -266,7 +266,7 @@ func _load_audio(path: String) -> AudioStream:
 
 ## Precargar sonidos comunes
 func preload_common_sounds():
-	print("[AudioManager] Preloading common sounds...")
+	Log.debug("Audio", "Preloading common sounds...")
 	
 	# Precargar SFX de UI
 	for sfx_id in [SFX_UI_CLICK, SFX_UI_HOVER, SFX_UI_CONFIRM, SFX_UI_CANCEL]:

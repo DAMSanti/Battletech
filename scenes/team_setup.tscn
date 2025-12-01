@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ui/screens/team_setup.gd" id="1_teamsetup"]
 [ext_resource type="Texture2D" path="res://assets/menu_background.png" id="2_background"]
-[ext_resource type="Theme" path="res://assets/themes/battletech_theme.tres" id="3_theme"]
+[ext_resource type="Theme" path="res://assets/themes/steeltitans_theme.tres" id="3_theme"]
 
 [node name="TeamSetup" type="Control"]
 layout_mode = 3

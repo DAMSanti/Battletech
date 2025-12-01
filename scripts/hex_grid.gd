@@ -40,10 +40,10 @@ func _ready():
 	var network_manager = get_node_or_null("/root/NetworkManager")
 	if network_manager and network_manager.is_in_match() and network_manager.current_map_seed != 0:
 		terrain_seed = network_manager.current_map_seed
-		print("[HEX_GRID] Using server map seed: %d" % terrain_seed)
+		Log.info("System", "Using server map seed", {"seed": terrain_seed})
 	else:
 		terrain_seed = randi()
-		print("[HEX_GRID] Using random map seed: %d" % terrain_seed)
+		Log.info("System", "Using random map seed", {"seed": terrain_seed})
 	
 	_preload_terrain_icons()
 	
@@ -81,7 +81,7 @@ func _preload_terrain_icons():
 func _generate_procedural_map():
 	var generator = ProceduralMapGenerator.new(grid_width, grid_height, terrain_seed)
 	hex_data = generator.generate_map()
-	print("Mapa procedural generado con seed: ", terrain_seed)
+	Log.info("System", "Mapa procedural generado", {"seed": terrain_seed})
 
 # Convertir coordenadas hexagonales a píxeles (CENTRO del hexágono)
 func hex_to_pixel(hex: Vector2i, include_elevation: bool = false) -> Vector2:

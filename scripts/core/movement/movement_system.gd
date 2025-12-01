@@ -100,6 +100,12 @@ static func can_enter_hex(hex: Vector2i, movement_type: int, mech, hex_grid) -> 
 	if not hex_grid.is_valid_hex(hex):
 		return false
 	
+	# Verificar si el hex es transitable (walkable)
+	if hex_grid.hex_data.has(hex):
+		var hex_info = hex_grid.hex_data[hex]
+		if hex_info.has("walkable") and not hex_info["walkable"]:
+			return false
+	
 	# Verificar si hay unidad bloqueando
 	var unit = hex_grid.get_unit(hex)
 	if unit != null and unit != mech:

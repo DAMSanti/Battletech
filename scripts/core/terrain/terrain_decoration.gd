@@ -73,9 +73,9 @@ func _init(type: DecorationType, terrain: TerrainType.Type):
 	var texture_path = DECORATION_PATHS.get(type, "")
 	if texture_path != "" and ResourceLoader.exists(texture_path):
 		texture = load(texture_path)
-		print("[TerrainDecoration] Loaded texture: ", texture_path)
+		Log.debug("System", "Loaded decoration texture", {"path": texture_path})
 	else:
-		print("[TerrainDecoration] ERROR: Texture not found: ", texture_path)
+		Log.error("System", "Decoration texture not found", {"path": texture_path})
 	
 	# Aplicar escala
 	scale = DECORATION_SCALES.get(type, Vector2.ONE)

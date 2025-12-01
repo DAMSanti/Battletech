@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ui/mech_bay_ui.gd" id="1_mech_bay"]
 [ext_resource type="Texture2D" path="res://assets/menu_background.png" id="2_background"]
-[ext_resource type="Theme" path="res://assets/themes/battletech_theme.tres" id="3_theme"]
+[ext_resource type="Theme" path="res://assets/themes/steeltitans_theme.tres" id="3_theme"]
 
 [node name="MechBayAdvanced" type="Control"]
 layout_mode = 3

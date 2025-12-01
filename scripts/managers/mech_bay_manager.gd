@@ -238,7 +238,7 @@ var force_regenerate_hangar: bool = false
 func _ready():
 	# Intentar cargar hangar guardado, si no existe usar default
 	if force_regenerate_hangar:
-		print("[MechBayManager] Force regenerate enabled - clearing hangar")
+		Log.info("Mech", "Force regenerate enabled - clearing hangar")
 		player_hangar.clear()
 		_initialize_default_hangar()
 		save_hangar_to_file()
@@ -246,11 +246,11 @@ func _ready():
 		_initialize_default_hangar()
 		save_hangar_to_file()
 	
-	print("[MechBayManager] Hangar ready with %d mechs" % player_hangar.size())
+	Log.info("Mech", "Hangar ready", {"mech_count": player_hangar.size()})
 
 func _initialize_default_hangar():
 	# Añadir algunos mechs al hangar inicial
-	print("[MechBayManager] Initializing default hangar...")
+	Log.debug("Mech", "Initializing default hangar...")
 	add_mech_to_hangar("Atlas", "AS7-D")
 	add_mech_to_hangar("Atlas", "AS7-K")
 	add_mech_to_hangar("Mad Cat", "Timber Wolf Prime")
@@ -258,15 +258,15 @@ func _initialize_default_hangar():
 	add_mech_to_hangar("Hunchback", "HBK-4G")
 	add_mech_to_hangar("Hunchback", "HBK-4P")
 	add_mech_to_hangar("Locust", "LCT-1V")
-	print("[MechBayManager] Default hangar initialized with %d mechs" % player_hangar.size())
+	Log.info("Mech", "Default hangar initialized", {"mech_count": player_hangar.size()})
 
 func force_regenerate():
 	# Método público para regenerar el hangar desde código
-	print("[MechBayManager] === FORCE REGENERATING HANGAR ===")
+	Log.info("Mech", "=== FORCE REGENERATING HANGAR ===")
 	player_hangar.clear()
 	_initialize_default_hangar()
 	save_hangar_to_file()
-	print("[MechBayManager] === REGENERATION COMPLETE ===")
+	Log.info("Mech", "=== REGENERATION COMPLETE ===")
 	return true
 
 func add_mech_to_hangar(mech_type: String, variant: String) -> bool:
@@ -289,7 +289,7 @@ func add_mech_to_hangar(mech_type: String, variant: String) -> bool:
 func get_mech_data(mech_type: String, variant: String) -> Dictionary:
 	# Obtiene una copia de los datos de un mech específico
 	if not mech_library.has(mech_type):
-		print("[MechBayManager] Mech type '%s' not found in library" % mech_type)
+		Log.warning("Mech", "Mech type not found in library", {"type": mech_type})
 		return {}
 	
 	var variants = mech_library[mech_type]["variants"]
@@ -299,9 +299,9 @@ func get_mech_data(mech_type: String, variant: String) -> Dictionary:
 	if variant.is_empty() or not variants.has(variant):
 		if variants.size() > 0:
 			selected_variant = variants.keys()[0]
-			print("[MechBayManager] Using default variant '%s' for mech '%s'" % [selected_variant, mech_type])
+			Log.debug("Mech", "Using default variant", {"variant": selected_variant, "mech": mech_type})
 		else:
-			print("[MechBayManager] No variants available for mech '%s'" % mech_type)
+			Log.warning("Mech", "No variants available", {"mech": mech_type})
 			return {}
 	
 	var mech_data = variants[selected_variant].duplicate(true)
@@ -309,12 +309,15 @@ func get_mech_data(mech_type: String, variant: String) -> Dictionary:
 	mech_data["variant"] = selected_variant
 	mech_data["tonnage"] = mech_library[mech_type]["tonnage"]
 	
-	print("[MechBayManager] get_mech_data returning '%s' with %d weapons" % [mech_data.get("name", "Unknown"), mech_data.get("weapons", []).size()])
+	Log.debug("Mech", "get_mech_data returning", {
+		"name": mech_data.get("name", "Unknown"),
+		"weapons": mech_data.get("weapons", []).size()
+	})
 	return mech_data
 
 func get_player_hangar() -> Array:
 	# Devuelve la lista de mechs en el hangar del jugador
-	print("[MechBayManager] get_player_hangar called - returning %d mechs" % player_hangar.size())
+	Log.debug("Mech", "get_player_hangar called", {"mech_count": player_hangar.size()})
 	return player_hangar
 
 func get_available_mech_types() -> Array:
@@ -376,13 +379,13 @@ func save_hangar_to_file() -> bool:
 	
 	file.store_string(JSON.stringify(save_data, "\t"))
 	file.close()
-	print("[MechBayManager] Hangar saved to: ", SAVE_FILE_PATH)
+	Log.info("Save", "Hangar saved", {"path": SAVE_FILE_PATH})
 	return true
 
 func load_hangar_from_file() -> bool:
 	# Carga el hangar desde un archivo JSON
 	if not FileAccess.file_exists(SAVE_FILE_PATH):
-		print("[MechBayManager] No save file found, using default hangar")
+		Log.debug("Save", "No save file found, using default hangar")
 		return false
 	
 	var file = FileAccess.open(SAVE_FILE_PATH, FileAccess.READ)
@@ -407,16 +410,16 @@ func load_hangar_from_file() -> bool:
 	
 	if save_data.has("hangar"):
 		player_hangar = save_data["hangar"]
-		print("[MechBayManager] Hangar loaded from file: ", player_hangar.size(), " mechs")
+		Log.info("Save", "Hangar loaded from file", {"mech_count": player_hangar.size()})
 		
 		# Debug: mostrar armas de cada mech cargado
 		for i in range(player_hangar.size()):
 			var mech = player_hangar[i]
-			print("[DEBUG] Loaded mech %d: %s" % [i, mech.get("name", "Unknown")])
-			if mech.has("weapons"):
-				print("[DEBUG]   Weapons count: %d" % mech["weapons"].size())
-				for j in range(mech["weapons"].size()):
-					print("[DEBUG]     Weapon %d: %s" % [j, mech["weapons"][j].get("name", "Unknown")])
+			Log.debug("Mech", "Loaded mech", {
+				"index": i,
+				"name": mech.get("name", "Unknown"),
+				"weapons_count": mech.get("weapons", []).size()
+			})
 		
 		# Cargar índice del mech seleccionado
 		if save_data.has("selected_mech_index"):
@@ -442,7 +445,7 @@ func set_selected_mech(index: int):
 	# Establece cuál mech del hangar está seleccionado para batalla
 	if index >= 0 and index < player_hangar.size():
 		selected_mech_index = index
-		print("[MechBayManager] Selected mech for battle: ", player_hangar[index].get("name", "Unknown"))
+		Log.debug("Mech", "Selected mech for battle", {"name": player_hangar[index].get("name", "Unknown")})
 
 func get_first_player_mech() -> Dictionary:
 	# DEPRECATED: Usar get_selected_player_mech() en su lugar
@@ -455,7 +458,7 @@ func get_player_lance() -> Array:
 	if has_meta("battle_lance"):
 		var battle_lance = get_meta("battle_lance")
 		if battle_lance is Array and battle_lance.size() > 0:
-			print("[MechBayManager] Using configured battle lance: %d mechs" % battle_lance.size())
+			Log.debug("Match", "Using configured battle lance", {"mech_count": battle_lance.size()})
 			return battle_lance
 	
 	# Fallback: usar los primeros 4 mechs del hangar
@@ -474,10 +477,10 @@ func get_player_lance() -> Array:
 func set_battle_lance(lance_data: Array):
 	# Establece la configuración de lance para la próxima batalla
 	set_meta("battle_lance", lance_data)
-	print("[MechBayManager] Battle lance configured with %d mechs" % lance_data.size())
+	Log.info("Match", "Battle lance configured", {"mech_count": lance_data.size()})
 
 func clear_battle_lance():
 	# Limpia la configuración de lance guardada
 	if has_meta("battle_lance"):
 		remove_meta("battle_lance")
-		print("[MechBayManager] Battle lance configuration cleared")
+		Log.debug("Match", "Battle lance configuration cleared")

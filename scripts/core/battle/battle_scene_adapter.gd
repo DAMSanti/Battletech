@@ -274,18 +274,18 @@ func _on_phase_changed(phase: GameEnums.TurnPhase) -> void:
 			turn_ended.emit()
 
 func _on_turn_changed(turn: int) -> void:
-	print("[ADAPTER] Turn %d" % turn)
+	Log.info("Match", "Turn changed", {"turn": turn})
 
 func _on_active_team_changed(team: String) -> void:
-	print("[ADAPTER] Active team: %s" % team)
+	Log.debug("Match", "Active team changed", {"team": team})
 
 func _on_active_unit_changed(mech_id: String) -> void:
 	var mech_node = get_mech_node(mech_id)
 	if mech_node:
-		print("[ADAPTER] Active unit: %s" % mech_node.get("mech_name"))
+		Log.debug("Combat", "Active unit changed", {"name": mech_node.get("mech_name")})
 
 func _on_deployment_started(team: String) -> void:
-	print("[ADAPTER] Deployment started for team: %s" % team)
+	Log.info("Match", "Deployment started", {"team": team})
 	deployment_phase_started.emit()
 
 func _on_deployment_zone_ready(valid_hexes: Array) -> void:
@@ -296,10 +296,10 @@ func _on_deployment_zone_ready(valid_hexes: Array) -> void:
 func _on_mech_deployed(mech_id: String, position: Vector2i) -> void:
 	var mech_node = get_mech_node(mech_id)
 	if mech_node:
-		print("[ADAPTER] Mech deployed: %s at %s" % [mech_node.get("mech_name"), position])
+		Log.info("Mech", "Mech deployed", {"name": mech_node.get("mech_name"), "position": [position.x, position.y]})
 
 func _on_deployment_complete(team: String) -> void:
-	print("[ADAPTER] Deployment complete for: %s" % team)
+	Log.info("Match", "Deployment complete", {"team": team})
 	deployment_complete.emit()
 
 func _on_movement_started(mech_id: String) -> void:
@@ -328,7 +328,7 @@ func _on_facing_changed(mech_id: String, new_facing: int, _mp_cost: int) -> void
 			mech_node.facing = new_facing
 
 func _on_attack_resolved(result: Dictionary) -> void:
-	print("[ADAPTER] Attack resolved: %s" % result)
+	Log.debug("Combat", "Attack resolved", result)
 	
 	# Obtener los nodos de mech
 	var attacker_id = str(result.get("attacker_id", ""))
@@ -448,7 +448,7 @@ func _on_initiative_rolled(results: Dictionary) -> void:
 	initiative_rolled.emit(player_roll, enemy_roll, winner)
 
 func _on_game_over(winner: String, reason: String) -> void:
-	print("[ADAPTER] Game over: %s wins - %s" % [winner, reason])
+	Log.info("Match", "Game over", {"winner": winner, "reason": reason})
 	if battle_scene.has_method("_on_battle_ended"):
 		battle_scene._on_battle_ended(winner, reason)
 

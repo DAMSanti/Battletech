@@ -3,16 +3,84 @@ extends Control
 # Panel de opciones
 var options_panel: Panel = null
 var _is_server_mode: bool = false
+var _auth_manager: Node = null
+var _user_info_label: Label = null
+var _logout_button: Button = null
+var _menu_container: VBoxContainer = null
 
 func _ready():
 	# Si estamos en modo headless (servidor dedicado), cambiar a escena de servidor
 	if DisplayServer.get_name() == "headless" or OS.has_feature("dedicated_server"):
-		print("[MAIN_MENU] Detected headless/server mode, switching to server scene...")
+		Log.info("System", "Detected headless/server mode, switching to server scene...")
 		_is_server_mode = true
 		# Programar cambio de escena para el próximo frame
 		call_deferred("_switch_to_server_scene")
 		return
 	
+	# Obtener AuthManager
+	_auth_manager = get_node_or_null("/root/AuthManager")
+	
+	# Verificar si el usuario está autenticado
+	if _auth_manager and not _auth_manager.is_authenticated():
+		# Mostrar pantalla de login
+		_show_auth_screen()
+		return
+	
+	# Usuario autenticado, mostrar menú normal
+	_setup_main_menu()
+
+
+func _show_auth_screen() -> void:
+	"""Muestra la pantalla de autenticación"""
+	var auth_scene := preload("res://scenes/auth_screen.tscn")
+	var auth_screen := auth_scene.instantiate()
+	add_child(auth_screen)
+	
+	# Conectar señales
+	auth_screen.login_successful.connect(_on_login_successful)
+	auth_screen.login_cancelled.connect(_on_login_cancelled)
+
+
+func _on_login_successful(user_data: Dictionary) -> void:
+	"""Callback cuando el login es exitoso"""
+	Log.info("MainMenu", "Login successful, loading player data", {"username": user_data.get("username", "unknown")})
+	
+	# Cargar datos del jugador con PlayerDataManager
+	var user_id: String = str(user_data.get("user_id", ""))
+	if user_id.is_empty():
+		user_id = str(user_data.get("id", ""))
+	
+	if not user_id.is_empty():
+		var player_data = get_node_or_null("/root/PlayerData")
+		if player_data:
+			# Determinar si es online u offline basado en si es guest
+			var is_guest: bool = user_data.get("is_guest", false)
+			if is_guest:
+				player_data.load_offline_data()
+				Log.info("MainMenu", "Loaded offline player data for guest")
+			else:
+				# En modo online, cargar datos del servidor
+				player_data.load_player_data(user_id)
+				Log.info("MainMenu", "Loading online player data", {"user_id": user_id})
+	
+	# Remover pantalla de auth
+	for child in get_children():
+		if child.has_method("_on_login_pressed"):  # Es AuthScreen
+			child.queue_free()
+	
+	# Configurar menú principal
+	_setup_main_menu()
+
+
+func _on_login_cancelled() -> void:
+	"""Callback cuando se cancela el login"""
+	# Por ahora, permitir continuar como invitado offline
+	if _auth_manager:
+		_auth_manager.login_as_guest()
+
+
+func _setup_main_menu() -> void:
+	"""Configura el menú principal"""
 	# TEMPORAL: Regenerar hangar para limpiar datos corruptos
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
 	if mech_bay_manager and mech_bay_manager.force_regenerate_hangar:
@@ -22,59 +90,148 @@ func _ready():
 	if AudioManager:
 		AudioManager.play_music(AudioManager.MUSIC_MENU, 2.0)
 	
+	# Crear barra de usuario en la parte superior
+	_create_user_bar()
+	
 	# Configurar UI del menú
-	var vbox = VBoxContainer.new()
-	vbox.anchor_left = 0.5
-	vbox.anchor_top = 0.5
-	vbox.anchor_right = 0.5
-	vbox.anchor_bottom = 0.5
-	vbox.offset_left = -150
-	vbox.offset_top = -200
-	vbox.offset_right = 150
-	vbox.offset_bottom = 200
-	add_child(vbox)
+	_menu_container = VBoxContainer.new()
+	_menu_container.anchor_left = 0.5
+	_menu_container.anchor_top = 0.5
+	_menu_container.anchor_right = 0.5
+	_menu_container.anchor_bottom = 0.5
+	_menu_container.offset_left = -150
+	_menu_container.offset_top = -200
+	_menu_container.offset_right = 150
+	_menu_container.offset_bottom = 200
+	add_child(_menu_container)
 	
 	# Título
 	var title = Label.new()
-	title.text = "BATTLETECH"
+	title.text = "STEEL TITANS"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 48)
-	vbox.add_child(title)
+	_menu_container.add_child(title)
 	
-	vbox.add_child(Control.new())  # Spacer
+	_menu_container.add_child(Control.new())  # Spacer
 	
 	# Botón de nueva batalla
 	var new_battle_btn = _create_menu_button("New Game")
 	new_battle_btn.pressed.connect(_on_new_battle_pressed)
-	vbox.add_child(new_battle_btn)
+	_menu_container.add_child(new_battle_btn)
 	
 	# Botón de mechs
 	var mechs_btn = _create_menu_button("Mech Bay")
 	mechs_btn.pressed.connect(_on_mechs_pressed)
-	vbox.add_child(mechs_btn)
+	_menu_container.add_child(mechs_btn)
 	
 	# Botón de loadout avanzado
 	var loadout_btn = _create_menu_button("Advanced Loadout")
 	loadout_btn.pressed.connect(_on_advanced_loadout_pressed)
-	vbox.add_child(loadout_btn)
+	_menu_container.add_child(loadout_btn)
 	
 	# Botón de Multiplayer
 	var multiplayer_btn = _create_menu_button("Multiplayer")
 	multiplayer_btn.pressed.connect(_on_multiplayer_pressed)
-	vbox.add_child(multiplayer_btn)
+	_menu_container.add_child(multiplayer_btn)
 	
 	# Botón de opciones
 	var options_btn = _create_menu_button("Options")
 	options_btn.pressed.connect(_on_options_pressed)
-	vbox.add_child(options_btn)
+	_menu_container.add_child(options_btn)
 	
 	# Botón de salir
 	var quit_btn = _create_menu_button("Quit")
 	quit_btn.pressed.connect(_on_quit_pressed)
-	vbox.add_child(quit_btn)
+	_menu_container.add_child(quit_btn)
 	
 	# Crear panel de opciones (oculto inicialmente)
 	_create_options_panel()
+
+
+func _create_user_bar() -> void:
+	"""Crea la barra superior con info del usuario"""
+	var user_bar := HBoxContainer.new()
+	user_bar.anchor_left = 0.0
+	user_bar.anchor_top = 0.0
+	user_bar.anchor_right = 1.0
+	user_bar.anchor_bottom = 0.0
+	user_bar.offset_left = 15
+	user_bar.offset_top = 10
+	user_bar.offset_right = -15
+	user_bar.offset_bottom = 50
+	user_bar.add_theme_constant_override("separation", 15)
+	add_child(user_bar)
+	
+	# Icono de usuario
+	var user_icon := Label.new()
+	user_icon.text = "👤"
+	user_icon.add_theme_font_size_override("font_size", 24)
+	user_bar.add_child(user_icon)
+	
+	# Info del usuario
+	_user_info_label = Label.new()
+	_user_info_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_user_info_label.add_theme_font_size_override("font_size", 16)
+	
+	if _auth_manager and _auth_manager.is_authenticated():
+		var user_data: Dictionary = _auth_manager.get_current_user()
+		var username: String = str(user_data.get("username", "Guest"))
+		
+		# Obtener datos de progreso desde PlayerDataManager
+		var player_data = get_node_or_null("/root/PlayerData")
+		var level: int = 1
+		var elo: int = 1000
+		var credits: int = 0
+		
+		if player_data and player_data.progress:
+			level = player_data.progress.level
+			elo = player_data.progress.elo_rating
+			credits = player_data.progress.credits
+		else:
+			# Fallback a datos de auth si PlayerData no está disponible
+			elo = user_data.get("elo_rating", 1000)
+			credits = user_data.get("c_bills", 0)
+		
+		_user_info_label.text = "%s  |  Lv.%d  |  ELO: %d  |  CT: %s" % [username, level, elo, _format_number(credits)]
+	else:
+		_user_info_label.text = "Not logged in"
+	
+	user_bar.add_child(_user_info_label)
+	
+	# Botón de logout
+	_logout_button = Button.new()
+	_logout_button.text = "Logout"
+	_logout_button.custom_minimum_size = Vector2(80, 30)
+	_logout_button.pressed.connect(_on_logout_pressed)
+	user_bar.add_child(_logout_button)
+
+
+func _format_number(num: int) -> String:
+	"""Formatea un número con separadores de miles"""
+	var str_num := str(num)
+	var result := ""
+	var count := 0
+	for i in range(str_num.length() - 1, -1, -1):
+		if count > 0 and count % 3 == 0:
+			result = "," + result
+		result = str_num[i] + result
+		count += 1
+	return result
+
+
+func _on_logout_pressed() -> void:
+	"""Maneja el logout"""
+	# Primero guardar y limpiar datos del jugador
+	var player_data = get_node_or_null("/root/PlayerData")
+	if player_data:
+		player_data.on_logout()
+		Log.info("MainMenu", "Player data saved on logout")
+	
+	if _auth_manager:
+		_auth_manager.logout()
+	
+	# Recargar la escena para mostrar login
+	get_tree().reload_current_scene()
 
 func _create_menu_button(text: String) -> Button:
 	"""Crea un botón del menú con sonido de click"""

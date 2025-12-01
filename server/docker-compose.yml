@@ -1,17 +1,19 @@
 version: '3.8'
 
 services:
-  battletech-server:
+  steeltitans-server:
     build:
       context: ..
       dockerfile: server/Dockerfile
-    container_name: battletech-server
+    container_name: steeltitans-server
     ports:
       - "7777:7777/udp"
     environment:
       - SERVER_PORT=7777
       - MAX_PLAYERS=32
     restart: unless-stopped
+    depends_on:
+      - redis
     # Recursos limitados para DigitalOcean Droplet básico
     deploy:
       resources:
@@ -27,3 +29,26 @@ services:
     #   interval: 30s
     #   timeout: 10s
     #   retries: 3
+
+  redis:
+    image: redis:7-alpine
+    container_name: steeltitans-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+volumes:
+  redis_data:

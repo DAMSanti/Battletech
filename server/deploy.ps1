@@ -1,4 +1,4 @@
-# Script para construir y desplegar el servidor BattleTech en DigitalOcean
+# Script para construir y desplegar el servidor Steel Titans en DigitalOcean
 # Ejecutar desde el directorio raíz del proyecto
 
 param(
@@ -11,7 +11,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "  BattleTech Server Deploy Script" -ForegroundColor Cyan
+Write-Host "  Steel Titans Server Deploy Script" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -46,7 +46,7 @@ custom_features=""
 export_filter="all_resources"
 include_filter=""
 exclude_filter=""
-export_path="./exports/BattleTech_Server.x86_64"
+export_path="./exports/Steel Titans_Server.x86_64"
 patches=PackedStringArray()
 encryption_include_filters=""
 encryption_exclude_filters=""
@@ -106,7 +106,7 @@ ssh_remote_deploy/cleanup_script=""
     Write-Host "Usando Godot: $godotPath" -ForegroundColor Gray
     
     # Exportar
-    & $godotPath --headless --export-pack "Linux Server" "exports/BattleTech_Server.pck"
+    & $godotPath --headless --export-pack "Linux Server" "exports/Steel Titans_Server.pck"
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Fallo al exportar. Verifica que tienes los export templates instalados." -ForegroundColor Red
@@ -130,7 +130,7 @@ function Build-DockerImage {
     }
     
     # Construir imagen
-    docker build -t battletech-server:latest -f server/Dockerfile .
+    docker build -t Steel Titans-server:latest -f server/Dockerfile .
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Fallo al construir la imagen Docker" -ForegroundColor Red
@@ -157,26 +157,26 @@ function Deploy-ToDigitalOcean {
     
     # Guardar la imagen Docker
     Write-Host "Guardando imagen Docker..." -ForegroundColor Gray
-    docker save battletech-server:latest | gzip > battletech-server.tar.gz
+    docker save Steel Titans-server:latest | gzip > Steel Titans-server.tar.gz
     
     # Copiar archivos al servidor
     Write-Host "Copiando archivos al servidor..." -ForegroundColor Gray
-    scp -i $SSHKey battletech-server.tar.gz "root@${IP}:/tmp/"
-    scp -i $SSHKey server/docker-compose.yml "root@${IP}:/opt/battletech/"
+    scp -i $SSHKey Steel Titans-server.tar.gz "root@${IP}:/tmp/"
+    scp -i $SSHKey server/docker-compose.yml "root@${IP}:/opt/Steel Titans/"
     
     # Cargar y ejecutar en el servidor
     Write-Host "Iniciando contenedor en el servidor..." -ForegroundColor Gray
     ssh -i $SSHKey "root@$IP" @"
-        mkdir -p /opt/battletech
-        cd /opt/battletech
-        docker load < /tmp/battletech-server.tar.gz
+        mkdir -p /opt/Steel Titans
+        cd /opt/Steel Titans
+        docker load < /tmp/Steel Titans-server.tar.gz
         docker-compose down 2>/dev/null || true
         docker-compose up -d
-        docker logs battletech-server
+        docker logs Steel Titans-server
 "@
     
     # Limpiar archivo local
-    Remove-Item battletech-server.tar.gz -ErrorAction SilentlyContinue
+    Remove-Item Steel Titans-server.tar.gz -ErrorAction SilentlyContinue
     
     Write-Host ""
     Write-Host "========================================" -ForegroundColor Green
@@ -186,9 +186,9 @@ function Deploy-ToDigitalOcean {
     Write-Host "El servidor esta corriendo en: $IP`:7777" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "Comandos utiles:" -ForegroundColor Yellow
-    Write-Host "  Ver logs:    ssh root@$IP 'docker logs -f battletech-server'" -ForegroundColor Gray
-    Write-Host "  Reiniciar:   ssh root@$IP 'cd /opt/battletech && docker-compose restart'" -ForegroundColor Gray
-    Write-Host "  Detener:     ssh root@$IP 'cd /opt/battletech && docker-compose down'" -ForegroundColor Gray
+    Write-Host "  Ver logs:    ssh root@$IP 'docker logs -f Steel Titans-server'" -ForegroundColor Gray
+    Write-Host "  Reiniciar:   ssh root@$IP 'cd /opt/Steel Titans && docker-compose restart'" -ForegroundColor Gray
+    Write-Host "  Detener:     ssh root@$IP 'cd /opt/Steel Titans && docker-compose down'" -ForegroundColor Gray
 }
 
 # Ejecutar según los flags

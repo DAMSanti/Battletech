@@ -70,11 +70,11 @@ func test_facing_affects_reachability():
 func assert_test(condition: bool, description: String):
     var status = "✅ PASS" if condition else "❌ FAIL"
     test_results.append({"passed": condition, "desc": description})
-    print("  %s: %s" % [status, description])
+    Log.test("  %s: %s" % [status, description])
 
 func print_results():
     var passed = 0
     for r in test_results:
         if r.passed:
             passed += 1
-    print("\nRESULTS: %d tests, Passed: %d, Failed: %d" % [test_results.size(), passed, test_results.size() - passed])
+    Log.test("RESULTS: %d tests, Passed: %d, Failed: %d" % [test_results.size(), passed, test_results.size() - passed])

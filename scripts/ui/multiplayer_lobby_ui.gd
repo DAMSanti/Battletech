@@ -141,28 +141,28 @@ func _on_back_pressed():
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
 
 func _on_connected_to_server():
-	print("[LOBBY_UI] Connected to server!")
+	Log.info("Network", "Connected to server!")
 	_update_ui_state()
 
 func _on_connection_failed():
-	print("[LOBBY_UI] Connection failed!")
+	Log.warning("Network", "Connection failed!")
 	status_label.text = "Status: Connection failed!"
 	status_label.modulate = Color.RED
 	_update_ui_state()
 
 func _on_server_disconnected():
-	print("[LOBBY_UI] Server disconnected!")
+	Log.warning("Network", "Server disconnected!")
 	status_label.text = "Status: Server disconnected!"
 	status_label.modulate = Color.RED
 	_update_ui_state()
 	_clear_lobby_list()
 
 func _on_lobby_updated(players: Array):
-	print("[LOBBY_UI] Lobby updated: %d players" % players.size())
+	Log.debug("Network", "Lobby updated", {"players": players.size()})
 	_update_lobby_list(players)
 
 func _on_match_ready(_match_id, _team):
-	print("[LOBBY_UI] Match ready! Starting battle...")
+	Log.info("Match", "Match ready! Starting battle...")
 	# Cambiar a la escena de batalla
 	# El NetworkBattleClient manejará la sincronización
 	await get_tree().create_timer(1.0).timeout

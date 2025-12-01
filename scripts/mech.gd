@@ -292,16 +292,20 @@ func _update_sprite():
 	else:
 		visible = true
 	
-	print("[MECH] _update_sprite called for %s, facing=%d, sprite_manager=%s" % [mech_name, facing, sprite_manager != null])
+	Log.debug("Mech", "_update_sprite called", {
+		"name": mech_name,
+		"facing": facing,
+		"sprite_manager": sprite_manager != null
+	})
 	
 	if sprite_manager and sprite:
 		# Obtener el sprite correcto según tonelaje y orientación
 		var new_texture = sprite_manager.get_sprite_for_mech(tonnage, facing)
 		if new_texture:
 			sprite.texture = new_texture
-			print("[MECH] Sprite texture updated for facing %d" % facing)
+			Log.debug("Mech", "Sprite texture updated", {"facing": facing})
 		else:
-			print("[MECH] WARNING: No texture returned for facing %d" % facing)
+			Log.warning("Mech", "No texture returned", {"facing": facing})
 		
 		# Aplicar efectos visuales según estado
 		# No cambiar modulate si hay un efecto visual activo (flash de daño, etc.)

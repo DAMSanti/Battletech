@@ -2,7 +2,7 @@ extends CanvasLayer
 
 signal initiative_complete(data: Dictionary)
 
-@onready var battletech_theme = load("res://assets/themes/battletech_theme.tres")
+@onready var steeltitans_theme = load("res://assets/themes/steeltitans_theme.tres")
 
 var roll_button: Button
 var result_label: Label
@@ -48,7 +48,7 @@ func _ready():
 		if network_manager.is_in_match():
 			is_multiplayer_mode = true
 			match_id = network_manager.get_current_match_id()
-			print("[INITIATIVE] Multiplayer mode detected, match_id: %d" % match_id)
+			Log.info("Network", "Multiplayer mode detected", {"match_id": match_id})
 			# Conectar señal de espera
 			if not network_manager.initiative_waiting_update.is_connected(_on_waiting_update):
 				network_manager.initiative_waiting_update.connect(_on_waiting_update)
@@ -58,7 +58,13 @@ func _ready():
 
 func _on_waiting_update(players_ready: int, players_total: int, wait_type: String):
 	"""Actualiza UI cuando el servidor notifica estado de espera"""
-	print("[INITIATIVE] Waiting update: %d/%d ready for %s (my_roll_sent=%s, my_start_sent=%s)" % [players_ready, players_total, wait_type, waiting_for_opponent_roll, waiting_for_opponent_start])
+	Log.debug("Network", "Waiting update", {
+		"ready": players_ready,
+		"total": players_total,
+		"type": wait_type,
+		"my_roll_sent": waiting_for_opponent_roll,
+		"my_start_sent": waiting_for_opponent_start
+	})
 	
 	if wait_type == "roll":
 		# Solo actualizar UI si YO ya presioné Roll
@@ -75,12 +81,12 @@ func _on_waiting_update(players_ready: int, players_total: int, wait_type: Strin
 		
 		if players_ready >= players_total:
 			# Ambos listos para empezar - cerrar pantalla
-			print("[INITIATIVE] Both players ready to start - closing screen")
+			Log.info("Match", "Both players ready to start - closing screen")
 			_do_continue_animation()
 
 func _on_server_initiative_result(result: Dictionary):
 	"""Recibe el resultado de iniciativa del servidor"""
-	print("[INITIATIVE] Server result received: %s" % result)
+	Log.debug("Combat", "Server result received", result)
 	waiting_for_opponent_roll = false
 	_show_server_results(result)
 
@@ -183,7 +189,7 @@ func _check_server_mode():
 	if has_meta("server_mode") and get_meta("server_mode"):
 		var server_result = get_meta("server_result")
 		if server_result:
-			print("[INITIATIVE] Server mode - showing server results")
+			Log.debug("Combat", "Server mode - showing server results")
 			_show_server_results(server_result)
 
 func _show_server_results(server_result: Dictionary):
@@ -197,7 +203,10 @@ func _show_server_results(server_result: Dictionary):
 	var player_mech_rolls = server_result.get("player_mech_rolls", [])
 	var enemy_mech_rolls = server_result.get("enemy_mech_rolls", [])
 	
-	print("[INITIATIVE] Server rolls - Player mechs: %d, Enemy mechs: %d" % [player_mech_rolls.size(), enemy_mech_rolls.size()])
+	Log.debug("Combat", "Server rolls", {
+		"player_mechs": player_mech_rolls.size(),
+		"enemy_mechs": enemy_mech_rolls.size()
+	})
 	
 	# Asignar los dados de cada mech
 	for i in range(4):
@@ -429,7 +438,7 @@ func setup_ui():
 	roll_button.text = "🎲 ROLL DICE 🎲"
 	roll_button.position = Vector2(screen_width * 0.1, button_y)
 	roll_button.custom_minimum_size = Vector2(screen_width * 0.8, screen_height * 0.08)
-	roll_button.theme = battletech_theme
+	roll_button.theme = steeltitans_theme
 	roll_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
 	roll_button.pressed.connect(_on_roll_pressed)
 	add_child(roll_button)
@@ -453,7 +462,7 @@ func setup_ui():
 	continue_button.text = "⚔ START BATTLE ⚔"
 	continue_button.position = Vector2(screen_width * 0.1, screen_height - screen_height * 0.15)
 	continue_button.custom_minimum_size = Vector2(screen_width * 0.8, screen_height * 0.08)
-	continue_button.theme = battletech_theme
+	continue_button.theme = steeltitans_theme
 	continue_button.add_theme_font_size_override("font_size", int(28 * scale_factor))
 	continue_button.pressed.connect(_on_continue_pressed)
 	continue_button.visible = false
@@ -525,7 +534,7 @@ func _on_roll_pressed():
 	
 	# En modo multiplayer, notificar al servidor y esperar
 	if is_multiplayer_mode:
-		print("[INITIATIVE] Multiplayer mode - sending roll ready to server")
+		Log.debug("Network", "Multiplayer mode - sending roll ready to server")
 		is_rolling = true
 		roll_button.disabled = true
 		roll_button.text = "⏳ WAITING (1/2)"
@@ -947,7 +956,7 @@ func _on_continue_pressed():
 	
 	# En modo multiplayer, notificar al servidor y esperar
 	if is_multiplayer_mode:
-		print("[INITIATIVE] Multiplayer mode - sending start ready to server")
+		Log.debug("Network", "Multiplayer mode - sending start ready to server")
 		continue_button.text = "⏳ WAITING (1/2)"
 		waiting_for_opponent_start = true
 		

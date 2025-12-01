@@ -19,8 +19,8 @@ const MAX_CLIENTS: int = 32  # Múltiples partidas simultáneas
 # ============================================================
 # CONFIGURACIÓN DEL SERVIDOR DE PRODUCCIÓN
 # ============================================================
-# Cambia esta IP por la de tu Droplet en DigitalOcean
-const PRODUCTION_SERVER_IP: String = "159.65.94.179"
+# Servidor de producción en DigitalOcean
+const PRODUCTION_SERVER_IP: String = "steeltitans.damsanti.app"
 const USE_PRODUCTION_SERVER: bool = true  # Cambiar a true para usar servidor remoto
 
 # Estados de conexión
@@ -68,14 +68,14 @@ func _ready():
 func start_dedicated_server(port: int = DEFAULT_PORT) -> Error:
 	"""Inicia el servidor dedicado ENet"""
 	if multiplayer_peer != null:
-		push_warning("Server already running")
+		Log.warning("Network", "Server already running")
 		return ERR_ALREADY_IN_USE
 	
 	multiplayer_peer = ENetMultiplayerPeer.new()
 	var error = multiplayer_peer.create_server(port, MAX_CLIENTS)
 	
 	if error != OK:
-		push_error("Failed to start server: %s" % error_string(error))
+		Log.error("Network", "Failed to start server", {"error": error_string(error)})
 		multiplayer_peer = null
 		return error
 	
@@ -83,8 +83,8 @@ func start_dedicated_server(port: int = DEFAULT_PORT) -> Error:
 	is_server = true
 	connection_state = ConnectionState.CONNECTED
 	
-	print("[SERVER] Dedicated server started on port %d" % port)
-	print("[SERVER] Waiting for players...")
+	Log.info("Network", "Dedicated server started", {"port": port, "max_clients": MAX_CLIENTS})
+	Log.info("Network", "Waiting for players...")
 	return OK
 
 func stop_server():
@@ -100,7 +100,7 @@ func stop_server():
 	lobby_queue.clear()
 	active_matches.clear()
 	
-	print("[SERVER] Server stopped")
+	Log.info("Network", "Server stopped")
 
 # ============================================================
 # CLIENTE
@@ -109,7 +109,7 @@ func stop_server():
 func connect_to_server(address: String = "", port: int = DEFAULT_PORT, player_name: String = "Player") -> Error:
 	"""Conecta un cliente al servidor dedicado"""
 	if connection_state != ConnectionState.DISCONNECTED:
-		push_warning("Already connected or connecting")
+		Log.warning("Network", "Already connected or connecting")
 		return ERR_ALREADY_IN_USE
 	
 	# Usar servidor de producción si está configurado y no se especifica dirección
@@ -121,7 +121,7 @@ func connect_to_server(address: String = "", port: int = DEFAULT_PORT, player_na
 	var error = multiplayer_peer.create_client(address, port)
 	
 	if error != OK:
-		push_error("Failed to connect: %s" % error_string(error))
+		Log.error("Network", "Failed to connect", {"address": address, "error": error_string(error)})
 		multiplayer_peer = null
 		return error
 	
@@ -129,7 +129,7 @@ func connect_to_server(address: String = "", port: int = DEFAULT_PORT, player_na
 	is_server = false
 	connection_state = ConnectionState.CONNECTING
 	
-	print("[CLIENT] Connecting to %s:%d as '%s'..." % [address, port, player_name])
+	Log.info("Network", "Connecting to server", {"address": address, "port": port, "player": player_name})
 	return OK
 
 func disconnect_from_server():
@@ -143,7 +143,7 @@ func disconnect_from_server():
 	connection_state = ConnectionState.DISCONNECTED
 	connected_players.clear()
 	
-	print("[CLIENT] Disconnected from server")
+	Log.info("Network", "Disconnected from server")
 
 # ============================================================
 # MATCHMAKING (Server-side)
@@ -157,7 +157,7 @@ func _add_to_lobby(peer_id: int):
 	lobby_queue.append(peer_id)
 	connected_players[peer_id]["state"] = "lobby"
 	
-	print("[SERVER] Player %d added to lobby. Queue size: %d" % [peer_id, lobby_queue.size()])
+	Log.info("Match", "Player added to lobby", {"peer_id": peer_id, "queue_size": lobby_queue.size()})
 	
 	# Notificar a todos los clientes del estado del lobby
 	_broadcast_lobby_state()
@@ -204,7 +204,8 @@ func _try_matchmake():
 		var map_seed = randi()
 		active_matches[match_id]["map_seed"] = map_seed
 		
-		print("[SERVER] Match %d created: Player %d vs Player %d (seed: %d)" % [match_id, player1_id, player2_id, map_seed])
+		Log.match_event("Match created", str(match_id), connected_players[player1_id]["name"], connected_players[player2_id]["name"])
+		Log.debug("Match", "Match details", {"seed": map_seed, "p1_peer": player1_id, "p2_peer": player2_id})
 		
 		# Notificar a ambos jugadores con la semilla del mapa
 		rpc_id(player1_id, "client_match_found", match_id, "player", connected_players[player2_id]["name"], map_seed)
@@ -274,7 +275,7 @@ func server_register_player(player_name: String):
 			"state": "connected"
 		}
 	
-	print("[SERVER] Player registered: %d -> '%s'" % [sender_id, player_name])
+	Log.network("Player registered: %s" % player_name, sender_id)
 	player_registered.emit(sender_id, player_name)
 	
 	# Confirmar registro al cliente
@@ -286,7 +287,7 @@ func server_join_lobby():
 	var sender_id = multiplayer.get_remote_sender_id()
 	
 	if sender_id not in connected_players:
-		push_warning("Unregistered player trying to join lobby: %d" % sender_id)
+		Log.warning("Network", "Unregistered player trying to join lobby", {"peer_id": sender_id})
 		return
 	
 	_add_to_lobby(sender_id)
@@ -301,7 +302,7 @@ func server_leave_lobby():
 		if sender_id in connected_players:
 			connected_players[sender_id]["state"] = "connected"
 		_broadcast_lobby_state()
-		print("[SERVER] Player %d left lobby" % sender_id)
+		Log.info("Match", "Player left lobby", {"peer_id": sender_id})
 
 # ============================================================
 # RPCs - Servidor -> Cliente
@@ -311,7 +312,7 @@ func server_leave_lobby():
 func client_registration_confirmed(my_peer_id: int):
 	"""Servidor confirma el registro del cliente"""
 	connection_state = ConnectionState.CONNECTED
-	print("[CLIENT] Registration confirmed. My peer ID: %d" % my_peer_id)
+	Log.info("Network", "Registration confirmed", {"peer_id": my_peer_id})
 
 @rpc("authority", "reliable")
 func client_lobby_update(lobby_info: Array):
@@ -327,7 +328,8 @@ func client_match_found(p_match_id: int, p_team: String, p_opponent_name: String
 	current_team = p_team
 	opponent_name = p_opponent_name
 	current_map_seed = p_map_seed  # Guardar semilla para hex_grid
-	print("[CLIENT] Match found! ID: %d, Team: %s, Opponent: %s, MapSeed: %d" % [p_match_id, p_team, p_opponent_name, p_map_seed])
+	Log.match_event("Match found!", str(p_match_id), local_player_name, p_opponent_name)
+	Log.info("Match", "Match details", {"team": p_team, "map_seed": p_map_seed})
 	match_ready.emit(p_match_id, p_team)
 
 # ============================================================
@@ -335,7 +337,7 @@ func client_match_found(p_match_id: int, p_team: String, p_opponent_name: String
 # ============================================================
 
 func _on_peer_connected(peer_id: int):
-	print("[NET] Peer connected: %d" % peer_id)
+	Log.network("Peer connected", peer_id)
 	
 	if is_server:
 		# Servidor: nuevo cliente conectado
@@ -349,7 +351,7 @@ func _on_peer_connected(peer_id: int):
 	peer_connected.emit(peer_id)
 
 func _on_peer_disconnected(peer_id: int):
-	print("[NET] Peer disconnected: %d" % peer_id)
+	Log.network("Peer disconnected", peer_id)
 	
 	if is_server:
 		# Limpiar datos del jugador
@@ -369,6 +371,7 @@ func _on_peer_disconnected(peer_id: int):
 					rpc_id(opponent_id, "client_opponent_disconnected")
 				
 				# Limpiar partida
+				Log.info("Match", "Match ended due to disconnect", {"match_id": match_id})
 				active_matches.erase(match_id)
 			
 			connected_players.erase(peer_id)
@@ -376,7 +379,7 @@ func _on_peer_disconnected(peer_id: int):
 	peer_disconnected.emit(peer_id)
 
 func _on_connected_to_server():
-	print("[CLIENT] Connected to server!")
+	Log.info("Network", "Connected to server!")
 	connection_state = ConnectionState.CONNECTED
 	
 	# Registrarse automáticamente
@@ -390,13 +393,13 @@ func _on_connected_to_server():
 		rpc_id(server_peer_id, "server_join_lobby")
 
 func _on_connection_failed():
-	print("[CLIENT] Connection failed!")
+	Log.error("Network", "Connection failed!")
 	connection_state = ConnectionState.DISCONNECTED
 	multiplayer_peer = null
 	connection_failed.emit()
 
 func _on_server_disconnected():
-	print("[CLIENT] Server disconnected!")
+	Log.warning("Network", "Server disconnected!")
 	connection_state = ConnectionState.DISCONNECTED
 	multiplayer_peer = null
 	server_disconnected.emit()
@@ -404,7 +407,7 @@ func _on_server_disconnected():
 @rpc("authority", "reliable")
 func client_opponent_disconnected():
 	"""Servidor notifica que el oponente se desconectó"""
-	print("[CLIENT] Opponent disconnected!")
+	Log.warning("Match", "Opponent disconnected!")
 	battle_opponent_disconnected.emit()
 
 # ============================================================
@@ -434,74 +437,74 @@ var current_map_seed: int = 0
 @rpc("authority", "reliable")
 func client_start_deployment(match_id: int, team: String, map_seed: int):
 	"""Servidor indica inicio de fase de despliegue con semilla del mapa"""
-	print("[CLIENT] Deployment started - Match: %d, Team: %s, MapSeed: %d" % [match_id, team, map_seed])
+	Log.info("Match", "Deployment started", {"match_id": match_id, "team": team, "map_seed": map_seed})
 	current_map_seed = map_seed
 	battle_deployment_started.emit(match_id, team)
 
 @rpc("authority", "reliable")
 func client_mech_deployed(mech_id: int, mech_data: Dictionary, hex_pos: Array, facing: int, team: String):
 	"""Servidor confirma despliegue de mech"""
-	print("[CLIENT] Mech deployed: %s at %s" % [mech_data.get("name", "Unknown"), hex_pos])
+	Log.debug("Mech", "Mech deployed", {"mech": mech_data.get("name", "Unknown"), "pos": hex_pos, "team": team})
 	battle_mech_deployed.emit(mech_id, mech_data, hex_pos, facing, team)
 
 @rpc("authority", "reliable")
 func client_initiative_result(result: Dictionary):
 	"""Servidor envía resultado de iniciativa"""
-	print("[CLIENT] Initiative result received")
+	Log.debug("Combat", "Initiative result received")
 	battle_initiative_result.emit(result)
 
 @rpc("authority", "reliable")
 func client_phase_changed(phase: String, turn: int):
 	"""Servidor indica cambio de fase"""
-	print("[CLIENT] Phase changed to: %s (Turn %d)" % [phase, turn])
+	Log.info("Match", "Phase changed", {"phase": phase, "turn": turn})
 	battle_phase_changed.emit(phase, turn)
 
 @rpc("authority", "reliable")
 func client_unit_activated(mech_id: int, is_mine: bool):
 	"""Servidor indica qué unidad se activa"""
-	print("[CLIENT] Unit activated: %d (mine: %s)" % [mech_id, is_mine])
+	Log.debug("Combat", "Unit activated", {"mech_id": mech_id, "is_mine": is_mine})
 	battle_unit_activated.emit(mech_id, is_mine)
 
 @rpc("authority", "reliable")
 func client_mech_moved(result: Dictionary):
 	"""Servidor confirma movimiento"""
-	print("[CLIENT] Mech moved")
+	Log.debug("Movement", "Mech moved")
 	battle_mech_moved.emit(result)
 
 @rpc("authority", "reliable")
 func client_mech_rotated(result: Dictionary):
 	"""Servidor confirma rotación"""
-	print("[CLIENT] Mech rotated")
+	Log.debug("Movement", "Mech rotated")
 	battle_mech_rotated.emit(result)
 
 @rpc("authority", "reliable")
 func client_weapons_fired(result: Dictionary):
 	"""Servidor envía resultados de disparo"""
-	print("[CLIENT] Weapons fired")
+	Log.debug("Combat", "Weapons fired")
 	battle_weapons_fired.emit(result)
 
 @rpc("authority", "reliable")
 func client_physical_attack_result(result: Dictionary):
 	"""Servidor envía resultado de ataque físico"""
-	print("[CLIENT] Physical attack result")
+	Log.debug("Combat", "Physical attack result")
 	battle_physical_result.emit(result)
 
 @rpc("authority", "reliable")
 func client_heat_phase_result(results: Array):
 	"""Servidor envía resultados de fase de calor"""
-	print("[CLIENT] Heat phase result")
+	Log.debug("Heat", "Heat phase result")
 	battle_heat_result.emit(results)
 
 @rpc("authority", "reliable")
 func client_battle_ended(winner_team: String, reason: String):
 	"""Servidor indica fin de batalla"""
-	print("[CLIENT] Battle ended: %s wins - %s" % [winner_team, reason])
+	Log.info("Match", "Battle ended", {"winner": winner_team, "reason": reason})
 	battle_ended.emit(winner_team, reason)
 
 @rpc("authority", "reliable")
 func client_action_rejected(reason: String):
 	"""Servidor rechaza una acción"""
-	print("[CLIENT] Action rejected: %s" % reason)
+	Log.warning("Combat", "Action rejected", {"reason": reason})
 	battle_action_rejected.emit(reason)
 
 # ============================================================
@@ -625,7 +628,7 @@ signal battle_all_deployed()
 @rpc("authority", "reliable")
 func client_all_deployed():
 	"""Servidor notifica que ambos jugadores terminaron de desplegar"""
-	print("[CLIENT] Both players deployed!")
+	Log.info("Match", "Both players deployed!")
 	battle_all_deployed.emit()
 
 # ============================================================
@@ -658,12 +661,12 @@ func server_send_chat(match_id: int, message: String):
 	if opponent_id in connected_players:
 		rpc_id(opponent_id, "client_chat_message", sender_name, message)
 	
-	print("[SERVER] Chat from %s: %s" % [sender_name, message])
+	Log.debug("Network", "Chat message", {"from": sender_name, "length": message.length()})
 
 @rpc("authority", "reliable")
 func client_chat_message(sender_name: String, message: String):
 	"""Servidor reenvía mensaje de chat al cliente"""
-	print("[CLIENT] Chat from %s: %s" % [sender_name, message])
+	Log.debug("Network", "Chat received", {"from": sender_name})
 	chat_message_received.emit(sender_name, message)
 
 func send_chat_message(message: String):

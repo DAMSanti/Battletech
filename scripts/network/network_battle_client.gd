@@ -59,7 +59,7 @@ func _connect_network_manager_signals():
 	network_manager.battle_action_rejected.connect(_on_action_rejected_from_nm)
 	network_manager.battle_opponent_disconnected.connect(_on_opponent_disconnected_from_nm)
 	
-	print("[BATTLE_CLIENT] Connected to NetworkManager battle signals")
+	Log.info("Network", "Connected to NetworkManager battle signals")
 
 func _on_deployment_started_from_nm(match_id: int, team: String):
 	current_match_id = match_id
@@ -147,7 +147,7 @@ func setup(match_id: int, team: String):
 	"""Configura el cliente para una partida específica"""
 	current_match_id = match_id
 	my_team = team
-	print("[BATTLE_CLIENT] Setup for match %d as %s" % [match_id, team])
+	Log.info("Network", "Battle client setup", {"match_id": match_id, "team": team})
 
 # ============================================================
 # SOLICITUDES AL SERVIDOR (Cliente -> Servidor)
@@ -199,7 +199,7 @@ func request_end_activation(mech_id: int):
 
 func notify_deployment_complete():
 	"""Notifica al servidor que terminamos de desplegar todos nuestros mechs"""
-	print("[BATTLE_CLIENT] Notifying server: deployment complete")
+	Log.info("Network", "Notifying server: deployment complete")
 	if network_manager:
 		network_manager.rpc_id(1, "server_deployment_complete", current_match_id)
 

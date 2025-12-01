@@ -9,7 +9,7 @@ var has_selection: bool = false
 func set_selected_loadout(loadout_data: Dictionary):
 	selected_loadout = loadout_data.duplicate(true)
 	has_selection = true
-	print("[SelectedLoadoutManager] Loadout seleccionado: ", loadout_data.get("mech_name", "Unknown"))
+	Log.debug("Mech", "Loadout seleccionado", {"name": loadout_data.get("mech_name", "Unknown")})
 
 func get_selected_loadout() -> Dictionary:
 	return selected_loadout

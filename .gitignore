@@ -141,3 +141,6 @@ venv/
 server/*.pem
 server/*.key
 server/docker-compose.override.yml
+
+PRODUCTION_CREDENTIALS.md
+server/PRODUCTION_CREDENTIALS.md

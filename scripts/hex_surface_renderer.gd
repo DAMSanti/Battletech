@@ -80,9 +80,7 @@ func _ready():
 	
 	# Simple debug to verify shader loaded
 	if occlusion_shader == null:
-		print("[ERROR] occlusion_shader failed to load!")
-	# else:
-		# print("[OK] occlusion_shader loaded successfully")
+		Log.error("System", "occlusion_shader failed to load!")
 	
 	# Create depth viewport and roots
 	depth_viewport = SubViewport.new()

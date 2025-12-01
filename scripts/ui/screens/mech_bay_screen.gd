@@ -106,17 +106,35 @@ func _load_saved_loadouts():
 	saved_loadouts = {}
 	loadouts_list.clear()
 	
-	var save_path = "user://saved_loadouts.json"
-	if not FileAccess.file_exists(save_path):
+	# Intentar cargar desde PlayerDataManager primero
+	var player_data = get_node_or_null("/root/PlayerData")
+	if player_data and player_data.inventory:
+		# Cargar loadouts desde PlayerDataManager
+		for mech_id in player_data.inventory.saved_loadouts.keys():
+			var mech_loadouts: Array = player_data.inventory.saved_loadouts[mech_id]
+			for i in range(mech_loadouts.size()):
+				var loadout_data: Dictionary = mech_loadouts[i]
+				if loadout_data.is_empty():
+					continue
+				var loadout_name: String = loadout_data.get("name", "%s_slot_%d" % [mech_id, i])
+				saved_loadouts[loadout_name] = loadout_data
+		
+		if saved_loadouts.size() > 0:
+			Log.info("MechBay", "Loaded %d loadouts from PlayerDataManager" % saved_loadouts.size())
+	
+	# Fallback: cargar desde archivo local si no hay datos en PlayerDataManager
+	if saved_loadouts.is_empty():
+		var save_path = "user://saved_loadouts.json"
+		if FileAccess.file_exists(save_path):
+			var file = FileAccess.open(save_path, FileAccess.READ)
+			if file:
+				saved_loadouts = file.get_var()
+				file.close()
+				Log.info("MechBay", "Loaded %d loadouts from local file (fallback)" % saved_loadouts.size())
+	
+	if saved_loadouts.is_empty():
 		mech_stats_label.text = "[center][color=#ff9933]⚠ NO SAVED LOADOUTS FOUND[/color]\n\n[color=gray]Create a new loadout using the\nAdvanced Loadout Editor[/color][/center]"
 		return
-	
-	var file = FileAccess.open(save_path, FileAccess.READ)
-	if not file:
-		return
-	
-	saved_loadouts = file.get_var()
-	file.close()
 	
 	# Llenar lista con iconos y formato mejorado
 	for loadout_name in saved_loadouts.keys():
@@ -223,15 +241,30 @@ func _on_delete_confirmed():
 	if selected_loadout_name == "" or not saved_loadouts.has(selected_loadout_name):
 		return
 	
-	# Eliminar del diccionario
+	# Eliminar del diccionario local
+	var loadout_data: Dictionary = saved_loadouts[selected_loadout_name]
 	saved_loadouts.erase(selected_loadout_name)
 	
-	# Guardar cambios
+	# Guardar cambios en archivo local (fallback)
 	var save_path = "user://saved_loadouts.json"
 	var file = FileAccess.open(save_path, FileAccess.WRITE)
 	if file:
 		file.store_var(saved_loadouts)
 		file.close()
+	
+	# También actualizar PlayerDataManager si está disponible
+	var player_data = get_node_or_null("/root/PlayerData")
+	if player_data and player_data.inventory:
+		var mech_id: String = loadout_data.get("mech_id", loadout_data.get("mech_name", ""))
+		if mech_id in player_data.inventory.saved_loadouts:
+			# Buscar y eliminar el loadout específico
+			var mech_loadouts: Array = player_data.inventory.saved_loadouts[mech_id]
+			for i in range(mech_loadouts.size() - 1, -1, -1):
+				if mech_loadouts[i].get("name", "") == selected_loadout_name:
+					mech_loadouts.remove_at(i)
+					break
+			player_data._mark_dirty(player_data.SaveTrigger.MECH_BAY)
+			Log.info("MechBay", "Loadout deleted from PlayerDataManager: %s" % selected_loadout_name)
 	
 	# Limpiar selección
 	selected_loadout_name = ""
@@ -245,7 +278,7 @@ func _on_delete_confirmed():
 	mech_stats_label.text = "[center][color=gray]No loadout selected[/color][/center]"
 	components_label.text = "[center][color=gray]No components to display[/color][/center]"
 	
-	print("[MECH BAY] Loadout deleted successfully")
+	Log.info("MechBay", "Loadout deleted successfully")
 
 func _on_back_pressed():
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

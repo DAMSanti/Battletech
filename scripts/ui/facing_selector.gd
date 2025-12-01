@@ -411,19 +411,19 @@ func _calculate_rotation_cost(from_facing: int, to_facing: int) -> int:
 	return min(clockwise, counter_clockwise)
 
 func _on_facing_button_pressed(facing: int):
-	print("[FACING_SELECTOR] Button pressed for facing: %d" % facing)
+	Log.debug("UI", "Facing button pressed", {"facing": facing})
 	# Esconder y resetear antes de emitir para evitar condiciones de carrera
 	visible = false
 	# Resetear estado para evitar que se vuelva a mostrar
 	_position_check_counter = 0
 	_last_screen_pos = Vector2.ZERO
 	target_hex = Vector2i(-1, -1)
-	print("[FACING_SELECTOR] Emitting facing_selected signal with facing: %d" % facing)
+	Log.debug("UI", "Emitting facing_selected signal", {"facing": facing})
 	facing_selected.emit(facing)
 
 func _on_cancel_pressed():
 	"""Cancela la selección de facing"""
-	print("[FACING_SELECTOR] Cancel button pressed - emitting -1")
+	Log.debug("UI", "Cancel button pressed - emitting -1")
 	# Ocultar y resetear antes de emitir -1 para indicar cancelación
 	visible = false
 	# Asegurar que se resetea el estado
@@ -507,7 +507,7 @@ func _on_background_clicked(_event: InputEvent):
 
 func _on_confirm_pressed():
 	"""Confirma el facing actual (no cambiar)"""
-	print("[FACING_SELECTOR] Confirmed current facing")
+	Log.debug("UI", "Confirmed current facing")
 	if current_facing >= 0:
 		# Hide/reset first, then emit the chosen facing
 		visible = false

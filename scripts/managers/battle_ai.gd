@@ -74,17 +74,23 @@ func _ai_weapon_attack(unit):
 	# Seleccionar mejor objetivo visible (ya verifica LoS internamente)
 	var best_target = _select_best_target(unit)
 	if not best_target:
-		print("[AI] No valid targets with line of sight for %s" % unit.mech_name)
+		Log.debug("AI", "No valid targets with line of sight", {"unit": unit.mech_name})
 		_complete_activation()
 		return
 	
 	# Doble verificación de LoS por seguridad
 	if not _has_line_of_sight(unit, best_target):
-		print("[AI] Lost line of sight to target %s, aborting attack" % best_target.mech_name)
+		Log.debug("AI", "Lost line of sight to target, aborting attack", {
+			"unit": unit.mech_name,
+			"target": best_target.mech_name
+		})
 		_complete_activation()
 		return
 	
-	print("[AI] %s attacking %s (LoS confirmed)" % [unit.mech_name, best_target.mech_name])
+	Log.info("AI", "Unit attacking target (LoS confirmed)", {
+		"attacker": unit.mech_name,
+		"target": best_target.mech_name
+	})
 	
 	var distance = hex_grid.hex_distance(unit.hex_position, best_target.hex_position)
 	
@@ -105,7 +111,9 @@ func _ai_physical_attack(unit):
 	if closest_player:
 		# Verificar LoS aunque sea adyacente (por seguridad)
 		if not _has_line_of_sight(unit, closest_player):
-			print("[AI] No LoS to adjacent target %s for physical attack" % closest_player.mech_name)
+			Log.debug("AI", "No LoS to adjacent target for physical attack", {
+				"target": closest_player.mech_name
+			})
 			_complete_activation()
 			return
 		
@@ -524,7 +532,11 @@ func _has_line_of_sight(from_unit, to_unit) -> bool:
 	
 	# Debug: mostrar estado de LoS
 	if not has_los:
-		print("[AI LoS] %s CANNOT see %s: %s" % [from_unit.mech_name, to_unit.mech_name, los_data.message])
+		Log.debug("AI", "Unit CANNOT see target", {
+			"from": from_unit.mech_name,
+			"to": to_unit.mech_name,
+			"message": los_data.message
+		})
 	
 	# Solo podemos disparar si no está bloqueado
 	return has_los

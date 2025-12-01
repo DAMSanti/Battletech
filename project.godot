@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="Battletech Mobile"
-config/description="Tactical Mech Combat Game"
+config/name="Steel Titans"
+config/description="Tactical Mech Combat - Competitive PvP"
 run/main_scene="res://scenes/main_menu.tscn"
 config/features=PackedStringArray("4.5", "Mobile")
 config/icon="res://icon.svg"
@@ -19,10 +19,18 @@ run/main_scene_dedicated_server="res://scenes/server_main.tscn"
 
 [autoload]
 
+Log="*res://scripts/core/logger.gd"
+DatabaseManager="*res://scripts/core/database_manager.gd"
+AuthManager="*res://scripts/core/auth_manager_singleton.gd"
+PlayerData="*res://scripts/core/player_data_manager_singleton.gd"
 MechBayManager="*res://scripts/managers/mech_bay_manager.gd"
 SelectedLoadoutManager="*res://scripts/managers/selected_loadout_manager.gd"
 NetworkManager="*res://scripts/network/network_manager.gd"
 AudioManager="*res://scripts/managers/audio_manager.gd"
+
+[debug]
+
+settings/gdscript/always_track_call_stacks=true
 
 [display]
 
@@ -34,6 +42,10 @@ window/stretch/mode="viewport"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+
 [input_devices]
 
 pointing/emulate_touch_from_mouse=true
@@ -42,3 +54,10 @@ pointing/emulate_touch_from_mouse=true
 
 renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
+
+[sentry]
+
+#DisabledduringautomatedteststoavoidnativeSDKinitialization/hangsoptions/dsn=""
+options/auto_init=false
+options/logger_enabled=false
+options/skip_auto_init_on_editor_play=true
