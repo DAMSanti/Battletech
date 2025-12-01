@@ -223,6 +223,104 @@ var mech_library := {
 				"gunnery_skill": 4
 			}
 		}
+	},
+	"Daishi": {
+		"tonnage": 100,
+		"variants": {
+			"Dire Wolf Prime": {
+				"name": "Daishi (Dire Wolf) Prime",
+				"walk_mp": 3,
+				"run_mp": 5,
+				"jump_mp": 0,
+				"armor": {
+					"head": {"current": 9, "max": 9},
+					"center_torso": {"current": 50, "max": 50},
+					"center_torso_rear": {"current": 15, "max": 15},
+					"left_torso": {"current": 34, "max": 34},
+					"left_torso_rear": {"current": 10, "max": 10},
+					"right_torso": {"current": 34, "max": 34},
+					"right_torso_rear": {"current": 10, "max": 10},
+					"left_arm": {"current": 34, "max": 34},
+					"right_arm": {"current": 34, "max": 34},
+					"left_leg": {"current": 41, "max": 41},
+					"right_leg": {"current": 41, "max": 41}
+				},
+				"weapons": [
+					{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy"},
+					{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy"},
+					{"name": "Ultra AC/5", "damage": 10, "heat": 2, "min_range": 0, "short_range": 6, "medium_range": 13, "long_range": 20, "type": "ballistic"},
+					{"name": "Ultra AC/5", "damage": 10, "heat": 2, "min_range": 0, "short_range": 6, "medium_range": 13, "long_range": 20, "type": "ballistic"},
+					{"name": "LRM 10", "damage": 10, "heat": 4, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile"},
+					{"name": "LRM 10", "damage": 10, "heat": 4, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile"}
+				],
+				"heat_capacity": 30,
+				"gunnery_skill": 4
+			}
+		}
+	},
+	"Catapult": {
+		"tonnage": 65,
+		"variants": {
+			"CPLT-C1": {
+				"name": "Catapult CPLT-C1",
+				"walk_mp": 4,
+				"run_mp": 6,
+				"jump_mp": 4,
+				"armor": {
+					"head": {"current": 9, "max": 9},
+					"center_torso": {"current": 31, "max": 31},
+					"center_torso_rear": {"current": 10, "max": 10},
+					"left_torso": {"current": 24, "max": 24},
+					"left_torso_rear": {"current": 6, "max": 6},
+					"right_torso": {"current": 24, "max": 24},
+					"right_torso_rear": {"current": 6, "max": 6},
+					"left_arm": {"current": 20, "max": 20},
+					"right_arm": {"current": 20, "max": 20},
+					"left_leg": {"current": 20, "max": 20},
+					"right_leg": {"current": 20, "max": 20}
+				},
+				"weapons": [
+					{"name": "LRM 15", "damage": 15, "heat": 5, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile"},
+					{"name": "LRM 15", "damage": 15, "heat": 5, "min_range": 6, "short_range": 7, "medium_range": 14, "long_range": 21, "type": "missile"},
+					{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy"},
+					{"name": "Medium Laser", "damage": 5, "heat": 3, "min_range": 0, "short_range": 3, "medium_range": 6, "long_range": 9, "type": "energy"}
+				],
+				"heat_capacity": 15,
+				"gunnery_skill": 4
+			}
+		}
+	},
+	"Kit Fox": {
+		"tonnage": 30,
+		"variants": {
+			"Kit Fox Prime": {
+				"name": "Kit Fox Prime",
+				"walk_mp": 7,
+				"run_mp": 11,
+				"jump_mp": 0,
+				"armor": {
+					"head": {"current": 6, "max": 6},
+					"center_torso": {"current": 10, "max": 10},
+					"center_torso_rear": {"current": 4, "max": 4},
+					"left_torso": {"current": 8, "max": 8},
+					"left_torso_rear": {"current": 3, "max": 3},
+					"right_torso": {"current": 8, "max": 8},
+					"right_torso_rear": {"current": 3, "max": 3},
+					"left_arm": {"current": 6, "max": 6},
+					"right_arm": {"current": 6, "max": 6},
+					"left_leg": {"current": 8, "max": 8},
+					"right_leg": {"current": 8, "max": 8}
+				},
+				"weapons": [
+					{"name": "ER Large Laser", "damage": 8, "heat": 12, "min_range": 0, "short_range": 8, "medium_range": 15, "long_range": 25, "type": "energy"},
+					{"name": "ER Medium Laser", "damage": 5, "heat": 5, "min_range": 0, "short_range": 5, "medium_range": 10, "long_range": 15, "type": "energy"},
+					{"name": "Machine Gun", "damage": 2, "heat": 0, "min_range": 0, "short_range": 1, "medium_range": 2, "long_range": 3, "type": "ballistic"},
+					{"name": "Machine Gun", "damage": 2, "heat": 0, "min_range": 0, "short_range": 1, "medium_range": 2, "long_range": 3, "type": "ballistic"}
+				],
+				"heat_capacity": 12,
+				"gunnery_skill": 4
+			}
+		}
 	}
 }
 

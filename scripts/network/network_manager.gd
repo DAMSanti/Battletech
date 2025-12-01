@@ -12,6 +12,10 @@ signal peer_disconnected(peer_id: int)
 signal player_registered(peer_id: int, player_name: String)
 signal match_ready(player1_id: int, player2_id: int)
 signal lobby_updated(players: Array)
+signal api_match_found(match_data: Dictionary)
+signal matchmaking_queue_joined(position: int, estimated_wait: float)
+signal matchmaking_queue_left()
+signal matchmaking_error(error: String)
 
 const DEFAULT_PORT: int = 7777
 const MAX_CLIENTS: int = 32  # Múltiples partidas simultáneas
@@ -52,6 +56,15 @@ var next_match_id: int = 1
 
 # Referencias
 var multiplayer_peer: ENetMultiplayerPeer = null
+var _matchmaking_client: Node = null  # MatchmakingClient para API REST
+var _reconnection_manager: Node = null  # ReconnectionManager para auto-reconexión
+
+# Señales de reconexión
+signal reconnection_started()
+signal reconnection_attempt(attempt: int, max_attempts: int)
+signal reconnection_success()
+signal reconnection_failed()
+signal reconnection_cancelled()
 
 func _ready():
 	# Conectar señales del multiplayer API
@@ -60,6 +73,12 @@ func _ready():
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
+	
+	# Inicializar MatchmakingClient para modo cliente
+	_setup_matchmaking_client()
+	
+	# Inicializar ReconnectionManager
+	_setup_reconnection_manager()
 
 # ============================================================
 # SERVIDOR DEDICADO
@@ -108,9 +127,21 @@ func stop_server():
 
 func connect_to_server(address: String = "", port: int = DEFAULT_PORT, player_name: String = "Player") -> Error:
 	"""Conecta un cliente al servidor dedicado"""
-	if connection_state != ConnectionState.DISCONNECTED:
-		Log.warning("Network", "Already connected or connecting")
+	# Permitir conexión si estamos desconectados o solo conectados al API REST
+	# No permitir si estamos CONNECTING, IN_LOBBY, IN_MATCH, o SEARCHING
+	if connection_state == ConnectionState.CONNECTING:
+		Log.warning("Network", "Already connecting to server")
 		return ERR_ALREADY_IN_USE
+	
+	if connection_state == ConnectionState.IN_LOBBY or connection_state == ConnectionState.IN_MATCH:
+		Log.warning("Network", "Already in lobby or match")
+		return ERR_ALREADY_IN_USE
+	
+	# Si hay un peer existente, cerrarlo primero
+	if multiplayer_peer:
+		multiplayer_peer.close()
+		multiplayer_peer = null
+		multiplayer.multiplayer_peer = null
 	
 	# Usar servidor de producción si está configurado y no se especifica dirección
 	if address.is_empty() or USE_PRODUCTION_SERVER:
@@ -128,6 +159,10 @@ func connect_to_server(address: String = "", port: int = DEFAULT_PORT, player_na
 	multiplayer.multiplayer_peer = multiplayer_peer
 	is_server = false
 	connection_state = ConnectionState.CONNECTING
+	
+	# Guardar datos para reconexión automática
+	if _reconnection_manager:
+		_reconnection_manager.save_connection_data(address, port, player_name)
 	
 	Log.info("Network", "Connecting to server", {"address": address, "port": port, "player": player_name})
 	return OK
@@ -328,6 +363,11 @@ func client_match_found(p_match_id: int, p_team: String, p_opponent_name: String
 	current_team = p_team
 	opponent_name = p_opponent_name
 	current_map_seed = p_map_seed  # Guardar semilla para hex_grid
+	
+	# Guardar datos para reconexión automática
+	if _reconnection_manager:
+		_reconnection_manager.save_match_data(p_match_id, p_team)
+	
 	Log.match_event("Match found!", str(p_match_id), local_player_name, p_opponent_name)
 	Log.info("Match", "Match details", {"team": p_team, "map_seed": p_map_seed})
 	match_ready.emit(p_match_id, p_team)
@@ -712,3 +752,364 @@ func get_player_count() -> int:
 
 func get_active_match_count() -> int:
 	return active_matches.size()
+
+
+# ============================================================
+# MATCHMAKING API (Cliente)
+# ============================================================
+
+func _setup_matchmaking_client() -> void:
+	"""Configura el cliente de matchmaking API"""
+	# Solo en cliente, no en servidor headless
+	if OS.has_feature("dedicated_server"):
+		return
+	
+	var MatchmakingClientClass = load("res://scripts/network/matchmaking_client.gd")
+	if MatchmakingClientClass:
+		_matchmaking_client = MatchmakingClientClass.new()
+		_matchmaking_client.name = "MatchmakingClient"
+		add_child(_matchmaking_client)
+		
+		# Conectar señales
+		_matchmaking_client.queue_joined.connect(_on_api_queue_joined)
+		_matchmaking_client.queue_left.connect(_on_api_queue_left)
+		_matchmaking_client.match_found.connect(_on_api_match_found)
+		_matchmaking_client.queue_timeout.connect(_on_api_queue_timeout)
+		_matchmaking_client.matchmaking_error.connect(_on_api_matchmaking_error)
+		
+		Log.info("Network", "MatchmakingClient initialized")
+
+
+func set_api_auth_token(token: String) -> void:
+	"""Establece el token de autenticación para la API de matchmaking"""
+	if _matchmaking_client:
+		_matchmaking_client.set_auth_token(token)
+		Log.debug("Network", "API auth token set")
+
+
+func join_matchmaking_queue(game_mode: int = 0) -> void:
+	"""Une al jugador a la cola de matchmaking via API
+	game_mode: 0=RANKED_1V1, 1=RANKED_2V2, 2=CASUAL_1V1, 3=CASUAL_2V2
+	"""
+	if _matchmaking_client:
+		_matchmaking_client.join_queue(game_mode)
+		connection_state = ConnectionState.IN_LOBBY
+	else:
+		Log.error("Network", "MatchmakingClient not available")
+		matchmaking_error.emit("Matchmaking not available")
+
+
+func leave_matchmaking_queue() -> void:
+	"""Abandona la cola de matchmaking API"""
+	if _matchmaking_client:
+		_matchmaking_client.leave_queue()
+		connection_state = ConnectionState.CONNECTED
+
+
+func is_in_matchmaking_queue() -> bool:
+	"""Verifica si está en cola de matchmaking"""
+	if _matchmaking_client:
+		return _matchmaking_client.is_queued()
+	return false
+
+
+func get_matchmaking_time() -> float:
+	"""Devuelve el tiempo en cola de matchmaking"""
+	if _matchmaking_client:
+		return _matchmaking_client.get_time_in_queue()
+	return 0.0
+
+
+func get_api_match_data() -> Dictionary:
+	"""Obtiene los datos de la partida encontrada via API"""
+	if _matchmaking_client:
+		return _matchmaking_client.get_match_data()
+	return {}
+
+
+func connect_to_matched_game() -> Error:
+	"""Conecta al servidor de juego después de encontrar partida via API"""
+	if not _matchmaking_client:
+		return ERR_UNCONFIGURED
+	
+	var match_data = _matchmaking_client.get_match_data()
+	if match_data.is_empty():
+		return ERR_INVALID_DATA
+	
+	# Guardar datos de la partida
+	opponent_name = match_data.get("opponent_name", "Unknown")
+	current_team = match_data.get("team", "player")
+	
+	# Cambiar estado a CONNECTED para permitir conexión ENet
+	# (estábamos en IN_LOBBY por la cola de matchmaking)
+	connection_state = ConnectionState.CONNECTED
+	
+	# Conectar via ENet
+	return _matchmaking_client.connect_to_game_server()
+
+
+# Callbacks de MatchmakingClient
+func _on_api_queue_joined(position: int, estimated_wait: float) -> void:
+	Log.info("Network", "Joined matchmaking queue", {
+		"position": position,
+		"estimated_wait": estimated_wait
+	})
+	matchmaking_queue_joined.emit(position, estimated_wait)
+
+
+func _on_api_queue_left() -> void:
+	Log.info("Network", "Left matchmaking queue")
+	matchmaking_queue_left.emit()
+
+
+func _on_api_match_found(match_data: Dictionary) -> void:
+	Log.info("Network", "Match found via API!", {
+		"opponent": match_data.get("opponent_name", "Unknown"),
+		"match_id": match_data.get("match_id", "")
+	})
+	api_match_found.emit(match_data)
+
+
+func _on_api_queue_timeout() -> void:
+	Log.warning("Network", "Matchmaking queue timeout")
+	connection_state = ConnectionState.CONNECTED
+	matchmaking_error.emit("Queue timeout - no opponents found")
+
+
+func _on_api_matchmaking_error(error: String) -> void:
+	Log.error("Network", "Matchmaking error", {"error": error})
+	matchmaking_error.emit(error)
+
+
+# ============================================================
+# RECONNECTION SYSTEM
+# ============================================================
+
+func _setup_reconnection_manager() -> void:
+	"""Configura el manager de reconexión automática"""
+	# Solo en cliente, no en servidor headless
+	if OS.has_feature("dedicated_server"):
+		return
+	
+	var ReconnectionManagerClass = load("res://scripts/network/reconnection_manager.gd")
+	if ReconnectionManagerClass:
+		_reconnection_manager = ReconnectionManagerClass.new()
+		_reconnection_manager.name = "ReconnectionManager"
+		add_child(_reconnection_manager)
+		
+		# Inicializar con referencia a este NetworkManager
+		_reconnection_manager.initialize(self)
+		
+		# Conectar señales
+		_reconnection_manager.reconnection_started.connect(_on_reconnection_started)
+		_reconnection_manager.reconnection_attempt.connect(_on_reconnection_attempt)
+		_reconnection_manager.reconnection_success.connect(_on_reconnection_success)
+		_reconnection_manager.reconnection_failed.connect(_on_reconnection_failed)
+		_reconnection_manager.reconnection_cancelled.connect(_on_reconnection_cancelled)
+		
+		Log.info("Network", "ReconnectionManager initialized")
+
+
+func enable_auto_reconnection(enabled: bool = true) -> void:
+	"""Habilita o deshabilita la reconexión automática"""
+	if _reconnection_manager:
+		if enabled:
+			# Las señales ya están conectadas, el manager actuará automáticamente
+			Log.info("Network", "Auto-reconnection enabled")
+		else:
+			# Cancelar si está en proceso
+			if _reconnection_manager.is_reconnecting():
+				_reconnection_manager.cancel_reconnection()
+			Log.info("Network", "Auto-reconnection disabled")
+
+
+func configure_reconnection(
+	max_attempts: int = 5,
+	initial_delay: float = 1.0,
+	max_delay: float = 30.0,
+	backoff_multiplier: float = 2.0
+) -> void:
+	"""Configura los parámetros de reconexión"""
+	if _reconnection_manager:
+		_reconnection_manager.configure(max_attempts, initial_delay, max_delay, backoff_multiplier)
+
+
+func start_reconnection() -> void:
+	"""Inicia manualmente el proceso de reconexión"""
+	if _reconnection_manager:
+		_reconnection_manager.start_reconnection()
+
+
+func cancel_reconnection() -> void:
+	"""Cancela el proceso de reconexión"""
+	if _reconnection_manager:
+		_reconnection_manager.cancel_reconnection()
+
+
+func is_reconnecting() -> bool:
+	"""Retorna si está en proceso de reconexión"""
+	if _reconnection_manager:
+		return _reconnection_manager.is_reconnecting()
+	return false
+
+
+func get_reconnection_progress() -> Dictionary:
+	"""Obtiene el progreso de la reconexión"""
+	if not _reconnection_manager:
+		return {"current": 0, "max": 0, "time_until_next": 0.0}
+	
+	return {
+		"current": _reconnection_manager.get_current_attempt(),
+		"max": _reconnection_manager.get_max_attempts(),
+		"time_until_next": _reconnection_manager.get_time_until_next_attempt(),
+		"was_in_match": _reconnection_manager.was_in_match()
+	}
+
+
+func request_match_rejoin(match_id: int) -> void:
+	"""Solicita reconectarse a una partida en curso"""
+	if not is_server and connection_state == ConnectionState.CONNECTED:
+		Log.info("Network", "Requesting match rejoin", {"match_id": match_id})
+		rpc_id(server_peer_id, "server_request_rejoin", match_id)
+
+
+# Callbacks de ReconnectionManager
+func _on_reconnection_started() -> void:
+	Log.info("Network", "Reconnection process started")
+	reconnection_started.emit()
+
+
+func _on_reconnection_attempt(attempt: int, max_attempts: int) -> void:
+	Log.info("Network", "Reconnection attempt", {
+		"attempt": attempt,
+		"max": max_attempts
+	})
+	reconnection_attempt.emit(attempt, max_attempts)
+
+
+func _on_reconnection_success() -> void:
+	Log.info("Network", "Reconnection successful!")
+	reconnection_success.emit()
+
+
+func _on_reconnection_failed() -> void:
+	Log.error("Network", "Reconnection failed after all attempts")
+	reconnection_failed.emit()
+
+
+func _on_reconnection_cancelled() -> void:
+	Log.info("Network", "Reconnection cancelled")
+	reconnection_cancelled.emit()
+
+
+# RPC del servidor para manejar reconexión a partidas
+@rpc("any_peer", "reliable")
+func server_request_rejoin(match_id: int) -> void:
+	"""[Server] Cliente solicita reconectarse a una partida"""
+	if not is_server:
+		return
+	
+	var peer_id = multiplayer.get_remote_sender_id()
+	Log.info("Network", "Rejoin request received", {
+		"peer_id": peer_id,
+		"match_id": match_id
+	})
+	
+	# Verificar si la partida existe y está activa
+	if match_id not in active_matches:
+		rpc_id(peer_id, "client_rejoin_failed", "Match not found or already ended")
+		return
+	
+	var match_data = active_matches[match_id]
+	
+	# Verificar si el jugador era parte de esta partida
+	# Esto requiere que guardemos los datos del jugador incluso después de desconexión
+	var player_name = ""
+	if peer_id in connected_players:
+		player_name = connected_players[peer_id].get("name", "")
+	
+	# Buscar si este jugador estaba en la partida (por nombre)
+	var original_peer_id = -1
+	var team = ""
+	
+	# Por ahora, permitimos reconexión si hay un slot vacío en la partida
+	var p1_id = match_data.get("player1", -1)
+	var p2_id = match_data.get("player2", -1)
+	
+	# Verificar si alguno de los jugadores se desconectó
+	if p1_id not in connected_players or multiplayer.get_peers().find(p1_id) == -1:
+		original_peer_id = p1_id
+		team = "player"
+	elif p2_id not in connected_players or multiplayer.get_peers().find(p2_id) == -1:
+		original_peer_id = p2_id
+		team = "enemy"
+	
+	if original_peer_id == -1:
+		rpc_id(peer_id, "client_rejoin_failed", "No available slot in match")
+		return
+	
+	# Reasignar el jugador
+	if team == "player":
+		match_data["player1"] = peer_id
+	else:
+		match_data["player2"] = peer_id
+	
+	# Actualizar datos del jugador
+	if peer_id not in connected_players:
+		connected_players[peer_id] = {"name": player_name, "state": "connected"}
+	
+	connected_players[peer_id]["match_id"] = match_id
+	connected_players[peer_id]["team"] = team
+	connected_players[peer_id]["state"] = "in_match"
+	
+	# Obtener nombre del oponente
+	var opponent_id = match_data["player1"] if team == "enemy" else match_data["player2"]
+	var opponent_name_str = "Unknown"
+	if opponent_id in connected_players:
+		opponent_name_str = connected_players[opponent_id].get("name", "Unknown")
+	
+	Log.info("Network", "Player rejoined match", {
+		"peer_id": peer_id,
+		"match_id": match_id,
+		"team": team
+	})
+	
+	# Enviar confirmación con datos del estado actual de la partida
+	rpc_id(peer_id, "client_rejoin_success", match_id, team, opponent_name_str, match_data.get("map_seed", 0))
+	
+	# Notificar al oponente
+	if opponent_id in connected_players and multiplayer.get_peers().find(opponent_id) != -1:
+		rpc_id(opponent_id, "client_opponent_reconnected", player_name)
+
+
+@rpc("authority", "reliable")
+func client_rejoin_success(match_id: int, team: String, opponent: String, map_seed: int) -> void:
+	"""[Client] Servidor confirma reconexión exitosa a partida"""
+	Log.info("Network", "Rejoin successful!", {
+		"match_id": match_id,
+		"team": team,
+		"opponent": opponent
+	})
+	
+	current_match_id = match_id
+	current_team = team
+	opponent_name = opponent
+	current_map_seed = map_seed
+	connection_state = ConnectionState.IN_MATCH
+	
+	# TODO: Sincronizar estado del juego
+
+
+@rpc("authority", "reliable")
+func client_rejoin_failed(reason: String) -> void:
+	"""[Client] Servidor rechaza reconexión a partida"""
+	Log.warning("Network", "Rejoin failed", {"reason": reason})
+	# Volver al lobby
+	connection_state = ConnectionState.CONNECTED
+
+
+@rpc("authority", "reliable")
+func client_opponent_reconnected(opponent_name_str: String) -> void:
+	"""[Client] Servidor notifica que el oponente se reconectó"""
+	Log.info("Network", "Opponent reconnected!", {"opponent": opponent_name_str})
+	# TODO: Emitir señal para actualizar UI

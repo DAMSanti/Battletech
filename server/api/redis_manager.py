@@ -366,6 +366,7 @@ class RedisManager:
             Datos del oponente encontrado o None
         """
         if not self._redis:
+            logger.warning("find_match: Redis not connected")
             return None
         
         queue_key = f"{self.PREFIX_MATCHMAKING}queue:{game_mode}"
@@ -374,6 +375,8 @@ class RedisManager:
         min_elo = elo - elo_range
         max_elo = elo + elo_range
         
+        logger.info(f"find_match: Searching {queue_key} for ELO {elo} range [{min_elo}, {max_elo}]")
+        
         candidates = await self._redis.zrangebyscore(
             queue_key,
             min_elo,
@@ -381,12 +384,21 @@ class RedisManager:
             withscores=True
         )
         
+        logger.info(f"find_match: Found {len(candidates)} candidates in queue")
+        
         # Filtrar self y buscar el más cercano en ELO
         best_match = None
         best_diff = float('inf')
         
         for candidate_id, candidate_elo in candidates:
+            # Decode bytes to string if needed (redis-py compatibility)
+            if isinstance(candidate_id, bytes):
+                candidate_id = candidate_id.decode('utf-8')
+            
+            logger.debug(f"find_match: Checking candidate {candidate_id} with ELO {candidate_elo}")
+            
             if candidate_id == user_id:
+                logger.debug(f"find_match: Skipping self ({user_id})")
                 continue
             
             diff = abs(candidate_elo - elo)
@@ -396,6 +408,20 @@ class RedisManager:
                 data = await self._redis.get(player_key)
                 if data:
                     best_match = json.loads(data)
+                    logger.info(f"find_match: Best match so far: {candidate_id} (ELO diff: {diff})")
+                else:
+                    # Player data expired but still in queue - recreate minimal data
+                    logger.warning(f"find_match: Player {candidate_id} in queue but no player data, using minimal data")
+                    best_match = {
+                        "user_id": candidate_id,
+                        "elo": int(candidate_elo),
+                        "game_mode": game_mode
+                    }
+        
+        if best_match:
+            logger.info(f"find_match: Returning match with {best_match.get('user_id')}")
+        else:
+            logger.info(f"find_match: No suitable match found for {user_id}")
         
         return best_match
     
@@ -406,6 +432,11 @@ class RedisManager:
         
         queue_key = f"{self.PREFIX_MATCHMAKING}queue:{game_mode}"
         return await self._redis.zcard(queue_key)
+    
+    # Alias for compatibility
+    async def join_matchmaking(self, user_id: str, elo: int, game_mode: str = "1v1") -> bool:
+        """Alias for add_to_matchmaking."""
+        return await self.add_to_matchmaking(user_id, elo, game_mode)
     
     # ============================================================
     # RATE LIMITING

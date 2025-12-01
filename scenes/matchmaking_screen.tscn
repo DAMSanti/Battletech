@@ -1,0 +1,230 @@
+[gd_scene load_steps=2 format=3 uid="uid://cmatchmakscene"]
+
+[ext_resource type="Script" path="res://scripts/ui/matchmaking_ui.gd" id="1_script"]
+
+[node name="MatchmakingUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.05, 0.05, 0.1, 1)
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 40.0
+offset_right = 200.0
+offset_bottom = 90.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 36
+text = "MATCHMAKING"
+horizontal_alignment = 1
+
+[node name="EloPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -250.0
+offset_top = 30.0
+offset_right = -30.0
+offset_bottom = 120.0
+grow_horizontal = 0
+
+[node name="VBox" type="VBoxContainer" parent="EloPanel"]
+layout_mode = 2
+
+[node name="TitleLabel" type="Label" parent="EloPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 14
+text = "Your Rating"
+horizontal_alignment = 1
+
+[node name="EloLabel" type="Label" parent="EloPanel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "ELO: 1000"
+horizontal_alignment = 1
+
+[node name="RankLabel" type="Label" parent="EloPanel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.6, 0.2, 1)
+text = "Veteran"
+horizontal_alignment = 1
+
+[node name="StatusPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -150.0
+offset_right = 200.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="StatusPanel"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="StatusLabel" type="Label" parent="StatusPanel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Ready to play"
+horizontal_alignment = 1
+
+[node name="QueueTimeLabel" type="Label" parent="StatusPanel/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Time: 00:00"
+horizontal_alignment = 1
+
+[node name="PositionLabel" type="Label" parent="StatusPanel/VBox"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)
+text = "Position: #1"
+horizontal_alignment = 1
+
+[node name="ControlsPanel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = 20.0
+offset_right = 200.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="ControlsPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ModeLabel" type="Label" parent="ControlsPanel/VBox"]
+layout_mode = 2
+text = "Game Mode:"
+
+[node name="ModeSelector" type="OptionButton" parent="ControlsPanel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+
+[node name="HSeparator" type="HSeparator" parent="ControlsPanel/VBox"]
+layout_mode = 2
+
+[node name="JoinButton" type="Button" parent="ControlsPanel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 1, 0.2, 1)
+theme_override_font_sizes/font_size = 18
+text = "Find Match"
+
+[node name="LeaveButton" type="Button" parent="ControlsPanel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+disabled = true
+text = "Cancel Search"
+
+[node name="AdvancedLobbyButton" type="Button" parent="ControlsPanel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "⚙️ Custom Match / Lobby"
+
+[node name="BackButton" type="Button" parent="ControlsPanel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "Back to Menu"
+
+[node name="MatchFoundPanel" type="PanelContainer" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -150.0
+offset_right = 250.0
+offset_bottom = 100.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="MatchFoundPanel"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="FoundLabel" type="Label" parent="MatchFoundPanel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 1, 0.2, 1)
+theme_override_font_sizes/font_size = 28
+text = "MATCH FOUND!"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="MatchFoundPanel/VBox"]
+layout_mode = 2
+
+[node name="OpponentNameLabel" type="Label" parent="MatchFoundPanel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Opponent: PlayerName"
+horizontal_alignment = 1
+
+[node name="OpponentEloLabel" type="Label" parent="MatchFoundPanel/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.6, 0.2, 1)
+text = "ELO: 1000 (Veteran)"
+horizontal_alignment = 1
+
+[node name="HSeparator2" type="HSeparator" parent="MatchFoundPanel/VBox"]
+layout_mode = 2
+
+[node name="HBox" type="HBoxContainer" parent="MatchFoundPanel/VBox"]
+layout_mode = 2
+alignment = 1
+
+[node name="AcceptButton" type="Button" parent="MatchFoundPanel/VBox/HBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 1, 0.2, 1)
+theme_override_font_sizes/font_size = 18
+text = "ACCEPT"
+
+[node name="DeclineButton" type="Button" parent="MatchFoundPanel/VBox/HBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.3, 0.3, 1)
+text = "Decline"

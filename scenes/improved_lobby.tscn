@@ -1,0 +1,199 @@
+[gd_scene load_steps=2 format=3 uid="uid://c6x8hswkutnwg"]
+
+[ext_resource type="Script" path="res://scripts/ui/improved_lobby_ui.gd" id="1_script"]
+
+[node name="ImprovedLobby" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.05, 0.05, 0.1, 1)
+
+[node name="Title" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 20.0
+offset_right = 200.0
+offset_bottom = 70.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 32
+text = "MULTIPLAYER LOBBY"
+horizontal_alignment = 1
+
+[node name="MainPanel" type="HBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 30.0
+offset_top = 80.0
+offset_right = -30.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 20
+
+[node name="VBox" type="VBoxContainer" parent="MainPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 2.0
+theme_override_constants/separation = 15
+
+[node name="ModeContainer" type="HBoxContainer" parent="MainPanel/VBox"]
+layout_mode = 2
+
+[node name="ModeLabel" type="Label" parent="MainPanel/VBox/ModeContainer"]
+layout_mode = 2
+text = "Modo de Juego:"
+
+[node name="ModeSelector" type="OptionButton" parent="MainPanel/VBox/ModeContainer"]
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="StatusLabel" type="Label" parent="MainPanel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "✅ Conectado - Listo para buscar"
+
+[node name="QueueTimeLabel" type="Label" parent="MainPanel/VBox"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+text = "⏱️ Tiempo en cola: 00:00"
+
+[node name="PlayerCountLabel" type="Label" parent="MainPanel/VBox"]
+layout_mode = 2
+text = "👥 Jugadores en cola: 0"
+
+[node name="PlayersPanel" type="PanelContainer" parent="MainPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScrollContainer" type="ScrollContainer" parent="MainPanel/VBox/PlayersPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="PlayerList" type="VBoxContainer" parent="MainPanel/VBox/PlayersPanel/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ConfigPanel" type="PanelContainer" parent="MainPanel/VBox"]
+visible = false
+layout_mode = 2
+
+[node name="ConfigGrid" type="GridContainer" parent="MainPanel/VBox/ConfigPanel"]
+layout_mode = 2
+theme_override_constants/h_separation = 15
+theme_override_constants/v_separation = 10
+columns = 2
+
+[node name="TurnTimeLabel" type="Label" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+text = "Tiempo por turno (seg):"
+
+[node name="TurnTimeSpinBox" type="SpinBox" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+min_value = 30.0
+max_value = 300.0
+step = 30.0
+value = 120.0
+
+[node name="LanceSizeLabel" type="Label" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+text = "Mechs por jugador:"
+
+[node name="LanceSizeSpinBox" type="SpinBox" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+min_value = 1.0
+max_value = 8.0
+value = 4.0
+
+[node name="BVLimitLabel" type="Label" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+text = "Límite Battle Value:"
+
+[node name="BVLimitSpinBox" type="SpinBox" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+max_value = 50000.0
+step = 1000.0
+
+[node name="MapTypeLabel" type="Label" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+text = "Tipo de mapa:"
+
+[node name="MapTypeSelector" type="OptionButton" parent="MainPanel/VBox/ConfigPanel/ConfigGrid"]
+layout_mode = 2
+
+[node name="ButtonContainer" type="HBoxContainer" parent="MainPanel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="FindMatchButton" type="Button" parent="MainPanel/VBox/ButtonContainer"]
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "🔍 Buscar Partida"
+
+[node name="CancelButton" type="Button" parent="MainPanel/VBox/ButtonContainer"]
+visible = false
+custom_minimum_size = Vector2(150, 50)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "❌ Cancelar"
+
+[node name="BackButton" type="Button" parent="MainPanel/VBox/ButtonContainer"]
+custom_minimum_size = Vector2(100, 50)
+layout_mode = 2
+text = "← Volver"
+
+[node name="ChatPanel" type="PanelContainer" parent="MainPanel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+size_flags_stretch_ratio = 1.5
+
+[node name="VBoxChat" type="VBoxContainer" parent="MainPanel/VBox/ChatPanel"]
+layout_mode = 2
+
+[node name="ChatTitle" type="Label" parent="MainPanel/VBox/ChatPanel/VBoxChat"]
+layout_mode = 2
+text = "💬 Chat del Lobby"
+
+[node name="ChatDisplay" type="RichTextLabel" parent="MainPanel/VBox/ChatPanel"]
+layout_mode = 2
+offset_top = 30.0
+offset_bottom = -40.0
+bbcode_enabled = true
+scroll_following = true
+
+[node name="InputContainer" type="HBoxContainer" parent="MainPanel/VBox/ChatPanel"]
+layout_mode = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_top = -35.0
+grow_vertical = 0
+
+[node name="ChatInput" type="LineEdit" parent="MainPanel/VBox/ChatPanel/InputContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Escribe un mensaje..."
+max_length = 200
+
+[node name="SendButton" type="Button" parent="MainPanel/VBox/ChatPanel/InputContainer"]
+layout_mode = 2
+text = "Enviar"

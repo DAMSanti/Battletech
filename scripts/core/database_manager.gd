@@ -16,6 +16,7 @@ const DEFAULT_API_URL := "https://steeltitans.damsanti.app"
 const PRODUCTION_API_URL := "https://steeltitans.damsanti.app"
 const LOCAL_API_URL := "http://localhost:8080"
 const INSECURE_API_URL := "http://steeltitans.damsanti.app:8080"  # Fallback sin TLS
+const API_VERSION := "/api/v1"
 const DEFAULT_TIMEOUT := 30.0
 const MAX_RETRIES := 3
 const RETRY_DELAY := 1.0
@@ -465,7 +466,18 @@ func _should_retry(result: Dictionary) -> bool:
 
 func _build_url(endpoint: String, query_params: Dictionary) -> String:
 	"""Build full URL with query parameters"""
-	var url := _api_url + endpoint
+	# Algunos endpoints están en la raíz, no bajo /api/v1
+	var root_endpoints := ["/health", "/docs", "/openapi.json"]
+	var use_version_prefix := true
+	for root_ep in root_endpoints:
+		if endpoint.begins_with(root_ep):
+			use_version_prefix = false
+			break
+	
+	var url := _api_url
+	if use_version_prefix:
+		url += API_VERSION
+	url += endpoint
 	
 	if not query_params.is_empty():
 		var params: Array[String] = []

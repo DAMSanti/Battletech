@@ -384,8 +384,8 @@ func _on_advanced_loadout_pressed():
 	get_tree().change_scene_to_file("res://scenes/mech_bay_advanced.tscn")
 
 func _on_multiplayer_pressed():
-	# Abrir lobby de Multiplayer
-	get_tree().change_scene_to_file("res://scenes/multiplayer_lobby.tscn")
+	# Abrir pantalla de Matchmaking
+	get_tree().change_scene_to_file("res://scenes/matchmaking_screen.tscn")
 
 func _on_options_pressed():
 	options_panel.visible = true

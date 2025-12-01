@@ -13,6 +13,8 @@ from .pilots_router import router as pilots_router
 from .bans_router import router as bans_router
 from .audit_router import router as audit_router
 from .stats_router import router as stats_router
+from .matchmaking_router import router as matchmaking_router
+from .elo_router import router as elo_router
 
 # Create v1 API router
 api_v1_router = APIRouter(prefix="/api/v1")
@@ -25,3 +27,5 @@ api_v1_router.include_router(pilots_router)
 api_v1_router.include_router(bans_router)
 api_v1_router.include_router(audit_router)
 api_v1_router.include_router(stats_router)
+api_v1_router.include_router(matchmaking_router)
+api_v1_router.include_router(elo_router)

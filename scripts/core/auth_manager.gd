@@ -322,13 +322,31 @@ func _init_logger() -> void:
 
 ## Inicializa la conexión al DatabaseManager si está disponible
 func _init_database() -> void:
-	# Buscar DatabaseManager como autoload
+	# Los autoloads de Godot se agregan como nodos bajo /root, no como Engine singletons
+	# Intentar obtener referencia de varias formas
+	
+	# Método 1: Buscar en /root (requiere estar en el árbol)
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree and tree.root:
+		var db_node = tree.root.get_node_or_null("DatabaseManager")
+		if db_node:
+			_database = db_node
+			_log_info("DatabaseManager encontrado via SceneTree, modo online disponible")
+			return
+	
+	# Método 2: Engine singleton (por compatibilidad)
+	if Engine.has_singleton("DatabaseManager"):
+		_database = Engine.get_singleton("DatabaseManager")
+		_log_info("DatabaseManager encontrado via Engine singleton, modo online disponible")
+		return
+	
 	if Engine.has_singleton("Database"):
 		_database = Engine.get_singleton("Database")
-		_log_info("DatabaseManager encontrado, modo online disponible")
-	else:
-		_database = null
-		_log_info("DatabaseManager no encontrado, usando modo offline")
+		_log_info("Database encontrado via Engine singleton, modo online disponible")
+		return
+	
+	_database = null
+	_log_info("DatabaseManager no encontrado, usando modo offline")
 
 
 ## Intenta conectar con el backend y determina el modo de operación

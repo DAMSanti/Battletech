@@ -10,5 +10,18 @@ from .health_router import router as health_router
 from .bans_router import router as bans_router
 from .audit_router import router as audit_router
 from .stats_router import router as stats_router
+from .matchmaking_router import router as matchmaking_router
+from .elo_router import router as elo_router
 
-__all__ = ["auth_router", "users_router", "mechs_router", "pilots_router", "health_router", "bans_router", "audit_router", "stats_router"]
+__all__ = [
+    "auth_router", 
+    "users_router", 
+    "mechs_router", 
+    "pilots_router", 
+    "health_router", 
+    "bans_router", 
+    "audit_router", 
+    "stats_router",
+    "matchmaking_router",
+    "elo_router"
+]

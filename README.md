@@ -1,5 +1,7 @@
 # Steel Titans: Tactical Warfare
 
+[![CI Pipeline](https://github.com/DAMSanti/Battletech/actions/workflows/ci.yml/badge.svg?branch=Development)](https://github.com/DAMSanti/Battletech/actions/workflows/ci.yml)
+
 Un juego táctico competitivo de combate de mechs (Steel Titans) para móvil.
 
 > **Nota de desarrollo:** Este proyecto fue originalmente prototipado como "Battletech Mobile" y está siendo migrado a una IP original para cumplir con requisitos legales de publicación comercial.

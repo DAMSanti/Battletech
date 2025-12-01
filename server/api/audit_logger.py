@@ -44,9 +44,20 @@ class AuditAction(str, Enum):
     
     # Match
     MATCH_CREATE = "match.create"
+    MATCH_CREATED = "match.created"
     MATCH_JOIN = "match.join"
     MATCH_LEAVE = "match.leave"
     MATCH_END = "match.end"
+    
+    # ELO
+    ELO_UPDATE = "elo.update"
+    ELO_RESET = "elo.reset"
+    ELO_ADJUST = "elo.adjust"
+    
+    # Matchmaking
+    USER_QUEUE_JOIN = "matchmaking.queue_join"
+    USER_QUEUE_LEAVE = "matchmaking.queue_leave"
+    MATCH_FOUND = "matchmaking.match_found"
     
     # Economy
     TRANSACTION_PURCHASE = "economy.purchase"

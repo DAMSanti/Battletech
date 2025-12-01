@@ -11,9 +11,9 @@ const AuthManagerCoreScript = preload("res://scripts/core/auth_manager.gd")
 
 ## Señales - forwarded desde AuthManagerCore + adicionales para UI
 signal login_completed(user_data: Dictionary)
-signal login_failed(error_message: String)
+signal login_failed(error: Dictionary)
 signal registration_completed(user_data: Dictionary)
-signal registration_failed(error_message: String)
+signal registration_failed(error: Dictionary)
 signal logout_completed()
 signal auth_state_changed(is_authenticated: bool)
 
@@ -21,12 +21,20 @@ signal auth_state_changed(is_authenticated: bool)
 var _auth_manager = null  # Type: AuthManagerCore
 var _current_user: Dictionary = {}
 var _is_authenticated: bool = false
+var _auth_token: String = ""
 
 const LOG_CATEGORY := "AuthSingleton"
 
 
 func _ready() -> void:
 	_auth_manager = AuthManagerCoreScript.new()
+	
+	# Re-inicializar la conexión a la base de datos ahora que estamos en el árbol de escenas
+	# Esto es necesario porque Engine.has_singleton puede fallar en RefCounted._init()
+	_auth_manager._init_database()
+	
+	# Verificar estado online de forma asíncrona
+	_check_online_status()
 	
 	# Conectar señales del AuthManagerCore interno
 	_auth_manager.login_success.connect(_on_login_success)
@@ -35,6 +43,14 @@ func _ready() -> void:
 	_auth_manager.auth_state_changed.connect(_on_auth_state_changed)
 	
 	Log.info(LOG_CATEGORY, "AuthManagerSingleton initialized")
+
+
+func _check_online_status() -> void:
+	"""Verifica el estado online de forma asíncrona"""
+	if _auth_manager:
+		await _auth_manager.check_online_status()
+		var mode = "online" if _auth_manager.is_online() else "offline"
+		Log.info(LOG_CATEGORY, "Operation mode determined", {"mode": mode})
 
 
 ## ═══════════════════════════════════════════════════════════════════════════
@@ -61,6 +77,12 @@ func logout() -> void:
 	_auth_manager.logout()
 	_current_user = {}
 	_is_authenticated = false
+	_auth_token = ""
+	
+	# Limpiar token en NetworkManager
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager and network_manager.has_method("set_api_auth_token"):
+		network_manager.set_api_auth_token("")
 
 
 func is_authenticated() -> bool:
@@ -76,6 +98,19 @@ func get_current_user() -> Dictionary:
 func is_online() -> bool:
 	"""Retorna si está en modo online"""
 	return _auth_manager.is_online() if _auth_manager else false
+
+
+func get_auth_token() -> String:
+	"""Retorna el token de autenticación actual"""
+	return _auth_token
+
+
+func _propagate_auth_token() -> void:
+	"""Propaga el token de autenticación al NetworkManager"""
+	var network_manager = get_node_or_null("/root/NetworkManager")
+	if network_manager and network_manager.has_method("set_api_auth_token"):
+		network_manager.set_api_auth_token(_auth_token)
+		Log.debug(LOG_CATEGORY, "Auth token propagated to NetworkManager")
 
 
 ## ═══════════════════════════════════════════════════════════════════════════
@@ -97,10 +132,21 @@ func _on_login_callback(result) -> void:
 			"c_bills": user_data.metadata.get("c_bills", 0)
 		}
 		_is_authenticated = true
+		
+		# Guardar y propagar el token de autenticación
+		if result.token and not result.token.is_empty():
+			_auth_token = result.token
+			_propagate_auth_token()
+			Log.info(LOG_CATEGORY, "Auth token received and propagated")
+		
 		login_completed.emit(_current_user)
 	else:
 		var error = result.error
-		login_failed.emit(error.message if error else "Unknown error")
+		var error_dict := {
+			"message": error.message if error else "Unknown error",
+			"code": error.type if error else 0
+		}
+		login_failed.emit(error_dict)
 
 
 func _on_register_callback(result) -> void:
@@ -118,10 +164,21 @@ func _on_register_callback(result) -> void:
 			"c_bills": user_data.metadata.get("c_bills", 0)
 		}
 		_is_authenticated = true
+		
+		# Guardar y propagar el token de autenticación (igual que en login)
+		if result.token and not result.token.is_empty():
+			_auth_token = result.token
+			_propagate_auth_token()
+			Log.info(LOG_CATEGORY, "Auth token received after registration and propagated")
+		
 		registration_completed.emit(_current_user)
 	else:
 		var error = result.error
-		registration_failed.emit(error.message if error else "Registration failed")
+		var error_dict := {
+			"message": error.message if error else "Registration failed",
+			"code": error.type if error else 0
+		}
+		registration_failed.emit(error_dict)
 
 
 func _on_login_success(user_data) -> void:
