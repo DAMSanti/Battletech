@@ -21,6 +21,7 @@ signal deployment_phase_started
 signal deployment_complete
 signal initiative_rolled(player_roll: int, enemy_roll: int, winner: String)
 signal movement_phase_started(mech_node)
+@warning_ignore("unused_signal")
 signal attack_phase_started(mech_node)
 signal turn_ended
 

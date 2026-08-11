@@ -586,19 +586,4 @@ func export_logs(destination_path: String) -> bool:
 	return true
 
 
-## Marcar inicio de una operación (para medir tiempos)
-var _timers: Dictionary = {}
-
-func start_timer(name: String) -> void:
-	_timers[name] = Time.get_ticks_msec()
-
-
-func end_timer(name: String, category: String = "System") -> float:
-	if not _timers.has(name):
-		warning(category, "Timer no encontrado: %s" % name)
-		return -1.0
-	
-	var elapsed = (Time.get_ticks_msec() - _timers[name]) / 1000.0
-	_timers.erase(name)
-	debug(category, "Timer '%s' completado" % name, {"elapsed_sec": "%.3f" % elapsed})
-	return elapsed
+## Marcar inicio de una operación (para medir tiempos)\nvar _timers: Dictionary = {}\n\nfunc start_timer(timer_name: String) -> void:\n\t_timers[timer_name] = Time.get_ticks_msec()\n\n\nfunc end_timer(timer_name: String, category: String = "System") -> float:\n\tif not _timers.has(timer_name):\n\t\twarning(category, "Timer no encontrado: %s" % timer_name)\n\t\treturn -1.0\n\t\n\tvar elapsed = (Time.get_ticks_msec() - _timers[timer_name]) / 1000.0\n\t_timers.erase(timer_name)\n\tdebug(category, "Timer '%s' completado" % timer_name, {"elapsed_sec": "%.3f" % elapsed})\n\treturn elapsed

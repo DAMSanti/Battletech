@@ -454,6 +454,23 @@ func center_on_hex(hex: Vector2i, smooth: bool = true) -> void:
 		camera.position = world_pos
 
 
+func pan_to_position(world_pos: Vector2, smooth: bool = true) -> void:
+	"""Mueve la cámara suavemente a una posición del mundo"""
+	if camera == null:
+		return
+	
+	if smooth:
+		# Crear tween para movimiento suave
+		var tween = camera.create_tween()
+		tween.set_ease(Tween.EASE_OUT)
+		tween.set_trans(Tween.TRANS_QUAD)
+		tween.tween_property(camera, "position", world_pos, 0.4)
+	else:
+		camera.position = world_pos
+	
+	camera_moved.emit()
+
+
 func set_zoom(zoom_level: float, smooth: bool = false) -> void:
 	"""Establece el nivel de zoom"""
 	if camera == null:

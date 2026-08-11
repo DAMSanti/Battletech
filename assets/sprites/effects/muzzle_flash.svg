@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Muzzle flash for weapon firing -->
+  <defs>
+    <radialGradient id="muzzleFlash" cx="20%" cy="50%" r="80%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#FFFF00;stop-opacity:0.9"/>
+      <stop offset="60%" style="stop-color:#FF8800;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#FF4400;stop-opacity:0"/>
+    </radialGradient>
+    <filter id="muzzleGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="2" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Main flash cone pointing right -->
+  <ellipse cx="18" cy="16" rx="14" ry="10" fill="url(#muzzleFlash)" filter="url(#muzzleGlow)"/>
+  <!-- Bright core -->
+  <ellipse cx="8" cy="16" rx="6" ry="5" fill="#FFFFFF"/>
+  <!-- Secondary flash spikes -->
+  <polygon points="4,16 16,12 28,16 16,20" fill="#FFFF88" opacity="0.7"/>
+</svg>

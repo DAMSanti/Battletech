@@ -4,6 +4,7 @@ class_name BattleWeaponSelectorPanel
 
 signal weapons_confirmed(attacker, target, selected_weapons: Array, range_hexes: int)
 signal selection_cancelled()
+@warning_ignore("unused_signal")
 signal weapon_info_requested(weapon: Dictionary, to_hit_data: Dictionary)
 
 var scale_factor: float = 1.0
@@ -363,7 +364,7 @@ func _on_weapon_toggled(button_pressed: bool, weapon_index: int) -> void:
 	
 	fire_button.disabled = (selected_weapons.size() == 0)
 
-func _on_weapon_label_clicked(event: InputEvent, weapon_index: int, weapon: Dictionary, breakdown: String, to_hit_data: Dictionary) -> void:
+func _on_weapon_label_clicked(event: InputEvent, _weapon_index: int, weapon: Dictionary, _breakdown: String, to_hit_data: Dictionary) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		get_viewport().set_input_as_handled()
 		_show_weapon_info(weapon, to_hit_data)

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 16" width="64" height="16">
+  <!-- Laser beam effect - bright red/orange energy beam -->
+  <defs>
+    <linearGradient id="laserGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#FF0000;stop-opacity:0"/>
+      <stop offset="30%" style="stop-color:#FF4400;stop-opacity:1"/>
+      <stop offset="50%" style="stop-color:#FFFF00;stop-opacity:1"/>
+      <stop offset="70%" style="stop-color:#FF4400;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#FF0000;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="laserGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Outer glow -->
+  <ellipse cx="32" cy="8" rx="30" ry="6" fill="#FF0000" opacity="0.3" filter="url(#laserGlow)"/>
+  <!-- Main beam -->
+  <rect x="2" y="5" width="60" height="6" rx="3" fill="url(#laserGrad)"/>
+  <!-- Bright core -->
+  <rect x="8" y="6" width="48" height="4" rx="2" fill="#FFFFFF" opacity="0.8"/>
+  <rect x="16" y="7" width="32" height="2" rx="1" fill="#FFFFFF"/>
+</svg>

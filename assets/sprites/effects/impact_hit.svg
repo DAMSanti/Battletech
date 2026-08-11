@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Hit impact effect - sparks and flash -->
+  <defs>
+    <radialGradient id="hitFlash" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1"/>
+      <stop offset="30%" style="stop-color:#FFFF00;stop-opacity:0.9"/>
+      <stop offset="60%" style="stop-color:#FF8800;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#FF4400;stop-opacity:0"/>
+    </radialGradient>
+    <filter id="hitGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Main flash -->
+  <circle cx="32" cy="32" r="20" fill="url(#hitFlash)" filter="url(#hitGlow)"/>
+  <!-- Bright core -->
+  <circle cx="32" cy="32" r="8" fill="#FFFFFF"/>
+  <!-- Sparks flying outward -->
+  <line x1="32" y1="32" x2="10" y2="15" stroke="#FFAA00" stroke-width="2" opacity="0.9"/>
+  <line x1="32" y1="32" x2="54" y2="12" stroke="#FFCC00" stroke-width="2" opacity="0.9"/>
+  <line x1="32" y1="32" x2="58" y2="38" stroke="#FF8800" stroke-width="2" opacity="0.8"/>
+  <line x1="32" y1="32" x2="52" y2="55" stroke="#FFAA00" stroke-width="2" opacity="0.9"/>
+  <line x1="32" y1="32" x2="12" y2="50" stroke="#FFCC00" stroke-width="2" opacity="0.8"/>
+  <line x1="32" y1="32" x2="6" y2="28" stroke="#FF8800" stroke-width="2" opacity="0.9"/>
+  <!-- Small debris particles -->
+  <circle cx="8" cy="14" r="3" fill="#FF6600"/>
+  <circle cx="56" cy="10" r="2" fill="#FFAA00"/>
+  <circle cx="60" cy="40" r="2" fill="#FF8800"/>
+  <circle cx="54" cy="58" r="3" fill="#FF6600"/>
+  <circle cx="10" cy="52" r="2" fill="#FFAA00"/>
+  <circle cx="4" cy="26" r="2" fill="#FF8800"/>
+  <!-- Metal fragments -->
+  <polygon points="15,20 18,18 20,22 16,23" fill="#888888"/>
+  <polygon points="48,22 52,20 50,25" fill="#666666"/>
+  <polygon points="50,48 54,50 52,54 48,52" fill="#777777"/>
+</svg>

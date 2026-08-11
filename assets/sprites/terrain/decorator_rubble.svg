@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <!-- Rubble - Urban debris and broken concrete -->
+  <defs>
+    <linearGradient id="concreteGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#9A9A9A"/>
+      <stop offset="100%" style="stop-color:#6A6A6A"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Large concrete chunks -->
+  <polygon points="15,55 30,45 45,50 40,65 20,68" fill="url(#concreteGrad)" opacity="0.9"/>
+  <line x1="20" y1="50" x2="35" y2="60" stroke="#5A5A5A" stroke-width="1" opacity="0.5"/>
+  
+  <polygon points="55,40 75,35 80,50 70,58 55,52" fill="#8A8A8A" opacity="0.85"/>
+  <line x1="60" y1="42" x2="72" y2="50" stroke="#5A5A5A" stroke-width="1" opacity="0.5"/>
+  
+  <!-- Rebar sticking out -->
+  <line x1="38" y1="48" x2="42" y2="38" stroke="#8B4513" stroke-width="2" opacity="0.7"/>
+  <line x1="72" y1="38" x2="78" y2="30" stroke="#8B4513" stroke-width="2" opacity="0.6"/>
+  
+  <!-- Smaller debris -->
+  <rect x="25" y="75" width="12" height="8" rx="1" fill="#7A7A7A" opacity="0.7" transform="rotate(-15 31 79)"/>
+  <rect x="60" y="70" width="10" height="6" rx="1" fill="#8A8A8A" opacity="0.65" transform="rotate(10 65 73)"/>
+  
+  <!-- Dust/small particles -->
+  <circle cx="48" cy="60" r="2" fill="#9A9A9A" opacity="0.5"/>
+  <circle cx="35" cy="72" r="1.5" fill="#8A8A8A" opacity="0.4"/>
+  <circle cx="75" cy="65" r="2" fill="#7A7A7A" opacity="0.45"/>
+  <circle cx="20" cy="40" r="1" fill="#6A6A6A" opacity="0.4"/>
+</svg>

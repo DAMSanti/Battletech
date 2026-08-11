@@ -64,10 +64,13 @@ func create_initiative_screen(my_mechs: Array = [], opponent_mechs: Array = []) 
 		initiative_screen.enemy_mech_names.append(mech.mech_name)
 		initiative_screen.enemy_mech_destroyed.append(mech.is_destroyed)
 	
+	# Forzar actualización de labels después de asignar nombres
+	initiative_screen.call_deferred("refresh_mech_display")
+	
 	return initiative_screen
 
 
-func show_initiative_screen(is_multiplayer: bool = false) -> void:
+func show_initiative_screen(_is_multiplayer: bool = false) -> void:
 	"""Muestra la pantalla de iniciativa para singleplayer"""
 	var screen = create_initiative_screen()
 	screen.initiative_complete.connect(_on_screen_complete.bind(false), CONNECT_ONE_SHOT)

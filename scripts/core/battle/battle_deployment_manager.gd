@@ -198,6 +198,20 @@ func handle_hex_click(hex: Vector2i, screen_pos: Vector2) -> bool:
 	if not deployment_phase or not current_deploying_mech:
 		return false
 	
+	# Verificar si el tutorial permite este hex
+	var tutorial_mgr = Engine.get_singleton("TutorialManager") if Engine.has_singleton("TutorialManager") else null
+	if not tutorial_mgr:
+		# Intentar obtenerlo del árbol de nodos
+		var main = Engine.get_main_loop()
+		if main and main.root:
+			tutorial_mgr = main.root.get_node_or_null("/root/TutorialManager")
+	
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		if not tutorial_mgr.is_hex_allowed(hex):
+			# Hex no permitido por el tutorial
+			deployment_message.emit("⚠️ Deploy on the highlighted hex", Color.YELLOW)
+			return true  # Consumimos el click pero no procesamos
+	
 	if hex in valid_deployment_hexes and not hex_grid.get_unit(hex):
 		# Mostrar selector de facing
 		show_facing_selector_requested.emit(screen_pos, hex)
@@ -220,6 +234,19 @@ func on_facing_selected(facing: int, selected_hex: Vector2i) -> bool:
 	"""Procesa la selección de facing durante despliegue. Retorna true si fue procesado."""
 	if not deployment_phase or not current_deploying_mech or selected_hex == Vector2i(-1, -1):
 		return false
+	
+	# Notificar al tutorial
+	var tutorial_mgr = Engine.get_singleton("TutorialManager") if Engine.has_singleton("TutorialManager") else null
+	if not tutorial_mgr:
+		var main = Engine.get_main_loop()
+		if main and main.root:
+			tutorial_mgr = main.root.get_node_or_null("/root/TutorialManager")
+	
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		# Primero notificar el deployment del hex
+		tutorial_mgr.notify_deployment_completed(selected_hex)
+		# Luego notificar el facing
+		tutorial_mgr.notify_deployment_facing_selected(facing)
 	
 	# Emitir evento para que battle_scene coloque el mech
 	mech_deploy_requested.emit(current_deploying_mech, selected_hex, facing)

@@ -22,6 +22,7 @@ const COLOR_PREVIEW_PATH := Color(1.0, 0.8, 0.0, 0.4)  # Yellow/Orange
 const COLOR_PREVIEW_DESTINATION := Color(1.0, 0.8, 0.0, 0.6)  # Brighter yellow
 const COLOR_ATTACK_TARGET := Color(1.0, 0.2, 0.2, 0.4)  # Red
 const COLOR_PHYSICAL_TARGET := Color(1.0, 0.0, 1.0, 0.4)  # Magenta
+const COLOR_TUTORIAL_HIGHLIGHT := Color(0.0, 1.0, 1.0, 0.6)  # Cyan brillante para tutorial
 
 # ==============================================================================
 # STATE
@@ -35,6 +36,7 @@ var preview_path: Array = []
 var target_hexes: Array = []
 var physical_target_hexes: Array = []
 var los_overlay_hexes: Array = []
+var tutorial_hexes: Array = []  # Hexes resaltados del tutorial
 
 # Flags
 var deployment_phase: bool = false
@@ -115,12 +117,25 @@ func clear_los_overlay() -> void:
 	los_overlay_visible = false
 
 
+func set_tutorial_hexes(hexes: Array) -> void:
+	"""Establece los hexágonos resaltados del tutorial"""
+	tutorial_hexes = hexes.duplicate()
+	overlays_updated.emit()
+
+
+func clear_tutorial_hexes() -> void:
+	"""Limpia los hexágonos del tutorial"""
+	tutorial_hexes.clear()
+	overlays_updated.emit()
+
+
 func clear_all() -> void:
 	"""Limpia todos los overlays"""
 	reachable_hexes.clear()
 	preview_path.clear()
 	target_hexes.clear()
 	physical_target_hexes.clear()
+	tutorial_hexes.clear()
 	# No limpiamos deployment_hexes ni los_overlay_hexes aquí
 
 
@@ -161,6 +176,10 @@ func build_overlays() -> Array:
 		
 		# 6. Physical attack overlays
 		overlays.append_array(_build_physical_overlays())
+	
+	# 7. Tutorial overlays (siempre encima de todo)
+	if tutorial_hexes.size() > 0:
+		overlays.append_array(_build_tutorial_overlays())
 	
 	return overlays
 
@@ -250,6 +269,28 @@ func _build_physical_overlays() -> Array:
 	return overlays
 
 
+func _build_tutorial_overlays() -> Array:
+	"""Construye overlays para el tutorial (hexes resaltados)"""
+	var overlays: Array = []
+	
+	# Color pulsante para el tutorial (efecto de respiración)
+	var time_ms = Time.get_ticks_msec()
+	var pulse = (sin(time_ms * 0.004) + 1.0) * 0.5  # Pulso suave
+	
+	# Color base cyan brillante con pulso
+	var color = Color(0.0, 0.9, 1.0, 0.3 + pulse * 0.5)  # Alpha pulsa entre 0.3 y 0.8
+	
+	for hex in tutorial_hexes:
+		var terrain_elev = hex_grid.get_elevation(hex)
+		overlays.append({
+			"hex": hex,
+			"color": color,
+			"elevation": terrain_elev + 0.6  # Un poco más alto que otros overlays
+		})
+	
+	return overlays
+
+
 # ==============================================================================
 # RENDERING
 # ==============================================================================
@@ -262,6 +303,11 @@ func update_and_render() -> void:
 	var overlays = build_overlays()
 	hex_grid._surface_renderer.render_overlays(overlays, hex_grid)
 	overlays_updated.emit()
+
+
+func needs_continuous_update() -> bool:
+	"""Retorna true si hay overlays que necesitan actualización continua (pulsantes)"""
+	return tutorial_hexes.size() > 0
 
 
 # ==============================================================================

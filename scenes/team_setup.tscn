@@ -114,6 +114,29 @@ theme_override_constants/separation = 5
 [node name="HSeparator4" type="HSeparator" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 
+[node name="DifficultyContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 20
+
+[node name="DifficultyLabel" type="Label" parent="MarginContainer/VBoxContainer/DifficultyContainer"]
+layout_mode = 2
+text = "AI DIFFICULTY:"
+
+[node name="DifficultySelector" type="OptionButton" parent="MarginContainer/VBoxContainer/DifficultyContainer"]
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+selected = 1
+item_count = 3
+popup/item_0/text = "EASY - Kamikaze"
+popup/item_1/text = "NORMAL - Balanced"
+popup/item_1/id = 1
+popup/item_2/text = "HARD - Tactical"
+popup/item_2/id = 2
+
+[node name="HSeparator5" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+layout_mode = 2
+
 [node name="ButtonsContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 theme_override_constants/separation = 20
@@ -129,7 +152,7 @@ custom_minimum_size = Vector2(200, 50)
 layout_mode = 2
 text = "Clear All"
 
-[node name="HSeparator5" type="HSeparator" parent="MarginContainer/VBoxContainer"]
+[node name="HSeparator6" type="HSeparator" parent="MarginContainer/VBoxContainer"]
 layout_mode = 2
 
 [node name="ActionsContainer" type="HBoxContainer" parent="MarginContainer/VBoxContainer"]

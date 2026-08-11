@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 16" width="64" height="16">
+  <!-- Gauss rifle - electromagnetic projectile with blue energy trail -->
+  <defs>
+    <linearGradient id="gaussTrail" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#0066FF;stop-opacity:0"/>
+      <stop offset="40%" style="stop-color:#0088FF;stop-opacity:0.5"/>
+      <stop offset="70%" style="stop-color:#00AAFF;stop-opacity:0.8"/>
+      <stop offset="100%" style="stop-color:#00DDFF;stop-opacity:0"/>
+    </linearGradient>
+    <filter id="gaussGlow" x="-20%" y="-50%" width="140%" height="200%">
+      <feGaussianBlur stdDeviation="1.5" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Electromagnetic trail -->
+  <ellipse cx="28" cy="8" rx="24" ry="5" fill="url(#gaussTrail)" filter="url(#gaussGlow)"/>
+  <!-- Energy rings -->
+  <ellipse cx="20" cy="8" rx="2" ry="4" fill="none" stroke="#00AAFF" stroke-width="1" opacity="0.5"/>
+  <ellipse cx="30" cy="8" rx="2" ry="5" fill="none" stroke="#00CCFF" stroke-width="1" opacity="0.6"/>
+  <ellipse cx="40" cy="8" rx="2" ry="5" fill="none" stroke="#00EEFF" stroke-width="1" opacity="0.7"/>
+  <!-- Projectile -->
+  <ellipse cx="52" cy="8" rx="10" ry="5" fill="#334455"/>
+  <ellipse cx="54" cy="8" rx="6" ry="3" fill="#556677"/>
+  <!-- Highlight -->
+  <ellipse cx="56" cy="6" rx="3" ry="2" fill="#AABBCC" opacity="0.6"/>
+</svg>

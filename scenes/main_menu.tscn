@@ -1,7 +1,7 @@
 [gd_scene load_steps=4 format=3 uid="uid://dtfp50g0eqyje"]
 
-[ext_resource type="Script" path="res://scripts/ui/screens/main_menu.gd" id="1_mainmenu"]
-[ext_resource type="Texture2D" path="res://assets/menu_background.png" id="2_background"]
+[ext_resource type="Script" uid="uid://cvtvcyyhln68l" path="res://scripts/ui/screens/main_menu.gd" id="1_mainmenu"]
+[ext_resource type="Texture2D" uid="uid://ba5au4of3h2js" path="res://assets/menu_background.png" id="2_background"]
 [ext_resource type="Theme" path="res://assets/themes/steeltitans_theme.tres" id="3_theme"]
 
 [node name="MainMenu" type="Control"]

@@ -147,6 +147,8 @@ static func movement_type_to_string(move_type: MovementType) -> String:
 ## Obtener nombre legible de fase
 static func phase_to_string(phase: TurnPhase) -> String:
 	match phase:
+		TurnPhase.DEPLOYMENT:
+			return "Deployment"
 		TurnPhase.INITIATIVE:
 			return "Initiative"
 		TurnPhase.MOVEMENT:

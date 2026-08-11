@@ -372,7 +372,48 @@ func _on_close_options():
 	options_panel.visible = false
 
 func _on_new_battle_pressed():
+	# TEMPORAL: Siempre preguntar por tutorial para testing
+	# TODO: Cambiar a should_show_tutorial() cuando el tutorial esté completo
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr:
+		_show_tutorial_prompt()
+		return
+	
 	# Ir a la pantalla de configuración de equipo
+	get_tree().change_scene_to_file("res://scenes/team_setup.tscn")
+
+
+func _show_tutorial_prompt():
+	"""Muestra un diálogo preguntando si quiere hacer el tutorial"""
+	var dialog = AcceptDialog.new()
+	dialog.title = "Welcome, MechWarrior!"
+	dialog.dialog_text = "This appears to be your first battle.\n\nWould you like to play the tutorial?\nIt will teach you the basics of combat."
+	dialog.ok_button_text = "Start Tutorial"
+	dialog.add_cancel_button("Skip Tutorial")
+	
+	dialog.confirmed.connect(_on_tutorial_accepted)
+	dialog.canceled.connect(_on_tutorial_skipped)
+	
+	add_child(dialog)
+	dialog.popup_centered()
+
+
+func _on_tutorial_accepted():
+	"""Inicia el tutorial"""
+	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
+	if mech_bay_manager:
+		mech_bay_manager.set_meta("is_tutorial", true)
+	
+	# Ir directamente a la batalla tutorial (saltar team_setup)
+	get_tree().change_scene_to_file("res://scenes/battle_scene.tscn")
+
+
+func _on_tutorial_skipped():
+	"""Salta el tutorial y va a team_setup normal"""
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr:
+		tutorial_mgr.skip_tutorial()
+	
 	get_tree().change_scene_to_file("res://scenes/team_setup.tscn")
 
 func _on_mechs_pressed():

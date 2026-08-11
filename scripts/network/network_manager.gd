@@ -65,6 +65,8 @@ signal reconnection_attempt(attempt: int, max_attempts: int)
 signal reconnection_success()
 signal reconnection_failed()
 signal reconnection_cancelled()
+signal opponent_reconnected(opponent_name: String)
+signal match_rejoined(match_data: Dictionary)
 
 func _ready():
 	# Conectar señales del multiplayer API
@@ -1097,7 +1099,13 @@ func client_rejoin_success(match_id: int, team: String, opponent: String, map_se
 	current_map_seed = map_seed
 	connection_state = ConnectionState.IN_MATCH
 	
-	# TODO: Sincronizar estado del juego
+	# Emitir señal con datos de la partida para sincronizar estado
+	match_rejoined.emit({
+		"match_id": match_id,
+		"team": team,
+		"opponent": opponent,
+		"map_seed": map_seed
+	})
 
 
 @rpc("authority", "reliable")
@@ -1112,4 +1120,5 @@ func client_rejoin_failed(reason: String) -> void:
 func client_opponent_reconnected(opponent_name_str: String) -> void:
 	"""[Client] Servidor notifica que el oponente se reconectó"""
 	Log.info("Network", "Opponent reconnected!", {"opponent": opponent_name_str})
-	# TODO: Emitir señal para actualizar UI
+	# Emitir señal para que la UI pueda mostrar notificación
+	opponent_reconnected.emit(opponent_name_str)

@@ -4,6 +4,9 @@
 class_name BattleCombatExecutor
 extends RefCounted
 
+# Preload del animation manager
+const CombatAnimationManagerClass = preload("res://scripts/managers/combat_animation_manager.gd")
+
 # ==============================================================================
 # SIGNALS
 # ==============================================================================
@@ -31,18 +34,39 @@ var hex_grid: HexGrid = null
 var is_multiplayer_mode: bool = false
 var player_mechs: Array = []
 var enemy_mechs: Array = []
+var animation_manager = null  # CombatAnimationManagerClass instance
+var _scene_tree: SceneTree = null
+var _parent_node: Node2D = null
 
 
 func setup(p_hex_grid: HexGrid, p_is_multiplayer: bool = false) -> void:
 	"""Configura el combat executor"""
 	hex_grid = p_hex_grid
 	is_multiplayer_mode = p_is_multiplayer
+	
+	# Crear animation manager
+	animation_manager = CombatAnimationManagerClass.new()
+
+
+func set_scene_tree(tree: SceneTree) -> void:
+	"""Configura el SceneTree para animaciones"""
+	_scene_tree = tree
+	if animation_manager:
+		animation_manager.set_scene_tree(tree)
+
+
+func set_parent_node(parent: Node2D) -> void:
+	"""Configura el nodo padre para crear sprites de animación"""
+	_parent_node = parent
+	if animation_manager:
+		animation_manager.set_parent_node(parent)
 
 
 func set_mechs(p_player_mechs: Array, p_enemy_mechs: Array) -> void:
 	"""Actualiza las referencias a mechs"""
 	player_mechs = p_player_mechs
 	enemy_mechs = p_enemy_mechs
+	Log.debug("Combat", "CombatExecutor.set_mechs called: player=%d, enemy=%d" % [player_mechs.size(), enemy_mechs.size()])
 
 
 func handle_weapon_attack_click(hex: Vector2i, selected_unit: Mech) -> bool:
@@ -112,10 +136,20 @@ func execute_weapon_attack(attacker: Mech, target: Mech, weapon_indices: Array, 
 		combat_message.emit("  Roll: %d" % roll, Color.CYAN)
 		
 		# Verificar impacto
-		if WeaponAttackSystem.check_hit(roll, target_number):
-			_process_weapon_hit(attacker, target, weapon, roll)
+		var hit = WeaponAttackSystem.check_hit(roll, target_number)
+		var is_critical = false
+		
+		if hit:
+			is_critical = _process_weapon_hit(attacker, target, weapon, roll)
 		else:
 			_process_weapon_miss(roll)
+		
+		# Reproducir animación de disparo
+		Log.info("Combat", "Attempting animation: manager=%s, tree=%s" % [animation_manager != null, _scene_tree != null])
+		if animation_manager and _scene_tree:
+			await _play_weapon_animation(attacker, target, weapon, hit, is_critical)
+		else:
+			Log.warning("Combat", "Skipping animation - manager or tree is null")
 		
 		# Acumular calor
 		total_heat += weapon.get("heat", 0)
@@ -132,10 +166,48 @@ func execute_weapon_attack(attacker: Mech, target: Mech, weapon_indices: Array, 
 	weapon_attack_completed.emit(attacker, total_heat)
 
 
-func _process_weapon_hit(attacker: Mech, target: Mech, weapon: Dictionary, roll: int) -> void:
-	"""Procesa un impacto de arma"""
+func _play_weapon_animation(attacker: Mech, target: Mech, weapon: Dictionary, hit: bool, is_critical: bool) -> void:
+	"""Reproduce la animación de disparo del arma"""
+	if not animation_manager:
+		return
+	
+	var weapon_name = weapon.get("name", "").to_lower()
+	
+	# Para misiles, usar animación especial de salva
+	if "lrm" in weapon_name or "srm" in weapon_name:
+		var missile_count = 1
+		if "lrm" in weapon_name:
+			# Extraer número de misiles (LRM-5, LRM-10, LRM-15, LRM-20)
+			var regex = RegEx.new()
+			regex.compile("lrm[- ]?(\\d+)")
+			var result = regex.search(weapon_name)
+			if result:
+				missile_count = int(result.get_string(1))
+		elif "srm" in weapon_name:
+			# SRM-2, SRM-4, SRM-6
+			var regex = RegEx.new()
+			regex.compile("srm[- ]?(\\d+)")
+			var result = regex.search(weapon_name)
+			if result:
+				missile_count = int(result.get_string(1))
+		
+		# Calcular cuántos misiles impactan (simplificado)
+		var hits = missile_count if hit else 0
+		if hit and missile_count > 1:
+			# En BattleTech real se tira en tabla de cluster, simplificamos
+			hits = max(1, int(missile_count * randf_range(0.4, 0.9)))
+		
+		await animation_manager.play_multi_missile_animation(attacker, target, missile_count, hits)
+	else:
+		# Animación normal para otras armas
+		await animation_manager.play_attack_animation(attacker, target, weapon, hit, is_critical)
+
+
+func _process_weapon_hit(attacker: Mech, target: Mech, weapon: Dictionary, _roll: int) -> bool:
+	"""Procesa un impacto de arma. Retorna true si hubo crítico."""
 	var hit_location = WeaponAttackSystem.roll_hit_location()
 	var damage = weapon.get("damage", 0)
+	var is_critical = false
 	
 	combat_message.emit("  ✓ HIT! Location: %s, Damage: %d" % [hit_location, damage], Color.GREEN)
 	
@@ -144,9 +216,11 @@ func _process_weapon_hit(attacker: Mech, target: Mech, weapon: Dictionary, roll:
 	
 	if damage_result.get("critical_hit", false):
 		combat_message.emit("    ⚠ CRITICAL HIT! Structure damaged!", Color.RED)
+		is_critical = true
 	
 	if damage_result.get("location_destroyed", false):
 		combat_message.emit("    ⚠ %s DESTROYED!" % hit_location.to_upper(), Color.RED)
+		is_critical = true
 	
 	if damage_result.get("mech_destroyed", false):
 		target.destroyed_by = attacker.mech_name
@@ -157,6 +231,7 @@ func _process_weapon_hit(attacker: Mech, target: Mech, weapon: Dictionary, roll:
 		battle_end_check_requested.emit()
 	
 	weapon_fired.emit(attacker, weapon, true, damage, hit_location)
+	return is_critical
 
 
 func _process_weapon_miss(roll: int) -> void:
@@ -319,34 +394,60 @@ func end_weapon_attack_phase() -> void:
 	activation_complete_requested.emit()
 
 
+func end_physical_attack_phase() -> void:
+	"""Finaliza la fase de ataque físico"""
+	current_attack_target = null
+	target_hexes.clear()
+	activation_complete_requested.emit()
+
+
 func has_enemies_in_los(unit: Mech) -> bool:
 	"""Verifica si la unidad tiene algún enemigo en línea de vista"""
 	if not hex_grid:
+		Log.warn("Combat", "has_enemies_in_los: hex_grid is null!")
 		return false
 	
-	var enemies = enemy_mechs if _can_control_unit(unit) else player_mechs
+	var can_control = _can_control_unit(unit)
+	var enemies = enemy_mechs if can_control else player_mechs
+	
+	Log.debug("Combat", "has_enemies_in_los check for %s: can_control=%s, player_mechs=%d, enemy_mechs=%d, checking enemies=%d" % [
+		unit.mech_name, can_control, player_mechs.size(), enemy_mechs.size(), enemies.size()
+	])
 	
 	for enemy in enemies:
 		if enemy.is_destroyed:
+			Log.debug("Combat", "  - Enemy %s is destroyed, skipping" % enemy.mech_name)
 			continue
 		
 		var has_los = LineOfSight.can_shoot(hex_grid, unit.hex_position, enemy.hex_position)
+		Log.debug("Combat", "  - Enemy %s at %s: LoS from %s = %s" % [enemy.mech_name, enemy.hex_position, unit.hex_position, has_los])
 		if has_los:
 			return true
 	
+	Log.debug("Combat", "has_enemies_in_los: No valid targets found for %s" % unit.mech_name)
 	return false
 
 
 func has_adjacent_enemies(unit: Mech) -> bool:
 	"""Verifica si hay enemigos adyacentes para ataques físicos"""
 	if not hex_grid:
+		Log.warn("Combat", "has_adjacent_enemies: hex_grid is null!")
 		return false
 	
 	var neighbors = hex_grid.get_neighbors(unit.hex_position)
+	Log.debug("Combat", "has_adjacent_enemies check for %s at %s: %d neighbors" % [unit.mech_name, unit.hex_position, neighbors.size()])
+	
 	for neighbor in neighbors:
 		var other_unit = hex_grid.get_unit(neighbor)
-		if other_unit and _is_enemy_target(other_unit):
-			return true
+		if other_unit:
+			var is_enemy = _is_enemy_target(other_unit)
+			Log.debug("Combat", "  - Unit at %s: %s, is_enemy=%s" % [neighbor, other_unit.mech_name, is_enemy])
+			if is_enemy:
+				return true
+		else:
+			Log.debug("Combat", "  - No unit at %s" % [neighbor])
+	
+	Log.debug("Combat", "has_adjacent_enemies: No adjacent enemies found for %s" % unit.mech_name)
 	return false
 
 

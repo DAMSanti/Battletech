@@ -11,6 +11,7 @@ var selected_mechs: Array = []  # Nombres de loadouts seleccionados para la bata
 var slot_panels: Array = []  # Referencias a los paneles de slots
 var slot_labels: Array = []  # Labels que muestran info del mech en cada slot
 var saved_loadouts: Dictionary = {}  # Loadouts guardados del Mech Bay
+var selected_difficulty: int = 1  # 0=EASY, 1=NORMAL, 2=HARD
 
 func _ready():
 	# Música del menú (continúa si ya está sonando)
@@ -55,6 +56,18 @@ func _ready():
 	back_btn.pressed.connect(_on_back_pressed)
 	start_btn.pressed.connect(_play_click)
 	start_btn.pressed.connect(_on_start_battle_pressed)
+	
+	# Conectar selector de dificultad
+	var difficulty_selector = $MarginContainer/VBoxContainer/DifficultyContainer/DifficultySelector
+	if difficulty_selector:
+		difficulty_selector.item_selected.connect(_on_difficulty_selected)
+		selected_difficulty = difficulty_selector.selected
+
+func _on_difficulty_selected(index: int):
+	selected_difficulty = index
+	_play_click()
+	var difficulty_names = ["EASY", "NORMAL", "HARD"]
+	Log.info("Match", "AI Difficulty set to: %s" % difficulty_names[index])
 
 func _play_click():
 	if AudioManager:
@@ -444,7 +457,10 @@ func _save_lance_configuration():
 		# Temporalmente guardar en metadata del manager
 		mech_bay_manager.set_meta("battle_lance", lance_data)
 	
-	Log.info("Match", "Lance configuration saved", {"mech_count": lance_data.size()})
+	# Guardar dificultad seleccionada
+	mech_bay_manager.set_meta("ai_difficulty", selected_difficulty)
+	
+	Log.info("Match", "Lance configuration saved", {"mech_count": lance_data.size(), "difficulty": selected_difficulty})
 
 func _convert_loadout_to_battle_format(loadout: Dictionary, custom_name: String) -> Dictionary:
 	# Convertir un loadout guardado al formato que espera la batalla

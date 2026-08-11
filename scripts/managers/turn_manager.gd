@@ -144,8 +144,9 @@ func start_physical_phase():
 ## Inicia la fase de disipación de calor
 func start_heat_phase():
 	_log("=== HEAT PHASE START ===")
-	# La fase de calor se procesa automáticamente en battle_scene
-	advance_phase()
+	# La fase de calor se procesa iterativamente en battle_scene/battle_components
+	# El advance_phase() se llama desde el integrator cuando heat_phase_completed se emite
+	pass
 
 ## Construye el orden de activación basado en iniciativa individual
 ## NUEVO: Ordena los 8 mechs por iniciativa (mayor primero)
@@ -185,19 +186,24 @@ func _build_activation_order():
 func activate_next_unit():
 	# Si no hay unidades para activar y es el inicio de la fase, hay un problema
 	if units_to_activate.size() == 0:
+		Log.debug("Turn", "activate_next_unit: No units to activate, advancing phase")
 		advance_phase()
 		return
 	
 	if current_unit_index >= units_to_activate.size():
+		Log.debug("Turn", "activate_next_unit: All units activated (%d/%d), advancing phase" % [current_unit_index, units_to_activate.size()])
 		advance_phase()
 		return
 	
 	var unit = units_to_activate[current_unit_index]
+	var is_player = unit in player_units
+	Log.debug("Turn", "activate_next_unit: Activating %s (index %d/%d, is_player=%s)" % [unit.mech_name, current_unit_index, units_to_activate.size(), is_player])
 	
 	# Resetear movimiento SOLO en fase de movimiento
 	if current_phase == GameEnums.TurnPhase.MOVEMENT and unit.has_method("reset_movement"):
 		unit.reset_movement()
 	
+	Log.debug("Turn", "activate_next_unit: Emitting unit_activated signal for %s" % unit.mech_name)
 	unit_activated.emit(unit)
 
 ## Completa la activación de la unidad actual

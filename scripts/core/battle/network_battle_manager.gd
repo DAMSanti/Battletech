@@ -161,7 +161,7 @@ func request_roll_initiative() -> void:
 
 #region Fase de Movimiento
 
-func request_start_movement(mech_id: String) -> void:
+func request_start_movement(_mech_id: String) -> void:
 	# El servidor controla qué mech se activa
 	pass
 
@@ -302,7 +302,7 @@ func get_valid_targets(mech_id: String) -> Array:
 	
 	return targets
 
-func get_attack_modifier(attacker_id: String, defender_id: String, weapon_index: int) -> int:
+func get_attack_modifier(attacker_id: String, defender_id: String, _weapon_index: int) -> int:
 	# Cálculo local para mostrar en UI
 	var modifier = 0
 	
@@ -477,7 +477,7 @@ func _on_phase_changed(phase: String, turn: int) -> void:
 	phase_changed.emit(_state.current_phase)
 	state_changed.emit(_state)
 
-func _on_unit_activated(mech_id: int, is_mine: bool) -> void:
+func _on_unit_activated(mech_id: int, _is_mine: bool) -> void:
 	var state_mech_id = str(mech_id)
 	_state.active_unit_id = state_mech_id
 	

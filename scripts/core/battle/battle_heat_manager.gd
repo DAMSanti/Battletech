@@ -9,6 +9,7 @@ extends RefCounted
 # ==============================================================================
 signal heat_phase_started()
 signal heat_phase_completed()
+signal mech_heat_processing_started(mech: Mech)
 signal mech_heat_processed(mech: Mech, initial: int, final: int, dissipated: int)
 signal mech_shutdown(mech: Mech, automatic: bool)
 signal mech_restarted(mech: Mech)
@@ -19,9 +20,17 @@ signal unit_info_update_requested(mech: Mech)
 signal battle_end_check_requested()
 
 # ==============================================================================
+# CONSTANTS
+# ==============================================================================
+const HEAT_PROCESS_DELAY: float = 1.2  # Pausa entre mechs para visualización
+
+# ==============================================================================
 # STATE
 # ==============================================================================
 var processing_heat: bool = false
+var _scene_tree: SceneTree = null
+var _current_mech_index: int = 0
+var _mechs_to_process: Array = []
 
 # ==============================================================================
 # REFERENCES
@@ -36,8 +45,29 @@ func set_mechs(p_player_mechs: Array, p_enemy_mechs: Array) -> void:
 	enemy_mechs = p_enemy_mechs
 
 
+func set_scene_tree(tree: SceneTree) -> void:
+	"""Establece la referencia al SceneTree para poder usar timers"""
+	_scene_tree = tree
+
+
 func process_heat_phase() -> void:
-	"""Procesa la fase de calor para todos los mechs"""
+	"""Inicia la fase de calor - procesa los mechs de forma iterativa"""
+	
+	# En modo tutorial, esperar a que el hint de heat esté cerrado
+	var tutorial_mgr = Engine.get_singleton("TutorialManager") if Engine.has_singleton("TutorialManager") else null
+	if not tutorial_mgr:
+		# Intentar obtener del árbol si existe
+		if _scene_tree:
+			tutorial_mgr = _scene_tree.root.get_node_or_null("/root/TutorialManager")
+	
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		# Esperar a que el hint de heat se cierre antes de procesar
+		while tutorial_mgr.is_heat_phase_blocked():
+			if _scene_tree:
+				await _scene_tree.create_timer(0.1).timeout
+			else:
+				break
+	
 	processing_heat = true
 	heat_phase_started.emit()
 	
@@ -46,14 +76,70 @@ func process_heat_phase() -> void:
 	combat_message.emit("        HEAT PHASE", Color.ORANGE)
 	combat_message.emit("═══════════════════════════════", Color.ORANGE)
 	
-	# Procesar cada mech
+	# Construir lista de mechs a procesar
+	_mechs_to_process.clear()
 	var all_mechs = player_mechs + enemy_mechs
 	for mech in all_mechs:
-		if mech.is_destroyed:
-			continue
-		
-		_process_mech_heat(mech)
+		if not mech.is_destroyed:
+			_mechs_to_process.append(mech)
 	
+	_current_mech_index = 0
+	
+	# Si no hay mechs a procesar, terminar inmediatamente
+	if _mechs_to_process.is_empty():
+		_finish_heat_phase()
+		return
+	
+	# Iniciar procesamiento del primer mech después de un pequeño delay
+	_schedule_next_mech_processing()
+
+
+func _schedule_next_mech_processing() -> void:
+	"""Programa el procesamiento del siguiente mech usando timer"""
+	if not _scene_tree:
+		# Sin SceneTree, procesar todo síncronamente
+		_process_all_mechs_sync()
+		return
+	
+	# Crear timer para procesar el siguiente mech
+	var timer = _scene_tree.create_timer(HEAT_PROCESS_DELAY)
+	timer.timeout.connect(_process_next_mech, CONNECT_ONE_SHOT)
+
+
+func _process_all_mechs_sync() -> void:
+	"""Fallback: procesa todos los mechs síncronamente"""
+	for mech in _mechs_to_process:
+		mech_heat_processing_started.emit(mech)
+		_process_mech_heat(mech)
+	_finish_heat_phase()
+
+
+func _process_next_mech() -> void:
+	"""Procesa el siguiente mech en la cola"""
+	if _current_mech_index >= _mechs_to_process.size():
+		_finish_heat_phase()
+		return
+	
+	var mech = _mechs_to_process[_current_mech_index]
+	
+	# Emitir señal de que empezamos a procesar este mech
+	mech_heat_processing_started.emit(mech)
+	
+	# Procesar calor de este mech
+	_process_mech_heat(mech)
+	
+	_current_mech_index += 1
+	
+	# Programar siguiente mech con delay
+	if _current_mech_index < _mechs_to_process.size():
+		_schedule_next_mech_processing()
+	else:
+		# Era el último mech
+		_finish_heat_phase()
+
+
+func _finish_heat_phase() -> void:
+	"""Finaliza la fase de calor"""
 	processing_heat = false
 	heat_phase_completed.emit()
 

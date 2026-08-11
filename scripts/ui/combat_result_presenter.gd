@@ -3,6 +3,7 @@ extends RefCounted
 ## Presenta y anima los resultados de combate en la UI
 ## Responsabilidad: Formatear mensajes y mostrar efectos visuales de combate
 
+@warning_ignore("unused_signal")
 signal result_presentation_complete
 
 var _ui: Node  # BattleUI reference (CanvasLayer)

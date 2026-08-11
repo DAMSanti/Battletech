@@ -255,7 +255,7 @@ func _on_join_queue_completed(result: int, response_code: int, _headers: PackedS
 		matchmaking_error.emit(error_msg)
 
 
-func _on_leave_queue_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+func _on_leave_queue_completed(result: int, _response_code: int, _headers: PackedStringArray, _body: PackedByteArray) -> void:
 	if result != HTTPRequest.RESULT_SUCCESS:
 		Log.warning("Matchmaking", "Leave queue request may have failed", {"result": result})
 	

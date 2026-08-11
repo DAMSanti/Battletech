@@ -75,9 +75,21 @@ func setup(p_battle_scene: Node2D, p_hex_grid: HexGrid, p_ui: Node, p_turn_manag
 	
 	if use_combat_component:
 		combat_executor.setup(hex_grid, is_multiplayer)
+		# Pasar SceneTree y parent node para animaciones
+		if battle_scene:
+			var tree = battle_scene.get_tree()
+			# Usar effects_layer si existe, sino battle_scene
+			var effects_parent = battle_scene.effects_layer if battle_scene.get("effects_layer") else battle_scene
+			Log.info("Combat", "Setting up combat animations: tree=%s, effects_parent=%s" % [tree != null, effects_parent.name if effects_parent else "null"])
+			if tree:
+				combat_executor.set_scene_tree(tree)
+			combat_executor.set_parent_node(effects_parent)
 		_connect_combat_signals()
 	
 	if use_heat_component:
+		# Pasar SceneTree al heat_manager para que pueda usar timers
+		if battle_scene and battle_scene.get_tree():
+			heat_manager.set_scene_tree(battle_scene.get_tree())
 		_connect_heat_signals()
 	
 	if use_state_component:
@@ -284,6 +296,12 @@ func end_weapon_attack_phase() -> void:
 		combat_executor.end_weapon_attack_phase()
 
 
+func end_physical_attack_phase() -> void:
+	"""Finaliza la fase de ataque físico"""
+	if use_combat_component:
+		combat_executor.end_physical_attack_phase()
+
+
 # ==============================================================================
 # HEAT COMPONENT FACADE
 # ==============================================================================
@@ -350,6 +368,7 @@ func _connect_deployment_signals() -> void:
 func _connect_combat_signals() -> void:
 	"""Conecta señales del executor de combate"""
 	combat_executor.weapon_attack_started.connect(_on_weapon_attack_started)
+	combat_executor.weapon_fired.connect(_on_weapon_fired)
 	combat_executor.weapon_attack_completed.connect(_on_weapon_attack_completed)
 	combat_executor.physical_attack_completed.connect(_on_physical_attack_completed)
 	combat_executor.target_destroyed.connect(_on_target_destroyed)
@@ -363,9 +382,12 @@ func _connect_heat_signals() -> void:
 	"""Conecta señales del manager de calor"""
 	heat_manager.heat_phase_started.connect(_on_heat_phase_started)
 	heat_manager.heat_phase_completed.connect(_on_heat_phase_completed)
+	heat_manager.mech_heat_processing_started.connect(_on_mech_heat_processing_started)
 	heat_manager.mech_heat_processed.connect(_on_mech_heat_processed)
 	heat_manager.mech_shutdown.connect(_on_mech_shutdown)
+	heat_manager.mech_restarted.connect(_on_mech_restarted)
 	heat_manager.mech_destroyed_by_heat.connect(_on_mech_destroyed_by_heat)
+	heat_manager.ammo_explosion.connect(_on_ammo_explosion)
 	heat_manager.combat_message.connect(_on_combat_message)
 	heat_manager.unit_info_update_requested.connect(_on_unit_info_update)
 	heat_manager.battle_end_check_requested.connect(_on_battle_end_check)
@@ -453,8 +475,25 @@ func _on_mech_deploy_requested(mech, hex: Vector2i, facing: int) -> void:
 
 
 func _on_show_facing_selector(screen_pos: Vector2, hex: Vector2i) -> void:
+	battle_scene.selected_hex = hex
+	
+	# En modo tutorial, usar el selector de tutorial con direcciones restringidas
+	if battle_scene.is_tutorial_mode:
+		var tutorial_mgr = battle_scene.get_node_or_null("/root/TutorialManager")
+		Log.debug("Tutorial", "_on_show_facing_selector: tutorial_mode=true, tutorial_mgr=%s" % (tutorial_mgr != null))
+		if tutorial_mgr and tutorial_mgr.battle_controller:
+			var allowed = tutorial_mgr.battle_controller.allowed_facings
+			Log.debug("Tutorial", "_on_show_facing_selector: allowed_facings=%s" % str(allowed))
+			if allowed.size() > 0:
+				# Hay facings restringidos - usar selector de tutorial
+				Log.info("Tutorial", "Showing tutorial facing selector with allowed: %s" % str(allowed))
+				if battle_scene.has_method("_ui_show_facing_selector_tutorial"):
+					battle_scene._ui_show_facing_selector_tutorial(screen_pos, allowed[0], hex)
+					return
+	
+	# Modo normal - mostrar todos los facings
+	Log.debug("UI", "_on_show_facing_selector: Normal mode, is_tutorial=%s" % battle_scene.is_tutorial_mode)
 	if battle_scene.has_method("_ui_show_facing_selector"):
-		battle_scene.selected_hex = hex
 		battle_scene._ui_show_facing_selector(screen_pos, hex)
 
 
@@ -485,20 +524,51 @@ func _on_weapon_attack_started(attacker, target) -> void:
 	if ui and ui.has_method("show_weapon_selector"):
 		var range_hexes = hex_grid.hex_distance(attacker.hex_position, target.hex_position)
 		ui.show_weapon_selector(attacker, target, range_hexes)
+	
+	# Trigger tutorial cuando se selecciona objetivo
+	if battle_scene and battle_scene.has_method("_notify_tutorial"):
+		battle_scene._notify_tutorial("target_selected")
 
 
-func _on_weapon_attack_completed(attacker, total_heat: int) -> void:
+func _on_weapon_fired(attacker, weapon: Dictionary, hit: bool, damage: int, location: String) -> void:
+	"""Handler para cuando un arma dispara - tracking de estadísticas"""
+	if battle_scene and battle_scene.has_method("_on_weapon_fired_stats"):
+		battle_scene._on_weapon_fired_stats(attacker, weapon, hit, damage, location)
+	
+	# Trigger tutorial cuando el jugador recibe daño
+	if hit and damage > 0:
+		# Si el atacante es enemigo, el jugador recibió daño
+		if attacker in combat_executor.enemy_mechs and battle_scene and battle_scene.has_method("_trigger_tutorial_event"):
+			battle_scene._trigger_tutorial_event("damage_received")
+
+
+func _on_weapon_attack_completed(attacker, _total_heat: int) -> void:
 	if battle_scene.has_method("_end_weapon_attack_phase"):
 		battle_scene._end_weapon_attack_phase()
+	
+	# Trigger tutorial cuando el jugador completa su ataque de armas
+	if attacker in combat_executor.player_mechs and battle_scene and battle_scene.has_method("_notify_tutorial"):
+		battle_scene._notify_tutorial("weapon_fired")
 
 
 func _on_physical_attack_completed(attacker, target, attack_type: String, hit: bool) -> void:
+	# Tracking de estadísticas
+	if battle_scene and battle_scene.has_method("_on_physical_attack_stats"):
+		battle_scene._on_physical_attack_stats(attacker, target, attack_type, hit)
+	
 	if battle_scene.has_method("_on_physical_attack_complete"):
 		battle_scene._on_physical_attack_complete()
 
 
 func _on_target_destroyed(target, destroyed_by) -> void:
 	Log.info("Combat", "%s destroyed by %s" % [target.mech_name, destroyed_by.mech_name])
+	# Tracking de estadísticas
+	if battle_scene and battle_scene.has_method("_on_mech_destroyed_stats"):
+		battle_scene._on_mech_destroyed_stats(target, destroyed_by)
+	
+	# Trigger tutorial cuando se destruye un enemigo
+	if target in combat_executor.enemy_mechs and battle_scene and battle_scene.has_method("_trigger_tutorial_event"):
+		battle_scene._trigger_tutorial_event("enemy_destroyed")
 
 
 func _on_combat_message(text: String, color: Color) -> void:
@@ -534,12 +604,59 @@ func _on_mech_heat_processed(mech, initial: int, final: int, dissipated: int) ->
 	Log.debug("Heat", "%s: %d -> %d (-%d)" % [mech.mech_name, initial, final, dissipated])
 
 
+func _on_mech_heat_processing_started(mech) -> void:
+	"""Cuando empieza a procesarse el calor de un mech, centrar la cámara en él"""
+	Log.debug("Heat", "Processing heat for %s" % mech.mech_name)
+	# Centrar cámara en el mech que está siendo procesado
+	if camera_controller and camera_controller.has_method("pan_to_position"):
+		camera_controller.pan_to_position(mech.position)
+
+
 func _on_mech_shutdown(mech, automatic: bool) -> void:
 	Log.warning("Heat", "%s shutdown! (automatic: %s)" % [mech.mech_name, automatic])
+	# Mostrar efecto visual de shutdown
+	if mech.has_method("show_shutdown_effect"):
+		mech.show_shutdown_effect()
+	# Mostrar anuncio dramático
+	if ui and ui.has_method("show_shutdown_announcement"):
+		ui.show_shutdown_announcement(mech.mech_name)
+
+
+func _on_mech_restarted(mech) -> void:
+	Log.info("Heat", "%s restarted!" % mech.mech_name)
+	# Centrar cámara en el mech
+	if camera_controller and camera_controller.has_method("pan_to_position"):
+		camera_controller.pan_to_position(mech.position)
+	# Ocultar efecto visual de shutdown
+	if mech.has_method("hide_shutdown_effect"):
+		mech.hide_shutdown_effect()
+	# Mostrar anuncio de reinicio
+	if ui and ui.has_method("show_restart_announcement"):
+		ui.show_restart_announcement(mech.mech_name)
 
 
 func _on_mech_destroyed_by_heat(mech, reason: String) -> void:
 	Log.error("Heat", "%s destroyed: %s" % [mech.mech_name, reason])
+	# Centrar cámara en el mech destruido
+	if camera_controller and camera_controller.has_method("pan_to_position"):
+		camera_controller.pan_to_position(mech.position)
+	# Mostrar anuncio de destrucción
+	if ui and ui.has_method("show_mech_destroyed_announcement"):
+		ui.show_mech_destroyed_announcement(mech.mech_name)
+
+
+func _on_ammo_explosion(mech, location: String, has_case: bool) -> void:
+	"""Handler para explosiones de munición"""
+	Log.error("Heat", "%s ammo explosion at %s (CASE: %s)" % [mech.mech_name, location, has_case])
+	# Centrar cámara en el mech
+	if camera_controller and camera_controller.has_method("pan_to_position"):
+		camera_controller.pan_to_position(mech.position)
+	# Mostrar efecto visual de explosión
+	if mech.has_method("show_explosion_effect"):
+		mech.show_explosion_effect()
+	# Mostrar anuncio dramático
+	if ui and ui.has_method("show_ammo_explosion_announcement"):
+		ui.show_ammo_explosion_announcement(mech.mech_name)
 
 
 func _on_state_changed(new_state: int) -> void:
@@ -873,7 +990,7 @@ func movement_execute(mech: Mech, destination: Vector2i, path: Array) -> void:
 # MOVEMENT SIGNAL HANDLERS
 # ==============================================================================
 
-func _on_movement_type_selected(mech, movement_type: int) -> void:
+func _on_movement_type_selected(_mech, _movement_type: int) -> void:
 	"""Handler cuando se selecciona tipo de movimiento"""
 	# Sincronizar reachable_hexes con battle_scene para overlays
 	if battle_scene:
@@ -926,9 +1043,12 @@ func _on_movement_cancelled() -> void:
 		overlay_manager.update_and_render()
 
 
-func _on_movement_executed(mech, from: Vector2i, to: Vector2i, cost: int) -> void:
+func _on_movement_executed(mech, _from: Vector2i, _to: Vector2i, _cost: int) -> void:
 	"""Handler cuando se ejecuta movimiento"""
 	_on_overlays_update()
+	# Ocultar botón de cancelar movimiento
+	if ui and ui.has_method("hide_cancel_movement_button"):
+		ui.hide_cancel_movement_button()
 	if battle_scene.has_method("_on_movement_execution_complete"):
 		battle_scene._on_movement_execution_complete(mech)
 
@@ -941,11 +1061,15 @@ func _on_movement_blocked(mech, reason: String) -> void:
 
 func _on_turn_only_selected(mech) -> void:
 	"""Handler cuando se selecciona solo girar"""
+	# Sincronizar estado con battle_scene
+	if battle_scene:
+		battle_scene.pending_turn_only = true
+		battle_scene.pending_movement_selection = false
 	if battle_scene.has_method("_show_turn_only_facing_selector"):
 		battle_scene._show_turn_only_facing_selector(mech)
 
 
-func _on_facing_adjustment_requested(mech, screen_pos: Vector2, current_facing: int, available_mp: int) -> void:
+func _on_facing_adjustment_requested(mech, _screen_pos: Vector2, _current_facing: int, _available_mp: int) -> void:
 	"""Handler cuando se solicita ajuste de facing post-movimiento"""
 	if battle_scene.has_method("_show_post_movement_facing_selector"):
 		battle_scene._show_post_movement_facing_selector(mech, mech.hex_position)

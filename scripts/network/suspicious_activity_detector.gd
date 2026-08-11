@@ -336,4 +336,4 @@ func _log(message: String) -> void:
 	if _log_callback.is_valid():
 		_log_callback.call(message)
 	else:
-		print("[AntiCheat] ", message)
+		push_warning("[AntiCheat] " + message)

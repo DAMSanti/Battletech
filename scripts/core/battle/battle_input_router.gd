@@ -16,9 +16,12 @@ extends RefCounted
 # ==============================================================================
 signal hex_clicked(hex: Vector2i)
 signal hex_long_pressed(hex: Vector2i)
+@warning_ignore("unused_signal")
 signal camera_pan_started
+@warning_ignore("unused_signal")
 signal camera_pan_ended
 signal movement_flag_reset_requested
+@warning_ignore("unused_signal")
 signal movement_gesture_detected  # Para compatibilidad con BattleComponentsIntegrator
 
 # ==============================================================================

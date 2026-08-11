@@ -1,6 +1,19 @@
 @tool
 extends Node2D
 class_name HexGrid
+## Sistema de grid hexagonal para mapas tácticos BattleTech.
+##
+## Implementa un grid hexagonal flat-top con soporte para:
+## - Conversión entre coordenadas hexagonales y píxeles
+## - Pathfinding A* con costos de terreno
+## - Generación procedural de mapas
+## - Línea de visión y cobertura
+## - Elevaciones y terreno 3D
+##
+## @tutorial: Ver doc/TERRAIN_GENERATION.md para detalles del sistema de terreno.
+
+# Preload del controlador de tutorial
+const TutorialBattleControllerClass = preload("res://scripts/managers/tutorial_battle_controller.gd")
 
 # Configuración del grid hexagonal (flat-top hexagons)
 var hex_size: float = 64.0  # Tamaño del hexágono
@@ -33,22 +46,38 @@ const HEX_DIRECTIONS = [
 # Almacenamiento del estado del grid
 var hex_data: Dictionary = {}  # Posición -> datos (terreno, elevación, unidad)
 
+# Tutorial highlight (deprecated - now uses BattleOverlayManager)
+var tutorial_highlighted_hexes: Array[Vector2i] = []
+var tutorial_highlight_color: Color = Color(0.2, 0.8, 1.0, 0.6)
+
 func _ready():
 	z_index = 0  # Grid en el fondo
 	
-	# En multiplayer, usar la semilla del servidor; en singleplayer, generar aleatoria
-	var network_manager = get_node_or_null("/root/NetworkManager")
-	if network_manager and network_manager.is_in_match() and network_manager.current_map_seed != 0:
-		terrain_seed = network_manager.current_map_seed
-		Log.info("System", "Using server map seed", {"seed": terrain_seed})
+	# Verificar si estamos en modo tutorial (usar mapa fijo)
+	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
+	var is_tutorial = mech_bay_manager and mech_bay_manager.has_meta("is_tutorial") and mech_bay_manager.get_meta("is_tutorial")
+	
+	if is_tutorial:
+		# Mapa tutorial fijo - plano y sin obstáculos
+		terrain_seed = TutorialBattleControllerClass.TUTORIAL_MAP_SEED
+		Log.info("System", "Using TUTORIAL map (flat terrain)", {"seed": terrain_seed})
 	else:
-		terrain_seed = randi()
-		Log.info("System", "Using random map seed", {"seed": terrain_seed})
+		# En multiplayer, usar la semilla del servidor; en singleplayer, generar aleatoria
+		var network_manager = get_node_or_null("/root/NetworkManager")
+		if network_manager and network_manager.is_in_match() and network_manager.current_map_seed != 0:
+			terrain_seed = network_manager.current_map_seed
+			Log.info("System", "Using server map seed", {"seed": terrain_seed})
+		else:
+			terrain_seed = randi()
+			Log.info("System", "Using random map seed", {"seed": terrain_seed})
 	
 	_preload_terrain_icons()
 	
-	# Generar mapa procedural
-	_generate_procedural_map()
+	# Generar mapa (tutorial = fijo, normal = procedural)
+	if is_tutorial:
+		_generate_tutorial_map()
+	else:
+		_generate_procedural_map()
 	
 	queue_redraw()  # Forzar redibujado con los nuevos terrenos
 	# Ensure we watch for inspector changes in editor / runtime
@@ -67,6 +96,8 @@ func _ready():
 		_surface_renderer.show_elevation_labels = false
 		# Pasar referencia a este hex_grid para que pueda obtener info de terreno
 		_surface_renderer.set_hex_grid(self)
+	
+	# Tutorial overlay ya no se crea aquí - se usa BattleOverlayManager
 
 func _preload_terrain_icons():
 	# Precargar todos los iconos SVG
@@ -83,7 +114,19 @@ func _generate_procedural_map():
 	hex_data = generator.generate_map()
 	Log.info("System", "Mapa procedural generado", {"seed": terrain_seed})
 
-# Convertir coordenadas hexagonales a píxeles (CENTRO del hexágono)
+## Generar mapa tutorial (plano, sin obstáculos, línea de visión clara)
+func _generate_tutorial_map():
+	hex_data = TutorialBattleControllerClass.generate_tutorial_map_data(grid_width, grid_height)
+	Log.info("System", "Mapa TUTORIAL generado (plano)", {"seed": terrain_seed})
+
+# ============================================================
+# TUTORIAL HIGHLIGHT SYSTEM
+# ============================================================
+
+## Convierte coordenadas hexagonales a posición en píxeles (centro del hexágono).
+## [param hex]: Coordenadas hexagonales (axial q,r)
+## [param include_elevation]: Si true, ajusta Y según la elevación del hex
+## [return]: Posición en píxeles del centro del hexágono
 func hex_to_pixel(hex: Vector2i, include_elevation: bool = false) -> Vector2:
 	# Fórmula para flat-top hexagons (orientación con lados planos arriba/abajo)
 	var x = hex_size * (3.0/2.0 * hex.x)
@@ -96,7 +139,10 @@ func hex_to_pixel(hex: Vector2i, include_elevation: bool = false) -> Vector2:
 	
 	return Vector2(x, y)
 
-# Convertir píxeles a coordenadas hexagonales
+
+## Convierte posición en píxeles a coordenadas hexagonales.
+## [param pixel]: Posición en píxeles
+## [return]: Coordenadas hexagonales redondeadas al hex más cercano
 func pixel_to_hex(pixel: Vector2) -> Vector2i:
 	# Fórmula inversa para flat-top hexagons
 	var q = (2.0/3.0 * pixel.x) / hex_size
@@ -119,7 +165,11 @@ func axial_round(hex: Vector2) -> Vector2i:
 	
 	return Vector2i(int(q), int(r))
 
-# Calcular distancia entre dos hexágonos
+
+## Calcula la distancia en hexágonos entre dos posiciones (Manhattan hexagonal).
+## [param a]: Primer hexágono
+## [param b]: Segundo hexágono
+## [return]: Distancia en número de hexágonos
 func hex_distance(a: Vector2i, b: Vector2i) -> int:
 	var ac = axial_to_cube(a)
 	var bc = axial_to_cube(b)
@@ -134,7 +184,10 @@ func axial_to_cube(hex: Vector2i) -> Vector3i:
 func cube_to_axial(cube: Vector3i) -> Vector2i:
 	return Vector2i(cube.x, cube.z)
 
-# Obtener vecinos de un hexágono
+
+## Obtiene los hexágonos adyacentes válidos a una posición.
+## [param hex]: Posición central
+## [return]: Array de Vector2i con los vecinos dentro del grid
 func get_neighbors(hex: Vector2i) -> Array:
 	var neighbors = []
 	for direction in HEX_DIRECTIONS:
@@ -143,15 +196,24 @@ func get_neighbors(hex: Vector2i) -> Array:
 			neighbors.append(neighbor)
 	return neighbors
 
+## Verifica si una coordenada hexagonal está dentro de los límites del grid.
+## [param hex]: Coordenadas a verificar
+## [return]: true si el hex está dentro del grid
 func is_valid_hex(hex: Vector2i) -> bool:
 	return hex.x >= 0 and hex.x < grid_width and hex.y >= 0 and hex.y < grid_height
 
-# Pathfinding: encontrar camino entre dos hexágonos
+
+## Encuentra el camino más corto entre dos hexágonos usando A*.
+## Considera costos de terreno, elevación y unidades bloqueantes.
+## [param start]: Hexágono de inicio
+## [param goal]: Hexágono destino
+## [param max_distance]: Distancia máxima (-1 = sin límite)
+## [return]: Array de Vector2i con el camino, vacío si no hay ruta
 func find_path(start: Vector2i, goal: Vector2i, max_distance: int = -1) -> Array:
 	if not is_valid_hex(start) or not is_valid_hex(goal):
 		return []
 	
-	if not hex_data[goal]["walkable"]:
+	if not hex_data[goal].get("walkable", true):
 		return []
 	
 	var frontier = [start]
@@ -166,7 +228,7 @@ func find_path(start: Vector2i, goal: Vector2i, max_distance: int = -1) -> Array
 			break
 		
 		for next_hex in get_neighbors(current_hex):
-			if not hex_data[next_hex]["walkable"]:
+			if not hex_data[next_hex].get("walkable", true):
 				continue
 			
 			var new_cost = cost_so_far[current_hex] + _get_movement_cost(current_hex, next_hex)
@@ -228,7 +290,7 @@ func get_reachable_hexes(start: Vector2i, movement_points: int) -> Array:
 		
 		for next_hex in get_neighbors(current):
 			# Permitir el hexágono de inicio, pero no otros hexágonos ocupados
-			if next_hex != start and not hex_data[next_hex]["walkable"]:
+			if next_hex != start and not hex_data[next_hex].get("walkable", true):
 				continue
 			
 			var terrain_cost = _get_movement_cost(current, next_hex)

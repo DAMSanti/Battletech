@@ -192,13 +192,6 @@ static func can_fire_weapon(attacker, weapon, target, hex_grid) -> Dictionary:
 
 ## Resolver daño según tipo de arma
 static func resolve_damage(attacker, target, weapon, modifiers: Dictionary) -> Dictionary:
-	var result = {
-		"total_damage": 0,
-		"locations_hit": [],
-		"critical_hits": [],
-		"message": ""
-	}
-	
 	var weapon_category = weapon.get("category", ComponentDatabase.WeaponCategory.ENERGY)
 	
 	# Verificar si es arma de misiles
@@ -208,7 +201,7 @@ static func resolve_damage(attacker, target, weapon, modifiers: Dictionary) -> D
 		return _resolve_direct_damage(attacker, target, weapon, modifiers)
 
 ## Resolver daño de armas directas (energía/balística)
-static func _resolve_direct_damage(attacker, target, weapon, modifiers: Dictionary) -> Dictionary:
+static func _resolve_direct_damage(_attacker, target, weapon, modifiers: Dictionary) -> Dictionary:
 	var result = {
 		"total_damage": 0,
 		"locations_hit": [],
@@ -248,7 +241,7 @@ static func _resolve_direct_damage(attacker, target, weapon, modifiers: Dictiona
 	return result
 
 ## Resolver daño de misiles (cluster table)
-static func _resolve_missile_damage(attacker, target, weapon, modifiers: Dictionary) -> Dictionary:
+static func _resolve_missile_damage(_attacker, target, weapon, modifiers: Dictionary) -> Dictionary:
 	var result = {
 		"total_damage": 0,
 		"locations_hit": [],

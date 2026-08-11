@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Critical hit effect - bigger explosion with armor breach -->
+  <defs>
+    <radialGradient id="critFlash" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FFFFFF;stop-opacity:1"/>
+      <stop offset="20%" style="stop-color:#FFFF00;stop-opacity:1"/>
+      <stop offset="40%" style="stop-color:#FF6600;stop-opacity:0.9"/>
+      <stop offset="70%" style="stop-color:#FF0000;stop-opacity:0.6"/>
+      <stop offset="100%" style="stop-color:#880000;stop-opacity:0"/>
+    </radialGradient>
+    <filter id="critGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="glow"/>
+      <feMerge>
+        <feMergeNode in="glow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- Outer explosion ring -->
+  <circle cx="32" cy="32" r="28" fill="none" stroke="#FF4400" stroke-width="4" opacity="0.5" filter="url(#critGlow)"/>
+  <!-- Main explosion -->
+  <circle cx="32" cy="32" r="22" fill="url(#critFlash)" filter="url(#critGlow)"/>
+  <!-- White hot core -->
+  <circle cx="32" cy="32" r="10" fill="#FFFFFF"/>
+  <circle cx="32" cy="32" r="5" fill="#FFFFAA"/>
+  <!-- Major sparks/debris -->
+  <line x1="32" y1="32" x2="4" y2="8" stroke="#FF6600" stroke-width="3" opacity="0.9"/>
+  <line x1="32" y1="32" x2="60" y2="6" stroke="#FFAA00" stroke-width="3" opacity="0.9"/>
+  <line x1="32" y1="32" x2="62" y2="32" stroke="#FF8800" stroke-width="3" opacity="0.9"/>
+  <line x1="32" y1="32" x2="58" y2="58" stroke="#FF6600" stroke-width="3" opacity="0.9"/>
+  <line x1="32" y1="32" x2="32" y2="62" stroke="#FFAA00" stroke-width="3" opacity="0.9"/>
+  <line x1="32" y1="32" x2="6" y2="56" stroke="#FF8800" stroke-width="3" opacity="0.9"/>
+  <line x1="32" y1="32" x2="2" y2="32" stroke="#FF6600" stroke-width="3" opacity="0.9"/>
+  <line x1="32" y1="32" x2="8" y2="8" stroke="#FFAA00" stroke-width="3" opacity="0.9"/>
+  <!-- Armor fragments -->
+  <polygon points="6,10 10,6 14,12 8,14" fill="#445566"/>
+  <polygon points="54,4 60,8 56,14 52,10" fill="#556677"/>
+  <polygon points="58,54 62,58 56,62 54,56" fill="#445566"/>
+  <polygon points="8,52 4,58 10,60 12,54" fill="#556677"/>
+  <!-- Sparks at endpoints -->
+  <circle cx="4" cy="8" r="3" fill="#FFCC00"/>
+  <circle cx="60" cy="6" r="3" fill="#FFAA00"/>
+  <circle cx="58" cy="58" r="3" fill="#FF8800"/>
+  <circle cx="6" cy="56" r="3" fill="#FFCC00"/>
+</svg>

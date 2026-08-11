@@ -13,28 +13,44 @@ signal turn_changed(turn_number: int)
 signal active_team_changed(team: String)
 signal active_unit_changed(mech_id: String)
 
+@warning_ignore("unused_signal")
 signal deployment_started(team: String)
+@warning_ignore("unused_signal")
 signal deployment_zone_ready(valid_hexes: Array)
+@warning_ignore("unused_signal")
 signal mech_deployed(mech_id: String, position: Vector2i)
+@warning_ignore("unused_signal")
 signal deployment_complete(team: String)
 
+@warning_ignore("unused_signal")
 signal movement_started(mech_id: String)
+@warning_ignore("unused_signal")
 signal movement_options_ready(mech_id: String, options: Dictionary)
+@warning_ignore("unused_signal")
 signal movement_executed(mech_id: String, path: Array, new_position: Vector2i)
+@warning_ignore("unused_signal")
 signal facing_change_started(mech_id: String)
+@warning_ignore("unused_signal")
 signal facing_changed(mech_id: String, new_facing: int, mp_cost: int)
 
+@warning_ignore("unused_signal")
 signal attack_started(attacker_id: String, defender_id: String)
+@warning_ignore("unused_signal")
 signal attack_resolved(result: Dictionary)
 
+@warning_ignore("unused_signal")
 signal initiative_rolled(results: Dictionary)
+@warning_ignore("unused_signal")
 signal turn_order_determined(order: Array)
 
+@warning_ignore("unused_signal")
 signal game_over(winner: String, reason: String)
+@warning_ignore("unused_signal")
 signal error_occurred(error_code: int, message: String)
 
 # Estado de la batalla (BattleState)
 var _state = null
+@warning_ignore("unused_private_class_variable")
 var _is_initialized: bool = false
 
 ## Obtiene el estado actual de la batalla (solo lectura)
@@ -60,7 +76,7 @@ func get_local_team() -> String:
 #region Inicialización
 
 ## Inicializa la batalla con la configuración dada
-func initialize(config: Dictionary) -> bool:
+func initialize(_config: Dictionary) -> bool:
 	push_error("BattleController.initialize() must be overridden")
 	return false
 
@@ -78,12 +94,12 @@ func request_start_deployment() -> void:
 	push_error("BattleController.request_start_deployment() must be overridden")
 
 ## Obtiene las posiciones válidas de despliegue para un equipo
-func get_deployment_zone(team: String) -> Array[Vector2i]:
+func get_deployment_zone(_team: String) -> Array[Vector2i]:
 	push_error("BattleController.get_deployment_zone() must be overridden")
 	return []
 
 ## Solicita desplegar un mech en una posición
-func request_deploy_mech(mech_id: String, position: Vector2i, facing: int) -> void:
+func request_deploy_mech(_mech_id: String, _position: Vector2i, _facing: int) -> void:
 	push_error("BattleController.request_deploy_mech() must be overridden")
 
 ## Verifica si todos los mechs han sido desplegados
@@ -105,24 +121,24 @@ func request_roll_initiative() -> void:
 #region Fase de Movimiento
 
 ## Solicita iniciar el movimiento de un mech
-func request_start_movement(mech_id: String) -> void:
+func request_start_movement(_mech_id: String) -> void:
 	push_error("BattleController.request_start_movement() must be overridden")
 
 ## Obtiene las opciones de movimiento para un mech
-func get_movement_options(mech_id: String) -> Dictionary:
+func get_movement_options(_mech_id: String) -> Dictionary:
 	push_error("BattleController.get_movement_options() must be overridden")
 	return {}
 
 ## Solicita ejecutar un movimiento
-func request_execute_movement(mech_id: String, path: Array, movement_type: GameEnums.MovementType) -> void:
+func request_execute_movement(_mech_id: String, _path: Array, _movement_type: GameEnums.MovementType) -> void:
 	push_error("BattleController.request_execute_movement() must be overridden")
 
 ## Solicita cambiar la orientación después del movimiento
-func request_change_facing(mech_id: String, new_facing: int) -> void:
+func request_change_facing(_mech_id: String, _new_facing: int) -> void:
 	push_error("BattleController.request_change_facing() must be overridden")
 
 ## Solicita terminar el movimiento sin cambiar facing
-func request_end_movement(mech_id: String) -> void:
+func request_end_movement(_mech_id: String) -> void:
 	push_error("BattleController.request_end_movement() must be overridden")
 
 #endregion
@@ -130,21 +146,21 @@ func request_end_movement(mech_id: String) -> void:
 #region Fase de Combate
 
 ## Solicita declarar un ataque
-func request_declare_attack(attacker_id: String, defender_id: String, weapon_index: int) -> void:
+func request_declare_attack(_attacker_id: String, _defender_id: String, _weapon_index: int) -> void:
 	push_error("BattleController.request_declare_attack() must be overridden")
 
 ## Obtiene los posibles objetivos para un mech
-func get_valid_targets(mech_id: String) -> Array:
+func get_valid_targets(_mech_id: String) -> Array:
 	push_error("BattleController.get_valid_targets() must be overridden")
 	return []
 
 ## Obtiene el modificador de ataque base
-func get_attack_modifier(attacker_id: String, defender_id: String, weapon_index: int) -> int:
+func get_attack_modifier(_attacker_id: String, _defender_id: String, _weapon_index: int) -> int:
 	push_error("BattleController.get_attack_modifier() must be overridden")
 	return 0
 
 ## Solicita resolver un ataque físico
-func request_physical_attack(attacker_id: String, defender_id: String, attack_type: GameEnums.PhysicalAttackType) -> void:
+func request_physical_attack(_attacker_id: String, _defender_id: String, _attack_type: GameEnums.PhysicalAttackType) -> void:
 	push_error("BattleController.request_physical_attack() must be overridden")
 
 #endregion

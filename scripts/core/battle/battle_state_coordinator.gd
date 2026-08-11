@@ -11,6 +11,7 @@ signal state_changed(new_state: int)  # GameEnums.GameState
 signal phase_changed(phase: String)
 signal turn_changed(team: String, turn_number: int)
 signal unit_activated(unit: Mech)
+@warning_ignore("unused_signal")
 signal battle_started()
 signal battle_ended(winner: String, loser: String, reason: String)
 signal combat_message(text: String, color: Color)

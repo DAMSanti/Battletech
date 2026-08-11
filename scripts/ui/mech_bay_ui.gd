@@ -2,6 +2,10 @@ extends Control
 
 # UI del Mech Bay - Sistema de customización de mechs
 
+# Señales para integración con otros sistemas
+signal loadout_applied(loadout: MechLoadout)
+signal loadout_saved(loadout_name: String)
+
 @onready var component_palette = $ComponentSelectorPopup/VBoxContainer/ScrollContainer/ComponentsList
 @onready var mech_selector = $MainContainer/MechDisplay/VBoxContainer/MechSelector
 @onready var weight_display = $MainContainer/MechDisplay/VBoxContainer/WeightDisplay
@@ -31,6 +35,7 @@ var current_loadout: MechLoadout = null
 var selected_component: Dictionary = {}
 var dragging_component = false
 var current_location_for_add: MechLoadout.MechLocation = -1  # Para saber a qué locación añadir
+var _toast_tween: Tween = null  # Para animación de toast
 
 # Colores para feedback visual
 const COLOR_VALID = Color(0.2, 0.8, 0.2)
@@ -617,9 +622,35 @@ func _validate_loadout():
 		validation_panel.set_item_custom_fg_color(index, COLOR_WARNING)
 
 func _show_message(message: String, color: Color = COLOR_NORMAL):
-	# Mostrar mensaje temporal
+	# Mostrar mensaje temporal con toast notification visual
 	Log.debug("UI", "MechBay message", {"message": message})
-	# TODO: Añadir toast notification visual
+	
+	# Crear toast label si no existe
+	var toast = get_node_or_null("ToastLabel")
+	if not toast:
+		toast = Label.new()
+		toast.name = "ToastLabel"
+		toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		toast.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		toast.add_theme_font_size_override("font_size", 18)
+		toast.anchors_preset = Control.PRESET_CENTER_TOP
+		toast.position.y = 80
+		add_child(toast)
+	
+	# Cancelar animación anterior si existe
+	if _toast_tween and _toast_tween.is_valid():
+		_toast_tween.kill()
+	
+	# Configurar y mostrar
+	toast.text = message
+	toast.modulate = Color(color.r, color.g, color.b, 1.0)
+	toast.visible = true
+	
+	# Animar fade out
+	_toast_tween = create_tween()
+	_toast_tween.tween_interval(2.0)
+	_toast_tween.tween_property(toast, "modulate:a", 0.0, 0.5)
+	_toast_tween.tween_callback(func(): toast.visible = false)
 
 func _load_test_mech():
 	# El mech inicial se carga automáticamente del selector
@@ -773,8 +804,13 @@ func _on_apply_pressed():
 		return
 	
 	_show_message("Loadout aplicado al mech", COLOR_VALID)
-	# TODO: Integrar con sistema de batalla
-	# Emit signal o llamar a función para actualizar el mech en batalla
+	
+	# Guardar en el manager de loadouts seleccionados para batalla
+	if SelectedLoadoutManager:
+		SelectedLoadoutManager.set_loadout(current_loadout)
+	
+	# Emitir señal para integración con otros sistemas
+	loadout_applied.emit(current_loadout)
 
 func _on_back_pressed():
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

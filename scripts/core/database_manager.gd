@@ -146,7 +146,7 @@ func is_authenticated() -> bool:
 ## Refresh the access token using refresh token
 func do_refresh_token() -> void:
 	if _refresh_token_value.is_empty():
-		Log.error(LOG_CATEGORY, "No refresh token available")
+		Log.debug(LOG_CATEGORY, "No refresh token available")
 		token_expired.emit()
 		return
 	
@@ -161,7 +161,7 @@ func do_refresh_token() -> void:
 		token_refreshed.emit(_access_token)
 		Log.info(LOG_CATEGORY, "Token refreshed successfully")
 	else:
-		Log.error(LOG_CATEGORY, "Token refresh failed", {"error": result.error})
+		Log.debug(LOG_CATEGORY, "Token refresh failed | error=%s" % str(result.error))
 		clear_tokens()
 		token_expired.emit()
 
@@ -538,11 +538,10 @@ func _parse_response(endpoint: String, response: Array) -> Dictionary:
 		var error_code := data.get("code", "HTTP_ERROR") as String
 		var error_message := data.get("message", "HTTP Error %d" % response_code) as String
 		
-		Log.warning(LOG_CATEGORY, "HTTP error", {
-			"endpoint": endpoint,
-			"status": response_code,
-			"code": error_code
-		})
+		# Usar debug en vez de warning - errores HTTP son esperados en operaciones normales
+		Log.debug(LOG_CATEGORY, "HTTP error | endpoint=%s, status=%d, code=%s" % [
+			endpoint, response_code, error_code
+		])
 		
 		return _create_error_response(error_code, error_message, response_code)
 	

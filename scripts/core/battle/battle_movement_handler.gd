@@ -63,7 +63,18 @@ func select_movement_type(movement_type: int) -> void:
 	
 	pending_movement_selection = false
 	
-	selected_unit.start_movement(movement_type)
+	# Verificar si el mech puede actuar (shutdown/destruido)
+	if selected_unit.has_method("can_act") and not selected_unit.can_act():
+		var reason = "shutdown" if selected_unit.is_shutdown else "destroyed"
+		combat_message.emit("%s: Cannot move - mech is %s!" % [selected_unit.mech_name, reason], Color.RED)
+		movement_blocked.emit(selected_unit, "Mech " + reason)
+		return
+	
+	if not selected_unit.start_movement(movement_type):
+		# start_movement retorna false si el mech no puede moverse
+		combat_message.emit("%s: Cannot initiate movement!" % selected_unit.mech_name, Color.RED)
+		movement_blocked.emit(selected_unit, "Cannot initiate movement")
+		return
 	
 	var movement_names = ["None", "Walk", "Run", "Jump"]
 	
@@ -120,6 +131,13 @@ func _emit_movement_penalties() -> void:
 func select_turn_only() -> void:
 	"""Llamado cuando el jugador selecciona solo girar sin moverse"""
 	if not selected_unit or not _can_control_unit(selected_unit):
+		return
+	
+	# Verificar si el mech puede actuar (shutdown/destruido)
+	if selected_unit.has_method("can_act") and not selected_unit.can_act():
+		var reason = "shutdown" if selected_unit.is_shutdown else "destroyed"
+		combat_message.emit("%s: Cannot turn - mech is %s!" % [selected_unit.mech_name, reason], Color.RED)
+		movement_blocked.emit(selected_unit, "Mech " + reason)
 		return
 	
 	pending_movement_selection = false
@@ -350,7 +368,7 @@ func execute_movement(unit: Mech, hex: Vector2i, path: Array) -> void:
 		facing_adjustment_requested.emit(unit, mech_screen_pos, unit.facing, unit.current_movement)
 
 
-func _emit_movement_log(unit: Mech, old_pos: Vector2i, new_pos: Vector2i, path: Array, costs: Dictionary, is_jumping: bool) -> void:
+func _emit_movement_log(unit: Mech, old_pos: Vector2i, new_pos: Vector2i, path: Array, costs: Dictionary, _is_jumping: bool) -> void:
 	"""Emite mensajes de log del movimiento"""
 	var movement_names = {
 		GameEnums.MovementType.WALK: "Walking",

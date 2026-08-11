@@ -219,14 +219,14 @@ func add_component(location: MechLocation, component_data: Dictionary) -> bool:
 	var available = get_available_slots(location)
 	
 	if available < required_slots:
-		push_error("No hay slots suficientes en %s (requiere %d, disponibles %d)" % [
+		Log.debug("Loadout", "No hay slots suficientes en %s (requiere %d, disponibles %d)" % [
 			MechLocation.keys()[location], required_slots, available
 		])
 		return false
 	
 	# Verificar restricciones de locación
 	if not _can_mount_in_location(component_data, location):
-		push_error("El componente %s no se puede montar en %s" % [
+		Log.debug("Loadout", "El componente %s no se puede montar en %s" % [
 			component_data.get("name", "Unknown"),
 			MechLocation.keys()[location]
 		])

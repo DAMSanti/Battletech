@@ -1,5 +1,15 @@
 extends Node2D
 class_name Mech
+## Representa una unidad Mech en el campo de batalla.
+##
+## Gestiona todas las propiedades de un BattleMech según las reglas de BattleTech:
+## - Movimiento (caminar, correr, saltar)
+## - Sistema de armadura y estructura por localización
+## - Sistema de calor y disipación
+## - Armas y equipamiento
+## - Estado del piloto
+##
+## @tutorial: Ver doc/GDD.md para reglas de combate detalladas.
 
 # Stats básicos del Mech
 var mech_name: String = "Atlas"
@@ -69,7 +79,15 @@ var critical_slots: Dictionary = {
 }
 
 # Estado del mech
-var is_shutdown: bool = false
+var is_shutdown: bool = false:
+	set(value):
+		var was_shutdown = is_shutdown
+		is_shutdown = value
+		# Actualizar efecto visual cuando cambia el estado
+		if is_shutdown and not was_shutdown:
+			show_shutdown_effect()
+		elif not is_shutdown and was_shutdown:
+			hide_shutdown_effect()
 var is_destroyed: bool = false
 var is_prone: bool = false  # Caído en el suelo
 var death_reason: String = ""  # Descripción de cómo fue destruido
@@ -100,12 +118,23 @@ var has_performed_physical_attack: bool = false  # Flag para prevenir múltiples
 
 # Sprite del mech
 var sprite: Sprite2D
+# Sprite de humo para shutdown
+var smoke_sprite: Sprite2D = null
+var smoke_tween: Tween = null
+# Sprite de explosión para ammo explosion
+var explosion_sprite: Sprite2D = null
+var explosion_tween: Tween = null
+# Sistema de indicadores de estado (salud, calor, iconos)
+const MechStatusIndicatorsClass = preload("res://scripts/ui/mech_status_indicators.gd")
+var status_indicators = null
 
 func _ready():
 	# Solo configurar armas por defecto si no se han configurado desde fuera
 	if weapons.size() == 0:
 		_setup_default_weapons()
 	_setup_sprite()
+	_setup_shutdown_visual()
+	_setup_status_indicators()
 
 var sprite_manager: MechSpriteManager
 
@@ -123,18 +152,150 @@ func _setup_sprite():
 	# Actualizar sprite inicial
 	_update_sprite()
 
+
+func _setup_shutdown_visual() -> void:
+	"""Configura el sprite de humo para shutdown"""
+	smoke_sprite = Sprite2D.new()
+	smoke_sprite.name = "SmokeEffect"
+	
+	# Cargar textura de humo
+	var smoke_texture = load("res://assets/sprites/effects/smoke_shutdown.svg")
+	if smoke_texture:
+		smoke_sprite.texture = smoke_texture
+		smoke_sprite.scale = Vector2(1.5, 1.5)  # Escalar para que cubra el mech
+		smoke_sprite.position = Vector2(0, -20)  # Posición ligeramente arriba del mech
+		smoke_sprite.z_index = 10  # Encima del mech
+		smoke_sprite.modulate = Color(1, 1, 1, 0)  # Invisible inicialmente
+		add_child(smoke_sprite)
+	else:
+		Log.warning("Mech", "Could not load smoke_shutdown.svg texture")
+
+
+func _setup_status_indicators() -> void:
+	"""Configura los indicadores visuales de estado (salud, calor, etc.)"""
+	status_indicators = MechStatusIndicatorsClass.new(self)
+	status_indicators.name = "StatusIndicators"
+	add_child(status_indicators)
+
+
+func show_shutdown_effect() -> void:
+	"""Muestra el efecto visual de shutdown con animación de humo"""
+	if not smoke_sprite:
+		return
+	
+	# Detener tween anterior si existe
+	if smoke_tween and smoke_tween.is_valid():
+		smoke_tween.kill()
+	
+	smoke_sprite.modulate = Color(1, 1, 1, 0)
+	smoke_sprite.visible = true
+	
+	# Crear animación de aparición con movimiento ascendente
+	smoke_tween = create_tween()
+	smoke_tween.set_loops()  # Loop infinito mientras esté en shutdown
+	
+	# Secuencia de animación
+	smoke_tween.tween_property(smoke_sprite, "modulate:a", 0.8, 0.5)
+	smoke_tween.parallel().tween_property(smoke_sprite, "position:y", -40.0, 2.0)
+	smoke_tween.tween_property(smoke_sprite, "modulate:a", 0.3, 1.0)
+	smoke_tween.parallel().tween_property(smoke_sprite, "position:y", -20.0, 1.0)
+	
+	# También oscurecer el sprite del mech
+	if sprite:
+		sprite.modulate = Color(0.5, 0.5, 0.5, 1.0)
+	
+	queue_redraw()
+
+
+func hide_shutdown_effect() -> void:
+	"""Oculta el efecto visual de shutdown"""
+	if smoke_tween and smoke_tween.is_valid():
+		smoke_tween.kill()
+		smoke_tween = null
+	
+	if smoke_sprite:
+		# Animación de desaparición
+		var fade_tween = create_tween()
+		fade_tween.tween_property(smoke_sprite, "modulate:a", 0.0, 0.5)
+		fade_tween.tween_callback(func(): smoke_sprite.visible = false)
+	
+	# Restaurar el sprite del mech
+	if sprite:
+		var restore_tween = create_tween()
+		restore_tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.3)
+	
+	queue_redraw()
+
+
+func show_explosion_effect() -> void:
+	"""Muestra una animación de explosión sobre el mech (para ammo explosion)"""
+	# Crear el sprite de explosión si no existe
+	if not explosion_sprite:
+		explosion_sprite = Sprite2D.new()
+		explosion_sprite.name = "ExplosionEffect"
+		var explosion_texture = load("res://assets/sprites/effects/explosion.svg")
+		if explosion_texture:
+			explosion_sprite.texture = explosion_texture
+			explosion_sprite.z_index = 15  # Por encima de todo
+			add_child(explosion_sprite)
+		else:
+			Log.warning("Mech", "Could not load explosion.svg texture")
+			return
+	
+	# Detener tween anterior si existe
+	if explosion_tween and explosion_tween.is_valid():
+		explosion_tween.kill()
+	
+	# Estado inicial: pequeño e invisible
+	explosion_sprite.scale = Vector2(0.2, 0.2)
+	explosion_sprite.modulate = Color(1, 1, 1, 0)
+	explosion_sprite.position = Vector2(0, -10)  # Centrado en el mech
+	explosion_sprite.visible = true
+	
+	# Crear animación de explosión
+	explosion_tween = create_tween()
+	
+	# Fase 1: Explosión rápida (0.15s) - crece y aparece
+	explosion_tween.set_parallel(true)
+	explosion_tween.tween_property(explosion_sprite, "scale", Vector2(2.5, 2.5), 0.15)\
+		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
+	explosion_tween.tween_property(explosion_sprite, "modulate:a", 1.0, 0.1)\
+		.set_ease(Tween.EASE_OUT)
+	
+	# Fase 2: Flash brillante (se vuelve blanco brevemente)
+	explosion_tween.chain()
+	explosion_tween.set_parallel(true)
+	explosion_tween.tween_property(explosion_sprite, "modulate", Color(1.5, 1.5, 1.2, 1.0), 0.1)
+	explosion_tween.tween_property(explosion_sprite, "scale", Vector2(3.0, 3.0), 0.1)
+	
+	# Fase 3: Desvanecimiento (0.8s)
+	explosion_tween.chain()
+	explosion_tween.set_parallel(true)
+	explosion_tween.tween_property(explosion_sprite, "modulate", Color(1.0, 0.5, 0.2, 0.0), 0.8)\
+		.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	explosion_tween.tween_property(explosion_sprite, "scale", Vector2(4.0, 4.0), 0.8)\
+		.set_ease(Tween.EASE_OUT)
+	
+	# Ocultar al terminar
+	explosion_tween.chain()
+	explosion_tween.tween_callback(func(): explosion_sprite.visible = false)
+
 func _draw():
+	# Actualizar indicadores de estado
+	if status_indicators:
+		status_indicators.update_indicators()
+	
 	# Dibujar indicador de dirección (facing)
 	var radius = 40
 	var facing_angle = deg_to_rad(facing * 60 - 90)  # -90 para que apunte hacia arriba
 	var facing_point = Vector2(cos(facing_angle), sin(facing_angle)) * radius * 0.5
 	draw_line(Vector2.ZERO, facing_point, Color.YELLOW, 3.0)
 	
-	# Nombre del mech (centrado sobre el sprite)
+	# Nombre del mech (centrado sobre el sprite) - movido más arriba para dar espacio a las barras
 	var font = ThemeDB.fallback_font
 	var font_size = 16
 	var text_width = font.get_string_size(mech_name, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size).x
-	var text_pos = Vector2(-text_width / 2, -radius - 5)
+	var text_pos = Vector2(-text_width / 2, -radius - 25)  # Más arriba para las barras
 	draw_string(font, text_pos, mech_name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.WHITE)
 	
 	# Indicador si está destruido
@@ -143,6 +304,14 @@ func _draw():
 		var destroyed_text = "DESTROYED"
 		var destroyed_pos = Vector2(-40, 5)
 		draw_string(font, destroyed_pos, destroyed_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 18, Color.RED)
+	
+	# Indicador si está en shutdown
+	elif is_shutdown:
+		# Círculo gris semi-transparente
+		draw_circle(Vector2.ZERO, 45, Color(0.3, 0.3, 0.3, 0.5))
+		var shutdown_text = "SHUTDOWN"
+		var shutdown_pos = Vector2(-36, 5)
+		draw_string(font, shutdown_pos, shutdown_text, HORIZONTAL_ALIGNMENT_CENTER, -1, 16, Color.ORANGE)
 
 func update_visual_position(hex_grid):
 	# Actualizar posición en pantalla basado en hex_position
@@ -168,10 +337,58 @@ func update_facing_visual():
 	_update_sprite()  # Actualizar textura del sprite según facing
 	queue_redraw()    # Actualizar indicador de dirección
 
+
+func _update_status_indicators():
+	"""Actualiza los indicadores visuales de estado"""
+	queue_redraw()
+	if status_indicators:
+		status_indicators.update_indicators()
+
+
+## ESTADO DE ACCIÓN ##
+
+
+## Verifica si el mech puede realizar cualquier acción este turno.
+## Un mech en shutdown o destruido no puede actuar.
+## [return]: true si puede actuar, false si está shutdown o destruido
+func can_act() -> bool:
+	if is_destroyed:
+		return false
+	if is_shutdown:
+		return false
+	return true
+
+
+## Verifica si el mech puede ser seleccionado para activación.
+## [return]: Dictionary con "can_activate" y "reason"
+func can_be_activated() -> Dictionary:
+	var result = {"can_activate": true, "reason": ""}
+	
+	if is_destroyed:
+		result["can_activate"] = false
+		result["reason"] = "Mech destroyed"
+		return result
+	
+	if is_shutdown:
+		result["can_activate"] = false
+		result["reason"] = "Mech shutdown - cannot act"
+		return result
+	
+	return result
+
+
 ## SISTEMA DE MOVIMIENTO ##
 
+
+## Calcula los puntos de movimiento disponibles según el tipo.
+## Considera penalizaciones por calor y estado de prone.
+## [param movement_type]: WALK, RUN o JUMP
+## [return]: Puntos de movimiento disponibles (mínimo 1, o 0 si shutdown)
 func get_available_movement(movement_type: MovementType) -> int:
 	# Retorna los MP disponibles según el tipo de movimiento (BT TW)
+	# Un mech en shutdown no puede moverse en absoluto
+	if is_shutdown:
+		return 0
 	if is_prone:
 		return 1  # Mechs caídos solo pueden arrastrarse
 	var base_mp = 0
@@ -188,7 +405,18 @@ func get_available_movement(movement_type: MovementType) -> int:
 	var heat_penalty = get_heat_movement_penalty()
 	return max(1, base_mp - heat_penalty)  # Mínimo 1 MP
 
-func start_movement(movement_type: int):  # GameEnums.MovementType
+
+## Inicia un movimiento del tipo especificado para este turno.
+## Establece los MP disponibles y el modificador de atacante.
+## [param movement_type]: GameEnums.MovementType (WALK, RUN, JUMP)
+## [return]: false si el mech no puede moverse (shutdown/destroyed)
+func start_movement(movement_type: int) -> bool:  # GameEnums.MovementType
+	# Un mech en shutdown no puede iniciar movimiento
+	if is_shutdown:
+		Log.warning("Mech", "%s cannot move - shutdown" % mech_name)
+		return false
+	if is_destroyed:
+		return false
 	# Inicia un movimiento del tipo especificado
 	movement_type_used = movement_type
 	last_movement_type = movement_type
@@ -209,6 +437,8 @@ func start_movement(movement_type: int):  # GameEnums.MovementType
 		_:
 			current_movement = 0
 			attacker_movement_modifier = 0
+	return true
+
 
 func move_to_hex(new_hex: Vector2i, cost: int):
 	# Registra un movimiento a un nuevo hexágono
@@ -269,6 +499,9 @@ func get_attacker_movement_modifier() -> int:
 
 func can_change_facing(_direction: int) -> bool:
 	# Verifica si puede girar en una dirección (cuesta 1 MP por hex)
+	# Un mech en shutdown no puede girar
+	if is_shutdown:
+		return false
 	return current_movement >= 1
 
 func change_facing(new_facing: int, is_jump: bool=false):
@@ -400,6 +633,13 @@ func _setup_default_weapons():
 		}
 	]
 
+
+## Aplica daño a una localización del mech.
+## Primero reduce armadura, luego estructura interna.
+## Puede causar destrucción de la localización o del mech completo.
+## [param location]: Localización objetivo (head, center_torso, etc.)
+## [param damage]: Cantidad de daño a aplicar
+## [return]: Dictionary con detalles del daño aplicado
 func take_damage(location: String, damage: int) -> Dictionary:
 	var result = {
 		"armor_damage": 0,
@@ -471,7 +711,7 @@ func _check_destruction() -> bool:
 
 func add_heat(amount: int):
 	heat += amount
-	queue_redraw()  # Actualizar visualización de la barra de calor
+	_update_status_indicators()
 	
 	# Chequeos automáticos en niveles críticos
 	if heat >= 30:
@@ -482,7 +722,7 @@ func add_heat(amount: int):
 func dissipate_heat():
 	# Disipar calor usando el sistema de calor
 	var result = HeatSystem.apply_heat_dissipation(self)
-	queue_redraw()  # Actualizar visualización
+	_update_status_indicators()
 	return result
 
 func get_heat_effects() -> Dictionary:
@@ -580,6 +820,28 @@ func get_status_summary() -> String:
 	for loc in armor.keys():
 		status += "  %s: %d/%d\n" % [loc, armor[loc]["current"], armor[loc]["max"]]
 	return status
+
+
+## Verifica si hay munición en una localización específica.
+## [param location]: Localización a verificar (left_torso, right_torso, etc.)
+## [return]: true si hay armas con munición > 0 en esa localización
+func has_ammo_in_location(location: String) -> bool:
+	for weapon in weapons:
+		if weapon.get("location", "") == location:
+			var ammo = weapon.get("ammo", -1)
+			if ammo > 0:  # -1 = energía (sin munición), 0 = vacío
+				return true
+	return false
+
+
+## Destruye toda la munición en una localización (explosión de munición).
+## [param location]: Localización donde destruir la munición
+func destroy_ammo_in_location(location: String) -> void:
+	for weapon in weapons:
+		if weapon.get("location", "") == location:
+			if weapon.get("ammo", -1) > 0:
+				weapon["ammo"] = 0
+				Log.info("Combat", "Ammo destroyed in %s: %s" % [location, weapon.get("name", "Unknown")])
 
 # ============= ATAQUES FÍSICOS =============
 

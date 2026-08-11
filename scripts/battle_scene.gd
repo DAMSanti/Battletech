@@ -1,8 +1,24 @@
 extends Node2D
+## Escena principal de batalla táctica BattleTech.
+##
+## Orquesta todos los sistemas de combate:
+## - Grid hexagonal y movimiento
+## - Sistema de turnos e iniciativa
+## - Ataques de armas y físicos
+## - Gestión de calor
+## - Modo multiplayer/singleplayer
+##
+## Arquitectura: Usa BattleComponentsIntegrator (SOLID) para delegar
+## responsabilidades a componentes especializados.
+##
+## @tutorial: Ver doc/UNIFIED_BATTLE_SYSTEM.md para arquitectura completa.
 
 # Precargar componentes de UI
 const ActiveMechIndicatorClass = preload("res://scripts/ui/active_mech_indicator.gd")
 const CombatResultPresenterClass = preload("res://scripts/ui/combat_result_presenter.gd")
+const BattleStatsTrackerClass = preload("res://scripts/managers/battle_stats_tracker.gd")
+const BattleEndScreenClass = preload("res://scripts/ui/battle_end_screen.gd")
+const TutorialHintPopupClass = preload("res://scripts/ui/tutorial_hint_popup.gd")
 
 # Nuevo sistema de batalla unificado
 const BattleSceneAdapterClass = preload("res://scripts/core/battle/battle_scene_adapter.gd")
@@ -18,11 +34,26 @@ var initiative_presenter: BattleInitiativePresenter = null  # Presenter para ini
 var combat_result_presenter = null  # CombatResultPresenter para resultados de combate
 var use_component_input: bool = true  # Usar BattleInputRouter refactorizado
 
+# Dificultad de la IA (0=EASY, 1=NORMAL, 2=HARD)
+@export_range(0, 2) var ai_difficulty: int = 1
+
+# Flag para evitar que la IA despliegue cuando el tutorial ya forzó el deploy
+var tutorial_enemy_already_deployed: bool = false
+
+# Sistema de estadísticas de batalla
+var battle_stats_tracker = null
+
+# Sistema de tutorial
+var tutorial_hint_popup = null
+var is_tutorial_mode: bool = false
+var first_damage_received: bool = false
+
 # Referencias (sin @onready porque necesitamos esperar)
 var hex_grid
 var turn_manager
 var ui
 var overlay_layer  # Capa para dibujar hexágonos alcanzables ENCIMA del terreno
+var effects_layer: Node2D = null  # Capa para efectos de combate (proyectiles, impactos)
 var battle_ai: BattleAI  # Sistema de IA mejorado
 
 # ============================================================
@@ -249,6 +280,14 @@ func _ready():
 	overlay_canvas.add_child(overlay_layer)
 	overlay_layer.battle_scene = self
 	
+	# Crear capa de efectos de combate (proyectiles, impactos, etc.)
+	# Debe estar por ENCIMA de mechs pero seguir coordenadas del mundo
+	effects_layer = Node2D.new()
+	effects_layer.name = "EffectsLayer"
+	effects_layer.z_index = 500  # Por encima de mechs (que tienen z_index ~10-100)
+	add_child(effects_layer)
+	Log.info("Combat", "Effects layer created with z_index=%d" % effects_layer.z_index)
+	
 	# Conectar señales
 	turn_manager.turn_changed.connect(_on_turn_changed)
 	turn_manager.phase_changed.connect(_on_phase_changed)
@@ -263,6 +302,11 @@ func _ready():
 	if ui and not ui.has_method("show_facing_selector"):
 		Log.debug("UI", "UI doesn't have facing_selector, creating one...")
 		_create_facing_selector_for_ui()
+	
+	# ============================================================
+	# INICIALIZAR SISTEMA DE TUTORIAL
+	# ============================================================
+	_setup_tutorial_system()
 	
 	# Iniciar la batalla con fase de despliegue
 	_setup_battle()
@@ -382,6 +426,22 @@ func _ui_hide_facing_selector():
 	if _local_facing_selector:
 		_local_facing_selector.visible = false
 
+func _ui_show_facing_selector_tutorial(screen_pos: Vector2, allowed_facing: int, hex: Vector2i = Vector2i(-1, -1)):
+	"""Muestra el facing selector en modo tutorial con solo una dirección habilitada"""
+	# Primero intentar usar el método de UI si existe
+	if ui and ui.has_method("show_facing_selector_tutorial"):
+		ui.show_facing_selector_tutorial(screen_pos, allowed_facing, hex)
+		return
+	
+	# Fallback al selector local
+	if _local_facing_selector and _local_facing_selector.has_method("show_tutorial_facing"):
+		_local_facing_selector.show_tutorial_facing(screen_pos, allowed_facing, hex)
+	elif _local_facing_selector:
+		# Si no tiene el método de tutorial, usar el normal
+		if hex != Vector2i(-1, -1):
+			_local_facing_selector.set_target_hex(hex, self)
+		_local_facing_selector.show_at_position(screen_pos, -1, 99)
+
 func _ui_is_facing_selector_visible() -> bool:
 	"""Verifica si el facing selector está visible (wrapper)"""
 	return _local_facing_selector and _local_facing_selector.visible
@@ -487,6 +547,11 @@ func _process(delta):
 	if battle_components:
 		battle_components.process_input_delta(delta)
 	
+	# Actualizar overlays pulsantes del tutorial
+	if is_tutorial_mode and battle_components and battle_components.overlay_manager:
+		if battle_components.overlay_manager.needs_continuous_update():
+			battle_components.overlay_manager.update_and_render()
+	
 	# Decrementar cooldown de interacción con UI
 	if ui_interaction_cooldown > 0:
 		ui_interaction_cooldown -= delta
@@ -523,6 +588,13 @@ func _update_initiative_presenter_mechs() -> void:
 
 func show_initiative_screen():
 	"""Muestra pantalla de iniciativa (singleplayer)"""
+	# En tutorial, verificar si está bloqueada
+	if is_tutorial_mode:
+		var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+		if tutorial_mgr and tutorial_mgr.is_initiative_blocked():
+			Log.debug("Tutorial", "Initiative screen blocked by tutorial")
+			return
+	
 	_update_initiative_presenter_mechs()
 	initiative_presenter.show_initiative_screen()
 
@@ -543,13 +615,34 @@ func _on_initiative_presenter_complete(data: Dictionary, is_first_battle: bool) 
 	"""Callback cuando el presenter de iniciativa completa"""
 	initiative_data_stored = data
 	
+	# Notificar al tutorial que la iniciativa se completó
+	if is_tutorial_mode:
+		_notify_tutorial("initiative_completed", data)
+	
 	if is_first_battle and not battle_started:
 		# Iniciar el sistema de turnos
 		turn_manager.start_battle(player_mechs, enemy_mechs)
 		
+		# Inicializar el tracker de estadísticas
+		battle_stats_tracker = BattleStatsTrackerClass.new()
+		add_child(battle_stats_tracker)
+		# Registrar todos los mechs
+		for mech in player_mechs:
+			battle_stats_tracker.register_mech(mech.mech_name, true)
+		for mech in enemy_mechs:
+			battle_stats_tracker.register_mech(mech.mech_name, false)
+		
 		# Configurar el sistema de IA mejorado
 		if battle_ai:
 			battle_ai.setup(hex_grid, player_mechs, self)
+			# Aplicar dificultad desde el MechBayManager
+			var mech_bay_manager = get_node_or_null("/root/MechBayManager")
+			if mech_bay_manager and mech_bay_manager.has_meta("ai_difficulty"):
+				var diff = mech_bay_manager.get_meta("ai_difficulty")
+				battle_ai.set_difficulty(diff)
+				Log.info("AI", "Applied difficulty from team setup: %d" % diff)
+			else:
+				battle_ai.set_difficulty(ai_difficulty)
 		
 		# Actualizar visibilidad inicial
 		update_mech_visibility()
@@ -579,6 +672,147 @@ func clear_initiative_data():
 	initiative_data_stored = {}
 
 
+# ==============================================================================
+# SISTEMA DE TUTORIAL
+# ==============================================================================
+
+func _setup_tutorial_system():
+	"""Configura el sistema de tutorial si está activo"""
+	# Solo en singleplayer
+	if is_multiplayer_mode:
+		return
+	
+	# Verificar si TutorialManager existe
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if not tutorial_mgr:
+		Log.debug("Tutorial", "TutorialManager not found - tutorial disabled")
+		return
+	
+	# Verificar si estamos en modo tutorial (desde main_menu)
+	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
+	if mech_bay_manager and mech_bay_manager.has_meta("is_tutorial"):
+		is_tutorial_mode = mech_bay_manager.get_meta("is_tutorial")
+	
+	if not is_tutorial_mode:
+		Log.debug("Tutorial", "Not in tutorial mode")
+		return
+	
+	Log.info("Tutorial", "Tutorial mode activated - using controlled battle flow!")
+	
+	# Crear el popup de hints
+	tutorial_hint_popup = TutorialHintPopupClass.new()
+	tutorial_hint_popup.name = "TutorialHintPopup"
+	tutorial_hint_popup.process_mode = Node.PROCESS_MODE_ALWAYS  # Funciona aunque el juego esté pausado
+	add_child(tutorial_hint_popup)
+	
+	# Forzar AI a EASY durante el tutorial (aunque realmente estará controlada)
+	if battle_ai:
+		battle_ai.set_difficulty(BattleAI.Difficulty.EASY)
+		Log.info("Tutorial", "AI forced to EASY difficulty for tutorial")
+	
+	# Iniciar el tutorial con el nuevo sistema controlado
+	# El TutorialManager creará el TutorialBattleController que maneja todo
+	tutorial_mgr.start_tutorial(self)
+
+
+func _on_tutorial_hint_requested(hint_data: Dictionary):
+	"""Muestra un hint del tutorial"""
+	if tutorial_hint_popup:
+		tutorial_hint_popup.show_hint(hint_data)
+		Log.debug("Tutorial", "Showing hint: %s" % hint_data.get("id", "unknown"))
+
+
+func _on_tutorial_completed():
+	"""Callback cuando el tutorial se completa"""
+	Log.info("Tutorial", "Tutorial completed!")
+	is_tutorial_mode = false
+	
+	# Limpiar metadata
+	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
+	if mech_bay_manager and mech_bay_manager.has_meta("is_tutorial"):
+		mech_bay_manager.remove_meta("is_tutorial")
+
+
+func _notify_tutorial(event_name: String, data: Variant = null):
+	"""Notifica un evento al sistema de tutorial"""
+	if not is_tutorial_mode:
+		return
+	
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if not tutorial_mgr:
+		return
+	
+	match event_name:
+		"movement_type_selected":
+			tutorial_mgr.notify_movement_type_selected(data as String)
+		"movement_completed":
+			tutorial_mgr.notify_movement_completed(data as Vector2i)
+		"facing_selected":
+			tutorial_mgr.notify_facing_selected(data as int)
+		"weapon_attack_phase":
+			tutorial_mgr.notify_weapon_attack_phase()
+		"target_selected":
+			tutorial_mgr.notify_target_selected()
+		"weapons_selected":
+			tutorial_mgr.notify_weapons_selected()
+		"weapon_fired":
+			tutorial_mgr.notify_weapon_fired()
+		"physical_attack_completed":
+			tutorial_mgr.notify_physical_attack_completed()
+		"initiative_completed":
+			tutorial_mgr.notify_initiative_completed(data as Dictionary)
+
+
+func _is_tutorial_hex_allowed(hex: Vector2i) -> bool:
+	"""Verifica si un hex está permitido en el tutorial"""
+	if not is_tutorial_mode:
+		return true
+	
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr:
+		return tutorial_mgr.is_hex_allowed(hex)
+	return true
+
+
+func _is_tutorial_facing_allowed(facing: int) -> bool:
+	"""Verifica si un facing está permitido en el tutorial"""
+	if not is_tutorial_mode:
+		return true
+	
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr:
+		return tutorial_mgr.is_facing_allowed(facing)
+	return true
+
+
+func _can_tutorial_skip_movement() -> bool:
+	"""Verifica si se puede saltar el movimiento en el tutorial"""
+	if not is_tutorial_mode:
+		return true
+	
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr:
+		return tutorial_mgr.can_skip_movement()
+	return true
+
+
+func _can_tutorial_skip_attack() -> bool:
+	"""Verifica si se puede saltar el ataque en el tutorial"""
+	if not is_tutorial_mode:
+		return true
+	
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr:
+		return tutorial_mgr.can_skip_attack()
+	return true
+
+
+# DEPRECATED: Old trigger system - keeping for backward compatibility but does nothing
+func _trigger_tutorial_event(_event_name: String, _data: Dictionary = {}):
+	"""DEPRECATED: Use _notify_tutorial instead"""
+	pass
+
+
 func _setup_battle():
 	# Definir zonas de despliegue
 	_setup_deployment_zones()
@@ -604,15 +838,27 @@ func _setup_battle():
 	var loadout_manager = get_node_or_null("/root/SelectedLoadoutManager")
 	var mech_bay_manager = get_node_or_null("/root/MechBayManager")
 	
-	if should_create_player_mechs:
-		var player_mechs_data = LanceData.load_player_lance_data(loadout_manager, mech_bay_manager, mech_factory)
-		for mech_data in player_mechs_data:
-			mechs_to_deploy.append(_create_mech_for_deployment(mech_data, "player"))
-	
-	if should_create_enemy_mechs:
-		var enemy_mechs_data = LanceData.load_enemy_lance_data(mech_bay_manager)
-		for mech_data in enemy_mechs_data:
-			mechs_to_deploy.append(_create_mech_for_deployment(mech_data, "enemy"))
+	# En modo tutorial, usar los mechs del tutorial
+	if is_tutorial_mode:
+		var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+		if tutorial_mgr:
+			Log.info("Tutorial", "Loading tutorial mechs (Atlas vs Hunchback)")
+			var player_mech_data = tutorial_mgr.get_tutorial_player_mech()
+			var enemy_mech_data = tutorial_mgr.get_tutorial_enemy_mech()
+			
+			mechs_to_deploy.append(_create_mech_for_deployment(player_mech_data, "player"))
+			mechs_to_deploy.append(_create_mech_for_deployment(enemy_mech_data, "enemy"))
+	else:
+		# Carga normal de mechs
+		if should_create_player_mechs:
+			var player_mechs_data = LanceData.load_player_lance_data(loadout_manager, mech_bay_manager, mech_factory)
+			for mech_data in player_mechs_data:
+				mechs_to_deploy.append(_create_mech_for_deployment(mech_data, "player"))
+		
+		if should_create_enemy_mechs:
+			var enemy_mechs_data = LanceData.load_enemy_lance_data(mech_bay_manager)
+			for mech_data in enemy_mechs_data:
+				mechs_to_deploy.append(_create_mech_for_deployment(mech_data, "enemy"))
 	
 	# Iniciar fase de despliegue
 	if is_multiplayer_mode:
@@ -715,6 +961,11 @@ func _deploy_next_mech():
 
 func _deploy_ai_mech():
 	"""Despliega un mech de la IA automáticamente - delega al componente"""
+	# En tutorial, si ya forzamos el deploy del enemigo, ignorar
+	if tutorial_enemy_already_deployed:
+		Log.debug("Tutorial", "_deploy_ai_mech: Skipping - enemy already deployed by tutorial")
+		return
+	
 	if not battle_components:
 		push_error("No battle_components for AI deployment")
 		return
@@ -791,8 +1042,10 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 	_register_mech_with_unified_system(mech, team)
 	
 	# Añadir a la lista correcta y mostrar confirmación
+	# IMPORTANTE: Verificar que no esté ya en la lista para evitar duplicados
 	if team == "player" or team == my_team:
-		player_mechs.append(mech)
+		if mech not in player_mechs:
+			player_mechs.append(mech)
 		if ui:
 			ui.add_combat_message("✓ %s deployed at [%d, %d], facing %s" % [
 				mech.mech_name, 
@@ -802,7 +1055,8 @@ func _place_mech(mech: Mech, hex: Vector2i, facing: int):
 			], Color.GREEN)
 			ui.add_combat_message("", Color.WHITE)
 	else:
-		enemy_mechs.append(mech)
+		if mech not in enemy_mechs:
+			enemy_mechs.append(mech)
 	
 	# Actualizar referencias en componentes refactorizados
 	_update_components_mech_references()
@@ -1053,6 +1307,9 @@ func on_facing_selected(facing: int):
 				elif _local_facing_selector:
 					_ui_hide_facing_selector()
 				selected_hex = Vector2i(-1, -1)
+				
+				# Notificar al tutorial
+				_notify_tutorial("facing_selected", facing)
 				return
 	elif pending_turn_only and selected_unit:
 		# En multiplayer usar is_player_controlled, en singleplayer usar player_mechs
@@ -1095,6 +1352,9 @@ func on_facing_selected(facing: int):
 			return
 		# Estamos después del movimiento - ajuste final de facing (gratis)
 		Log.debug("Movement", "Post-movement facing adjustment: %d -> %d" % [selected_unit.facing, facing])
+		
+		# Trigger tutorial para movimiento completado
+		_trigger_tutorial_event("movement_completed")
 		
 		# En multiplayer, enviar rotación al servidor
 		if is_multiplayer_mode and network_battle_client:
@@ -1220,6 +1480,9 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 	"""Llamado cuando el jugador selecciona Walk/Run/Jump"""
 	if battle_components:
 		battle_components.movement_select_type(movement_type)
+	
+	# Trigger tutorial para tipo de movimiento seleccionado
+	_trigger_tutorial_event("movement_type_selected")
 
 func select_turn_only():
 	"""Llamado cuando el jugador selecciona solo girar sin moverse"""
@@ -1357,13 +1620,27 @@ func _end_weapon_attack_phase():
 	current_attack_target = null
 	
 	# Limpiar overlays via componente
+	# NOTA: battle_components.end_weapon_attack_phase() ya emite activation_complete_requested
+	# que llama turn_manager.complete_unit_activation() via _on_activation_complete
 	if battle_components:
 		battle_components.end_weapon_attack_phase()
 	update_overlays()
 	
-	# Continuar con siguiente unidad o fase
-	if turn_manager:
-		turn_manager.complete_unit_activation()
+	# NO llamar complete_unit_activation() aquí - ya lo hace el componente
+
+
+func _on_physical_attack_complete():
+	# Terminar fase de ataque físico y continuar
+	current_attack_target = null
+	
+	# Limpiar overlays y finalizar fase
+	# NOTA: battle_components.end_physical_attack_phase() ya emite activation_complete_requested
+	# que llama turn_manager.complete_unit_activation() via _on_activation_complete
+	if battle_components:
+		battle_components.end_physical_attack_phase()
+	update_overlays()
+	
+	# NO llamar complete_unit_activation() aquí - ya lo hace el componente
 
 
 func _on_turn_changed(team: String, turn_number: int):
@@ -1424,12 +1701,15 @@ func _on_phase_changed(phase: String):
 			current_state = GameEnums.GameState.MOVING
 		"Weapon Attack":
 			current_state = GameEnums.GameState.WEAPON_ATTACK
+			# Trigger tutorial para ataque con armas
+			_notify_tutorial("weapon_attack_phase")
 		"Physical Attack":
 			current_state = GameEnums.GameState.PHYSICAL_TARGETING
 		"Heat":
 			_process_heat_phase()
 		"Initiative":
-			pass
+			# Trigger tutorial para iniciativa
+			_trigger_tutorial_event("initiative_phase")
 		_:
 			pass
 	
@@ -1443,6 +1723,7 @@ func _on_phase_changed(phase: String):
 
 func _on_unit_activated(unit):
 	"""Callback principal cuando se activa una unidad - Delegación a métodos auxiliares"""
+	Log.debug("Combat", "_on_unit_activated: %s, is_player=%s" % [unit.mech_name, _is_player_unit(unit)])
 	selected_unit = unit
 	
 	# Sincronizar con movement_handler si está activo
@@ -1502,6 +1783,18 @@ func _is_player_unit(unit) -> bool:
 
 func _handle_player_unit_activation(unit) -> void:
 	"""Maneja la activación de una unidad del jugador según la fase actual"""
+	Log.debug("Combat", "_handle_player_unit_activation for %s, current_state=%s" % [unit.mech_name, GameEnums.GameState.keys()[current_state]])
+	
+	# Si el mech está en shutdown, saltar automáticamente su turno
+	if unit.is_shutdown:
+		Log.info("Combat", "%s is shutdown - automatically skipping activation" % unit.mech_name)
+		if ui:
+			ui.add_combat_message("%s is shutdown and cannot act" % unit.mech_name, Color.GRAY)
+		# Pequeña pausa para que el jugador vea el mensaje
+		await get_tree().create_timer(0.5).timeout
+		turn_manager.complete_unit_activation()
+		return
+	
 	match current_state:
 		GameEnums.GameState.MOVING:
 			_activate_for_movement(unit)
@@ -1509,6 +1802,8 @@ func _handle_player_unit_activation(unit) -> void:
 			_activate_for_physical_attack(unit)
 		GameEnums.GameState.TARGETING, GameEnums.GameState.WEAPON_ATTACK:
 			_activate_for_weapon_attack(unit)
+		_:
+			Log.warn("Combat", "  -> Unhandled state %s for player unit %s!" % [current_state, unit.mech_name])
 
 
 func _activate_for_movement(unit) -> void:
@@ -1519,6 +1814,9 @@ func _activate_for_movement(unit) -> void:
 	if battle_components:
 		battle_components.set_movement_selected_unit(unit)
 	
+	# Trigger tutorial para movimiento
+	_trigger_tutorial_event("movement_phase", {"is_player": true})
+	
 	if ui:
 		if ui.has_method("show_movement_type_selector"):
 			ui.show_movement_type_selector(unit)
@@ -1527,15 +1825,22 @@ func _activate_for_movement(unit) -> void:
 
 func _activate_for_physical_attack(unit) -> void:
 	"""Activa la unidad para la fase de ataque físico"""
+	Log.debug("Combat", "_activate_for_physical_attack called for %s, has_performed=%s" % [unit.mech_name, unit.has_performed_physical_attack])
+	
 	# Verificar si ya realizó un ataque físico
 	if unit.has_performed_physical_attack:
+		Log.debug("Combat", "  -> Skipping: already performed physical attack")
 		if ui:
 			ui.add_combat_message("%s has already performed a physical attack this turn" % unit.mech_name, Color.GRAY)
 		turn_manager.complete_unit_activation()
 		return
 	
 	# Verificar si hay enemigos adyacentes
-	if not battle_components or not battle_components.has_adjacent_enemies(unit):
+	var has_adjacent = battle_components and battle_components.has_adjacent_enemies(unit)
+	Log.debug("Combat", "  -> has_adjacent_enemies = %s" % has_adjacent)
+	
+	if not has_adjacent:
+		Log.debug("Combat", "  -> Skipping: no adjacent enemies")
 		if ui:
 			ui.add_combat_message("%s: No adjacent enemies - skipping physical attack" % unit.mech_name, Color.GRAY)
 		turn_manager.complete_unit_activation()
@@ -1544,19 +1849,33 @@ func _activate_for_physical_attack(unit) -> void:
 	# Calcular enemigos adyacentes - delegar al componente
 	if battle_components:
 		physical_target_hexes = battle_components.calculate_physical_targets(unit)
+	Log.debug("Combat", "  -> physical_target_hexes = %s" % [physical_target_hexes])
+	
+	# Trigger tutorial para ataque físico disponible
+	_trigger_tutorial_event("physical_attack_available")
 	
 	if ui:
 		ui.add_combat_message("Your turn: Physical attack with %s" % unit.mech_name, Color.MAGENTA)
 		if turn_manager and turn_manager.current_phase == GameEnums.TurnPhase.PHYSICAL_ATTACK:
 			ui.set_help_text("Click on an adjacent enemy to attack")
+	
+	Log.debug("Combat", "  -> Waiting for player input for physical attack")
 
 
 func _activate_for_weapon_attack(unit) -> void:
 	"""Activa la unidad para la fase de ataque con armas"""
+	Log.debug("Combat", "_activate_for_weapon_attack called for %s" % unit.mech_name)
 	current_state = GameEnums.GameState.WEAPON_ATTACK
 	
+	# Trigger tutorial para ataque con armas
+	_notify_tutorial("weapon_attack_phase")
+	
 	# Verificar si hay enemigos en LoS
-	if not battle_components or not battle_components.has_enemies_in_los(unit):
+	var has_los = battle_components and battle_components.has_enemies_in_los(unit)
+	Log.debug("Combat", "  -> has_enemies_in_los = %s" % has_los)
+	
+	if not has_los:
+		Log.debug("Combat", "  -> Skipping: no enemies in LoS")
 		if ui:
 			ui.add_combat_message("%s: No enemies in line of sight - skipping weapon attack" % unit.mech_name, Color.GRAY)
 		turn_manager.complete_unit_activation()
@@ -1565,6 +1884,7 @@ func _activate_for_weapon_attack(unit) -> void:
 	# Calcular objetivos con LoS - delegar al componente
 	if battle_components:
 		target_hexes = battle_components.calculate_weapon_targets(unit)
+	Log.debug("Combat", "  -> target_hexes = %s" % [target_hexes])
 	
 	if ui:
 		var los_count = target_hexes.size()
@@ -1576,6 +1896,8 @@ func _activate_for_weapon_attack(unit) -> void:
 		ui.add_combat_message(message, Color.ORANGE)
 		if turn_manager and (turn_manager.current_phase == GameEnums.TurnPhase.WEAPON_ATTACK or turn_manager.current_phase == GameEnums.TurnPhase.PHYSICAL_ATTACK):
 			ui.set_help_text("Click on an enemy to select weapons")
+	
+	Log.debug("Combat", "  -> Waiting for player input for weapon attack")
 
 
 func _get_enemy_mechs_for_unit(unit) -> Array:
@@ -1588,6 +1910,16 @@ func _get_enemy_mechs_for_unit(unit) -> Array:
 
 func _handle_enemy_unit_activation(unit) -> void:
 	"""Maneja la activación de una unidad enemiga (IA)"""
+	
+	# Si el mech está en shutdown, saltar automáticamente su turno
+	if unit.is_shutdown:
+		Log.info("Combat", "Enemy %s is shutdown - automatically skipping activation" % unit.mech_name)
+		if ui:
+			ui.add_combat_message("Enemy %s is shutdown and cannot act" % unit.mech_name, Color.GRAY)
+		await get_tree().create_timer(0.5).timeout
+		turn_manager.complete_unit_activation()
+		return
+	
 	if ui:
 		ui.add_combat_message("Enemy turn: %s" % unit.mech_name, Color.RED)
 	# Esperar un poco antes de que la IA actúe para que se vea
@@ -1637,13 +1969,11 @@ func execute_physical_attack(attacker, target, attack_type: String):
 func _process_heat_phase():
 	"""Procesa la fase de calor para todos los mechs"""
 	if battle_components:
+		# El heat_manager ahora procesa iterativamente con pausas
+		# y emite heat_phase_completed cuando termina, lo cual
+		# avanza la fase automáticamente a través del integrator
 		battle_components.process_heat_phase()
-		# Esperar un momento para que el jugador lea los mensajes
-		await get_tree().create_timer(2.0).timeout
-		# Avanzar a la siguiente fase
-		if turn_manager:
-			turn_manager.advance_phase()
-		return
+	return
 
 
 # Métodos públicos para la UI
@@ -1673,9 +2003,41 @@ func _check_battle_end():
 	if battle_components:
 		var result = battle_components.check_battle_end()
 		if result.get("ended", false):
-			# Mostrar pantalla de fin de juego
-			if ui and ui.has_method("show_game_over"):
-				ui.show_game_over(result.winner, result.loser, result.reason)
+			# Determinar si el jugador ganó
+			var player_won = false
+			for mech in player_mechs:
+				if not mech.is_destroyed:
+					player_won = true
+					break
+			
+			# Mostrar pantalla de fin mejorada con estadísticas
+			_show_battle_end_screen(player_won, result.winner, result.loser, result.reason)
+
+
+func _show_battle_end_screen(player_won: bool, winner: String, loser: String, reason: String):
+	"""Muestra la pantalla de fin de batalla con estadísticas"""
+	# Obtener estadísticas
+	var stats = {}
+	if battle_stats_tracker:
+		stats = battle_stats_tracker.get_full_summary()
+	
+	# Crear la pantalla de fin
+	var end_screen = BattleEndScreenClass.new()
+	
+	# Añadir a un CanvasLayer para que esté encima de todo
+	var end_layer = CanvasLayer.new()
+	end_layer.layer = 200
+	add_child(end_layer)
+	end_layer.add_child(end_screen)
+	
+	# Configurar con los datos
+	end_screen.setup(stats, player_won, winner, loser, reason)
+	
+	Log.info("Match", "Battle ended - showing end screen", {
+		"winner": winner,
+		"player_won": player_won,
+		"turns": stats.get("turns", 0)
+	})
 
 
 func _handle_mech_inspect(hex: Vector2i):
@@ -1880,6 +2242,8 @@ func _on_handler_phase_changed(phase: String, turn: int, _phase_enum: int) -> vo
 		"weapon_attack":
 			turn_manager.current_phase = GameEnums.TurnPhase.WEAPON_ATTACK
 			current_state = GameEnums.GameState.WEAPON_ATTACK
+			# Trigger tutorial para ataque con armas
+			_notify_tutorial("weapon_attack_phase")
 		"physical_attack":
 			turn_manager.current_phase = GameEnums.TurnPhase.PHYSICAL_ATTACK
 			current_state = GameEnums.GameState.PHYSICAL_TARGETING
@@ -2355,3 +2719,71 @@ func mp_request_end_activation(mech):
 	
 	var mech_id = mech.get_meta("network_id", -1)
 	network_battle_client.request_end_activation(mech_id)
+
+
+# ============================================================
+# TRACKING DE ESTADÍSTICAS DE BATALLA
+# ============================================================
+
+func _on_weapon_fired_stats(attacker, weapon: Dictionary, hit: bool, damage: int, _location: String):
+	"""Trackea estadísticas cuando se dispara un arma"""
+	if not battle_stats_tracker:
+		return
+	
+	var is_player = attacker in player_mechs
+	var weapon_name = weapon.get("name", "").to_lower()
+	
+	# Detectar si es un misil
+	var is_missile = "lrm" in weapon_name or "srm" in weapon_name
+	var missile_count = 1
+	
+	if is_missile:
+		# Extraer número de misiles
+		var regex = RegEx.new()
+		regex.compile("[ls]rm[- ]?(\\d+)")
+		var result = regex.search(weapon_name)
+		if result:
+			missile_count = int(result.get_string(1))
+	
+	# Registrar el disparo
+	battle_stats_tracker.record_weapon_attack(attacker.mech_name, is_player, hit, is_missile, missile_count)
+	
+	# Registrar daño si hubo impacto
+	if hit and damage > 0:
+		# Necesitamos saber el target - por ahora usamos current_attack_target
+		var target_name = "Unknown"
+		var target_is_player = false
+		if current_attack_target:
+			target_name = current_attack_target.mech_name
+			target_is_player = current_attack_target in player_mechs
+		
+		battle_stats_tracker.record_damage(attacker.mech_name, is_player, target_name, target_is_player, damage)
+	
+	# Registrar calor
+	var heat = weapon.get("heat", 0)
+	if heat > 0:
+		battle_stats_tracker.record_heat_generated(attacker.mech_name, is_player, heat)
+
+
+func _on_physical_attack_stats(attacker, target, _attack_type: String, hit: bool):
+	"""Trackea estadísticas de ataques físicos"""
+	if not battle_stats_tracker:
+		return
+	
+	var attacker_is_player = attacker in player_mechs
+	battle_stats_tracker.record_physical_attack(attacker.mech_name, attacker_is_player, hit)
+	
+	# Registrar daño si hubo impacto (daño físico aproximado)
+	if hit:
+		var damage = int(attacker.tonnage / 10)  # Daño aproximado de puño/patada
+		var target_is_player = target in player_mechs
+		battle_stats_tracker.record_damage(attacker.mech_name, attacker_is_player, target.mech_name, target_is_player, damage)
+
+
+func _on_mech_destroyed_stats(_target, destroyed_by):
+	"""Trackea cuando un mech es destruido"""
+	if not battle_stats_tracker:
+		return
+	
+	var killer_is_player = destroyed_by in player_mechs
+	battle_stats_tracker.record_kill(destroyed_by.mech_name, killer_is_player)

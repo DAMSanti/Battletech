@@ -68,6 +68,10 @@ var game_over_visible: bool = false
 # Panel de inspección de mech (delegado a BattleMechInspector)
 var mech_inspector: BattleMechInspector = null
 
+# Sistema de anuncios dramáticos (explosiones, shutdown, etc.)
+var dramatic_announcement_label: Label = null
+var dramatic_announcement_tween: Tween = null
+
 # Panel de confirmación genérico
 var confirmation_panel: Panel
 var confirmation_title: Label
@@ -664,6 +668,12 @@ func update_end_turn_button(enabled: bool, text: String = "End Activation"):
 ## SELECTOR DE TIPO DE MOVIMIENTO ##
 
 func show_movement_type_selector(unit):
+	# En modo tutorial, verificar si el selector está bloqueado
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active and tutorial_mgr.movement_selector_blocked:
+		Log.debug("Tutorial", "Movement selector blocked by tutorial")
+		return
+	
 	var stack = get_stack()
 	for i in range(min(5, stack.size())):  # Mostrar las primeras 5 líneas del stack
 		var _frame = stack[i]
@@ -674,18 +684,35 @@ func show_movement_type_selector(unit):
 		if movement_selector_title:
 			movement_selector_title.text = "★ SELECT MOVEMENT TYPE - %s ★" % unit.mech_name.to_upper()
 		
+		# En modo tutorial, solo permitir WALK
+		var is_tutorial = tutorial_mgr and tutorial_mgr.is_tutorial_active
+		
 		# Actualizar textos de botones con MP disponibles
 		walk_button.text = "WALK (%d MP)\nNo penalty" % unit.walk_mp
-		run_button.text = "RUN (%d MP)\n+1 defense, +2 to fire" % unit.run_mp
+		walk_button.disabled = false
 		
-		if unit.jump_mp > 0:
-			jump_button.text = "JUMP (%d MP)\n+2 defense, +3 to fire" % unit.jump_mp
-			jump_button.disabled = false
-		else:
-			jump_button.text = "JUMP (No Jets)"
+		if is_tutorial:
+			# Tutorial: bloquear RUN, JUMP y TURN
+			run_button.text = "RUN (%d MP)\n🔒 Not in tutorial" % unit.run_mp
+			run_button.disabled = true
+			jump_button.text = "JUMP\n🔒 Not in tutorial"
 			jump_button.disabled = true
-		
-		turn_button.text = "TURN IN PLACE\nChange facing only"
+			turn_button.text = "TURN IN PLACE\n🔒 Not in tutorial"
+			turn_button.disabled = true
+		else:
+			# Modo normal
+			run_button.text = "RUN (%d MP)\n+1 defense, +2 to fire" % unit.run_mp
+			run_button.disabled = false
+			
+			if unit.jump_mp > 0:
+				jump_button.text = "JUMP (%d MP)\n+2 defense, +3 to fire" % unit.jump_mp
+				jump_button.disabled = false
+			else:
+				jump_button.text = "JUMP (No Jets)"
+				jump_button.disabled = true
+			
+			turn_button.text = "TURN IN PLACE\nChange facing only"
+			turn_button.disabled = false
 		
 		movement_selector_panel.visible = true
 
@@ -743,6 +770,19 @@ func hide_facing_selector():
 	"""Oculta el selector de orientación"""
 	if facing_selector:
 		facing_selector.visible = false
+
+func show_facing_selector_tutorial(screen_position: Vector2, allowed_facing: int, hex: Vector2i = Vector2i(-1, -1)):
+	"""Muestra el selector de orientación en modo tutorial con solo una dirección habilitada
+	
+	Args:
+		screen_position: Posición en pantalla donde mostrar el selector
+		allowed_facing: El único facing permitido (0=N, 1=NE, 2=SE, 3=S, 4=SW, 5=NW)
+		hex: Hex objetivo opcional para seguir la cámara
+	"""
+	if facing_selector and facing_selector.has_method("show_tutorial_facing"):
+		if hex != Vector2i(-1, -1) and battle_scene:
+			facing_selector.set_target_hex(hex, battle_scene)
+		facing_selector.show_tutorial_facing(screen_position, allowed_facing, hex)
 
 func is_facing_selector_visible() -> bool:
 	"""Retorna true si el selector de facing está visible"""
@@ -907,6 +947,11 @@ func is_point_over_attack_panels(screen_pos: Vector2) -> bool:
 
 func _on_weapons_confirmed(attacker, target, selected_weapons: Array, range_hexes: int):
 	"""Callback cuando se confirma el disparo de armas"""
+	# Notificar al tutorial que se seleccionaron armas
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		tutorial_mgr.notify_weapons_selected()
+	
 	if battle_scene and battle_scene.has_method("execute_weapon_attack"):
 		battle_scene.execute_weapon_attack(attacker, target, selected_weapons, range_hexes)
 
@@ -1222,3 +1267,88 @@ func get_los_overlay_hexes() -> Array:
 func is_los_overlay_visible() -> bool:
 	"""Indica si el overlay de LOS está visible"""
 	return eye_menu_panel != null and eye_menu_panel.is_los_overlay_visible()
+
+# ============================================
+# SISTEMA DE ANUNCIOS DRAMÁTICOS
+# ============================================
+
+func show_dramatic_announcement(text: String, color: Color = Color.WHITE, duration: float = 2.5) -> void:
+	"""
+	Muestra un mensaje dramático grande en el centro de la pantalla.
+	Usado para eventos importantes como SHUTDOWN, AMMO EXPLOSION, etc.
+	"""
+	var viewport_size = get_viewport().get_visible_rect().size
+	
+	# Crear el label si no existe
+	if not dramatic_announcement_label:
+		dramatic_announcement_label = Label.new()
+		dramatic_announcement_label.name = "DramaticAnnouncementLabel"
+		dramatic_announcement_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		dramatic_announcement_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		dramatic_announcement_label.add_theme_font_size_override("font_size", int(48 * scale_factor))
+		
+		# Estilo con sombra/outline para legibilidad
+		var shadow_color = Color.BLACK
+		shadow_color.a = 0.8
+		dramatic_announcement_label.add_theme_color_override("font_shadow_color", shadow_color)
+		dramatic_announcement_label.add_theme_constant_override("shadow_offset_x", 3)
+		dramatic_announcement_label.add_theme_constant_override("shadow_offset_y", 3)
+		dramatic_announcement_label.add_theme_constant_override("outline_size", int(4 * scale_factor))
+		dramatic_announcement_label.add_theme_color_override("font_outline_color", Color.BLACK)
+		
+		# Centrar en pantalla
+		dramatic_announcement_label.anchors_preset = Control.PRESET_CENTER
+		dramatic_announcement_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		dramatic_announcement_label.grow_vertical = Control.GROW_DIRECTION_BOTH
+		
+		add_child(dramatic_announcement_label)
+	
+	# Cancelar animación anterior si existe
+	if dramatic_announcement_tween and dramatic_announcement_tween.is_valid():
+		dramatic_announcement_tween.kill()
+	
+	# Configurar texto y color
+	dramatic_announcement_label.text = text
+	dramatic_announcement_label.modulate = Color(color.r, color.g, color.b, 0.0)  # Empezar invisible
+	dramatic_announcement_label.visible = true
+	dramatic_announcement_label.scale = Vector2(0.5, 0.5)
+	
+	# Posicionar manualmente en centro
+	dramatic_announcement_label.position = Vector2(
+		viewport_size.x / 2,
+		viewport_size.y / 2
+	)
+	dramatic_announcement_label.pivot_offset = dramatic_announcement_label.size / 2
+	
+	# Animar: fade in + scale up, mantener, fade out
+	dramatic_announcement_tween = create_tween()
+	dramatic_announcement_tween.set_parallel(true)
+	
+	# Fade in y scale up (0.3s)
+	dramatic_announcement_tween.tween_property(dramatic_announcement_label, "modulate:a", 1.0, 0.3)\
+		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	dramatic_announcement_tween.tween_property(dramatic_announcement_label, "scale", Vector2(1.0, 1.0), 0.3)\
+		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	
+	# Después del paralelo, esperar y hacer fade out
+	dramatic_announcement_tween.chain()
+	dramatic_announcement_tween.tween_interval(duration - 0.8)  # Tiempo visible menos los fades
+	dramatic_announcement_tween.tween_property(dramatic_announcement_label, "modulate:a", 0.0, 0.5)\
+		.set_ease(Tween.EASE_IN)
+	dramatic_announcement_tween.tween_callback(func(): dramatic_announcement_label.visible = false)
+
+func show_shutdown_announcement(mech_name: String) -> void:
+	"""Muestra anuncio de shutdown de mech"""
+	show_dramatic_announcement("⚡ " + mech_name + " SHUTDOWN! ⚡", Color(1.0, 0.3, 0.1), 3.0)
+
+func show_ammo_explosion_announcement(mech_name: String) -> void:
+	"""Muestra anuncio de explosión de munición"""
+	show_dramatic_announcement("💥 " + mech_name + " AMMO EXPLOSION! 💥", Color(1.0, 0.5, 0.0), 3.5)
+
+func show_mech_destroyed_announcement(mech_name: String) -> void:
+	"""Muestra anuncio de mech destruido"""
+	show_dramatic_announcement("☠️ " + mech_name + " DESTROYED! ☠️", Color(1.0, 0.2, 0.2), 4.0)
+
+func show_restart_announcement(mech_name: String) -> void:
+	"""Muestra anuncio de mech reiniciando"""
+	show_dramatic_announcement("🔄 " + mech_name + " RESTARTING... 🔄", Color(0.3, 1.0, 0.5), 2.0)

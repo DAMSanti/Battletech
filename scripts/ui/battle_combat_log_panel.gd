@@ -31,12 +31,12 @@ var _theme: Theme
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
-func setup(p_scale_factor: float, p_margin: float, theme: Theme) -> void:
+func setup(p_scale_factor: float, p_margin: float, p_theme: Theme) -> void:
 	scale_factor = p_scale_factor
 	margin = p_margin
 	log_collapsed_height = 40 * scale_factor
 	_styles = SteelTitansStyles.new(scale_factor)
-	_theme = theme
+	_theme = p_theme
 	_setup_panel()
 
 func _setup_panel() -> void:
@@ -81,7 +81,7 @@ func _setup_panel() -> void:
 	# Chat input
 	_setup_chat_input()
 
-func _setup_tabs(header_height: float) -> void:
+func _setup_tabs(_header_height: float) -> void:
 	var tab_button_width = 55 * scale_factor
 	var tab_button_height = 22 * scale_factor
 	var tab_spacing = 3 * scale_factor

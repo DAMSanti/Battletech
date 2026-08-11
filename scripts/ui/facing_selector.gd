@@ -20,6 +20,10 @@ var battle_scene = null  # Referencia a la escena de batalla para obtener posici
 var _last_screen_pos: Vector2 = Vector2.ZERO
 var _position_check_counter: int = 0
 
+# Modo tutorial: solo ciertas direcciones habilitadas
+var _tutorial_mode: bool = false
+var _allowed_facings: Array[int] = []
+
 func _ready():
 	# Ocultar por defecto
 	visible = false
@@ -418,6 +422,9 @@ func _on_facing_button_pressed(facing: int):
 	_position_check_counter = 0
 	_last_screen_pos = Vector2.ZERO
 	target_hex = Vector2i(-1, -1)
+	# Resetear modo tutorial
+	_tutorial_mode = false
+	_allowed_facings.clear()
 	Log.debug("UI", "Emitting facing_selected signal", {"facing": facing})
 	facing_selected.emit(facing)
 
@@ -430,6 +437,9 @@ func _on_cancel_pressed():
 	_position_check_counter = 0
 	_last_screen_pos = Vector2.ZERO
 	target_hex = Vector2i(-1, -1)
+	# Resetear modo tutorial
+	_tutorial_mode = false
+	_allowed_facings.clear()
 	facing_selected.emit(-1)
 
 	# If later the Control gets resized we should relayout children.
@@ -515,3 +525,79 @@ func _on_confirm_pressed():
 		_last_screen_pos = Vector2.ZERO
 		target_hex = Vector2i(-1, -1)
 		facing_selected.emit(current_facing)
+
+
+func set_tutorial_mode(enabled: bool, allowed: Array[int] = []):
+	"""Activa/desactiva el modo tutorial con direcciones específicas permitidas
+	
+	Args:
+		enabled: Si true, solo las direcciones en 'allowed' estarán habilitadas
+		allowed: Array de facings permitidos (0=N, 1=NE, 2=SE, 3=S, 4=SW, 5=NW)
+	"""
+	_tutorial_mode = enabled
+	_allowed_facings = allowed
+	Log.debug("UI", "FacingSelector tutorial mode: %s, allowed: %s" % [enabled, allowed])
+
+
+func show_tutorial_facing(screen_pos: Vector2, allowed_facing: int, hex: Vector2i = Vector2i(-1, -1)):
+	"""Muestra el selector en modo tutorial con solo una dirección habilitada
+	
+	Args:
+		screen_pos: Posición en pantalla donde mostrar el selector
+		allowed_facing: El único facing permitido (0-5)
+		hex: Hex objetivo opcional para seguir la cámara
+	"""
+	# Configurar modo tutorial con solo una dirección
+	set_tutorial_mode(true, [allowed_facing])
+	
+	# Establecer hex objetivo si está disponible
+	if hex != Vector2i(-1, -1) and battle_scene:
+		set_target_hex(hex, battle_scene)
+		if battle_scene.has_method("get_screen_position_for_hex"):
+			screen_pos = battle_scene.get_screen_position_for_hex(hex)
+	
+	current_facing = -1  # Sin facing actual (deployment)
+	available_mp = 99    # Sin límite de MP
+	
+	# Actualizar info label para tutorial
+	info_label.text = "Select NORTH"
+	info_label.add_theme_color_override("font_color", Color(0.2, 0.8, 1.0))  # Cyan tutorial
+	
+	_update_panel_position(screen_pos)
+	_last_screen_pos = screen_pos
+	
+	_update_buttons_tutorial()
+	visible = true
+
+
+func _update_buttons_tutorial():
+	"""Actualiza botones en modo tutorial: solo direcciones permitidas habilitadas"""
+	for i in range(hex_buttons.size()):
+		var btn_data = hex_buttons[i]
+		var button = btn_data["button"]
+		var arrow = btn_data["arrow"]
+		var border = btn_data["border"]
+		var label = btn_data["label"]
+		var container = btn_data["container"]
+		
+		var is_allowed = i in _allowed_facings
+		
+		button.disabled = not is_allowed
+		
+		if is_allowed:
+			# Dirección permitida - resaltar con color tutorial cyan
+			label.text = _get_direction_name(i)
+			label.add_theme_color_override("font_color", Color(0.2, 1.0, 0.6))  # Verde brillante
+			arrow.color = Color(0.2, 0.8, 1.0, 1.0)  # Cyan brillante
+			border.default_color = Color(0.4, 1.0, 1.0, 1.0)
+			border.width = 3 * _local_scale
+			container.modulate = Color(1.0, 1.0, 1.0)
+		else:
+			# Dirección deshabilitada - gris oscuro
+			label.text = "✗"
+			label.add_theme_color_override("font_color", Color(0.3, 0.3, 0.3))
+			arrow.color = Color(0.15, 0.15, 0.15, 0.4)
+			border.default_color = Color(0.25, 0.25, 0.25, 0.4)
+			border.width = 1 * _local_scale
+			container.modulate = Color(0.5, 0.5, 0.5)
+

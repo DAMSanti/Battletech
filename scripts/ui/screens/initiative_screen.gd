@@ -30,9 +30,18 @@ var match_id: int = -1
 var waiting_for_opponent_roll: bool = false
 var waiting_for_opponent_start: bool = false
 
+# Tutorial mode - player always wins
+var is_tutorial_mode: bool = false
+
 func _ready():
 	visible = true
 	layer = 100
+	
+	# Verificar si estamos en modo tutorial
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		is_tutorial_mode = true
+		Log.info("Tutorial", "Initiative screen in tutorial mode - player will always win")
 	
 	setup_ui()
 	
@@ -119,6 +128,54 @@ func _update_mech_labels():
 	
 	# También marcar visualmente los dados de mechs muertos
 	_mark_dead_mech_dice()
+	
+	# Ocultar dados y labels de mechs que no existen
+	_hide_unused_mech_slots()
+
+
+func refresh_mech_display():
+	"""Refresca la visualización de mechs (labels y dados) basándose en los arrays actuales"""
+	Log.debug("UI", "Refreshing initiative display: players=%d, enemies=%d" % [player_mech_names.size(), enemy_mech_names.size()])
+	_update_mech_labels()
+
+
+func _hide_unused_mech_slots():
+	"""Oculta los dados y labels de posiciones de mechs que no existen"""
+	# Ocultar dados del jugador para mechs que no existen
+	var player_count = player_mech_names.size()
+	for i in range(4):
+		if i >= player_count:
+			# Ocultar los dados de este mech
+			var dice_idx1 = i * 2
+			var dice_idx2 = i * 2 + 1
+			if dice_idx1 < player_dice.size() and player_dice[dice_idx1]:
+				player_dice[dice_idx1].visible = false
+			if dice_idx2 < player_dice.size() and player_dice[dice_idx2]:
+				player_dice[dice_idx2].visible = false
+	
+	# Ocultar dados del enemigo para mechs que no existen
+	var enemy_count = enemy_mech_names.size()
+	for i in range(4):
+		if i >= enemy_count:
+			# Ocultar los dados de este mech
+			var dice_idx1 = i * 2
+			var dice_idx2 = i * 2 + 1
+			if dice_idx1 < enemy_dice.size() and enemy_dice[dice_idx1]:
+				enemy_dice[dice_idx1].visible = false
+			if dice_idx2 < enemy_dice.size() and enemy_dice[dice_idx2]:
+				enemy_dice[dice_idx2].visible = false
+	
+	# Ocultar labels de mechs que no existen
+	for child in get_children():
+		if child is Label and child.has_meta("mech_index"):
+			var mech_index = child.get_meta("mech_index")
+			var team = child.get_meta("team")
+			
+			if team == "player" and mech_index >= player_count:
+				child.visible = false
+			elif team == "enemy" and mech_index >= enemy_count:
+				child.visible = false
+
 
 func _add_strikethrough_to_label(label: Label):
 	"""Añade una línea de tachado sobre el label"""
@@ -267,8 +324,9 @@ func _auto_continue_server_mode():
 	var player_totals = []
 	var enemy_totals = []
 	
-	for i in range(4):
+	for i in range(player_mech_names.size()):
 		player_totals.append(player_results[i][0] + player_results[i][1])
+	for i in range(enemy_mech_names.size()):
 		enemy_totals.append(enemy_results[i][0] + enemy_results[i][1])
 	
 	var data = {
@@ -552,27 +610,53 @@ func _on_roll_pressed():
 	subtitle_label.text = "Rolling dice for all mechs..."
 	
 	# Tirar 2D6 para cada mech (solo para los vivos)
-	for i in range(4):
-		var player_is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
-		var enemy_is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
-		
-		if not player_is_dead:
-			player_results[i][0] = (randi() % 6) + 1
-			player_results[i][1] = (randi() % 6) + 1
-		else:
-			player_results[i][0] = 0
-			player_results[i][1] = 0
-		
-		if not enemy_is_dead:
-			enemy_results[i][0] = (randi() % 6) + 1
-			enemy_results[i][1] = (randi() % 6) + 1
-		else:
-			enemy_results[i][0] = 0
-			enemy_results[i][1] = 0
+	var player_count = player_mech_names.size()
+	var enemy_count = enemy_mech_names.size()
 	
-	# Animar los 16 dados con delays escalonados (solo los vivos)
+	# En modo tutorial, el jugador SIEMPRE gana
+	if is_tutorial_mode:
+		# Jugador: dados altos (5-6)
+		for i in range(player_count):
+			var player_is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
+			if not player_is_dead:
+				player_results[i][0] = 5 + (randi() % 2)  # 5 o 6
+				player_results[i][1] = 5 + (randi() % 2)  # 5 o 6
+			else:
+				player_results[i][0] = 0
+				player_results[i][1] = 0
+		
+		# Enemigo: dados bajos (1-3)
+		for i in range(enemy_count):
+			var enemy_is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
+			if not enemy_is_dead:
+				enemy_results[i][0] = 1 + (randi() % 3)  # 1, 2 o 3
+				enemy_results[i][1] = 1 + (randi() % 3)  # 1, 2 o 3
+			else:
+				enemy_results[i][0] = 0
+				enemy_results[i][1] = 0
+	else:
+		# Modo normal - dados aleatorios
+		for i in range(player_count):
+			var player_is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
+			if not player_is_dead:
+				player_results[i][0] = (randi() % 6) + 1
+				player_results[i][1] = (randi() % 6) + 1
+			else:
+				player_results[i][0] = 0
+				player_results[i][1] = 0
+		
+		for i in range(enemy_count):
+			var enemy_is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
+			if not enemy_is_dead:
+				enemy_results[i][0] = (randi() % 6) + 1
+				enemy_results[i][1] = (randi() % 6) + 1
+			else:
+				enemy_results[i][0] = 0
+				enemy_results[i][1] = 0
+	
+	# Animar los dados con delays escalonados (solo los vivos)
 	var delay = 0.0
-	for i in range(4):
+	for i in range(player_count):
 		var player_is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
 		if not player_is_dead:
 			# Dados del jugador (mech i)
@@ -581,7 +665,7 @@ func _on_roll_pressed():
 			animate_dice_3d(player_dice[i * 2 + 1], player_results[i][1], delay)
 			delay += 0.1
 	
-	for i in range(4):
+	for i in range(enemy_count):
 		var enemy_is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
 		if not enemy_is_dead:
 			# Dados del enemigo (mech i)
@@ -788,8 +872,9 @@ func show_results():
 	
 	# Resultados del jugador
 	var y_offset = 45 * scale_factor
-	for i in range(4):
-		var player_name = player_mech_names[i] if i < player_mech_names.size() else ("Mech " + str(i + 1))
+	var player_count = player_mech_names.size()
+	for i in range(player_count):
+		var player_name = player_mech_names[i]
 		var player_total = player_results[i][0] + player_results[i][1]
 		var is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
 		
@@ -879,8 +964,9 @@ func show_results():
 	
 	# Resultados del enemigo
 	y_offset = 45 * scale_factor
-	for i in range(4):
-		var enemy_name = enemy_mech_names[i] if i < enemy_mech_names.size() else ("Enemy " + str(i + 1))
+	var enemy_count = enemy_mech_names.size()
+	for i in range(enemy_count):
+		var enemy_name = enemy_mech_names[i]
 		var enemy_total = enemy_results[i][0] + enemy_results[i][1]
 		var is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
 		
@@ -974,8 +1060,9 @@ func _do_continue_animation():
 	var player_totals = []
 	var enemy_totals = []
 	
-	for i in range(4):
+	for i in range(player_mech_names.size()):
 		player_totals.append(player_results[i][0] + player_results[i][1])
+	for i in range(enemy_mech_names.size()):
 		enemy_totals.append(enemy_results[i][0] + enemy_results[i][1])
 	
 	var data = {

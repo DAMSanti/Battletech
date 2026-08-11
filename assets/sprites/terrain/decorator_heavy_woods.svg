@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="96" height="96">
+  <!-- Heavy Woods - Dense forest with overlapping canopy -->
+  <defs>
+    <linearGradient id="denseTreeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1F4A1A"/>
+      <stop offset="100%" style="stop-color:#0F2A0D"/>
+    </linearGradient>
+    <linearGradient id="denseTreeGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2A5A24"/>
+      <stop offset="100%" style="stop-color:#1A3A18"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background canopy layer -->
+  <ellipse cx="48" cy="50" rx="40" ry="30" fill="#1A3A18" opacity="0.5"/>
+  
+  <!-- Tree 1 (back left) -->
+  <g transform="translate(10, 35)">
+    <rect x="10" y="25" width="4" height="15" fill="#3A2818"/>
+    <ellipse cx="12" cy="15" rx="16" ry="12" fill="url(#denseTreeGrad)" opacity="0.9"/>
+    <ellipse cx="12" cy="10" rx="12" ry="9" fill="#2A5A24" opacity="0.95"/>
+  </g>
+  
+  <!-- Tree 2 (back right) -->
+  <g transform="translate(55, 30)">
+    <rect x="10" y="28" width="5" height="16" fill="#4A3828"/>
+    <ellipse cx="12" cy="16" rx="18" ry="14" fill="url(#denseTreeGrad2)" opacity="0.85"/>
+    <ellipse cx="12" cy="10" rx="14" ry="10" fill="#3A6A34" opacity="0.9"/>
+  </g>
+  
+  <!-- Tree 3 (front center) -->
+  <g transform="translate(30, 50)">
+    <rect x="9" y="22" width="4" height="14" fill="#5C4433"/>
+    <ellipse cx="11" cy="12" rx="15" ry="11" fill="url(#denseTreeGrad)" opacity="0.95"/>
+    <ellipse cx="11" cy="7" rx="11" ry="8" fill="#3D7A35" opacity="1"/>
+  </g>
+  
+  <!-- Tree 4 (front right small) -->
+  <g transform="translate(60, 60)">
+    <rect x="6" y="15" width="3" height="10" fill="#4A3828"/>
+    <ellipse cx="7" cy="8" rx="10" ry="8" fill="#2A5A24" opacity="0.9"/>
+  </g>
+  
+  <!-- Shadow/depth on ground -->
+  <ellipse cx="48" cy="85" rx="35" ry="8" fill="#0A1A08" opacity="0.3"/>
+</svg>

@@ -56,6 +56,7 @@ var pending_overlays_hex_grid = null
 		show_movement_cost = v
 		_refresh_labels()
 @export var debug_depth_test: bool = false # When true, draw two overlapping test polygons to validate occlusion
+@export var show_terrain_decorators: bool = true  # Show SVG decorators on terrain
 
 # Referencia al hex_grid para obtener info de terreno
 var hex_grid_ref = null
@@ -63,6 +64,11 @@ var hex_grid_ref = null
 # Cache para regenerar labels cuando cambian settings
 var _cached_surf_entries: Array = []
 var _cached_base_elevation: int = 0
+
+# Terrain decorator system
+var decorator_root: Node2D = null
+var decorator_pool: Array = []  # Pool of Sprite2D for decorators
+var decorator_textures: Dictionary = {}  # Cached decorator textures by terrain type
 
 func set_hex_grid(hex_grid):
 	"""Establece la referencia al hex_grid para obtener info de terreno"""
@@ -142,6 +148,13 @@ func _ready():
 	label_root.name = "LabelRoot"
 	label_root.z_index = 4096  # Por encima de todas las superficies (max es 4096)
 	add_child(label_root)
+	
+	# Terrain decorator root (between surfaces and labels)
+	decorator_root = Node2D.new()
+	decorator_root.name = "DecoratorRoot"
+	decorator_root.z_index = 200  # Above terrain tiles, below labels
+	add_child(decorator_root)
+	_load_decorator_textures()
 
 	add_child(depth_viewport)
 
@@ -309,7 +322,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	surf_entries.sort_custom(Callable(self, "_surf_cmp"))
 	
 	# FUSIONAR OVERLAYS con tiles para renderizar intercalados
-	var overlay_count = 0
+	var _overlay_count = 0
 	if pending_overlays.size() > 0 and pending_overlays_hex_grid:
 		# Crear lista temporal de overlays a añadir
 		var overlays_to_add = []
@@ -361,7 +374,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 			})
 		
 		# Añadir overlays al array
-		overlay_count = overlays_to_add.size()
+		_overlay_count = overlays_to_add.size()
 		for overlay in overlays_to_add:
 			surf_entries.append(overlay)
 		
@@ -412,7 +425,7 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	
 	# Calculate depth UV transform parameters
 	var depth_uv_scale = Vector2(fit_scale / viewport_size.x, fit_scale / viewport_size.y)
-	var depth_uv_offset = Vector2(-bounds_min.x * depth_uv_scale.x, -bounds_min.y * depth_uv_scale.y)
+	var _depth_uv_offset = Vector2(-bounds_min.x * depth_uv_scale.x, -bounds_min.y * depth_uv_scale.y)
 	
 	# Renderizar TODO en orden intercalado: tiles y overlays usan el mismo pool
 	for s_entry in surf_entries:
@@ -434,19 +447,19 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 			var overlay_zidx = int(overlay_depth) + 1  # +1 para estar justo encima del tile
 			
 			# DEPTH PASS: Los overlays NO escriben en depth buffer
-			var depth_poly: Polygon2D = depth_pool[idx]
-			depth_poly.visible = false  # No escribir en depth
+			var overlay_depth_poly: Polygon2D = depth_pool[idx]
+			overlay_depth_poly.visible = false  # No escribir en depth
 			
 			# MAIN PASS: Renderizar overlay con color semi-transparente
-			var main_poly: Polygon2D = main_pool[idx]
-			main_poly.polygon = overlay_points
-			main_poly.position = Vector2.ZERO
-			main_poly.visible = true
-			main_poly.color = overlay_color
-			main_poly.z_index = overlay_zidx
-			main_poly.texture = null
-			main_poly.material = null  # Sin shader, color directo
-			main_poly.modulate = Color.WHITE
+			var overlay_main_poly: Polygon2D = main_pool[idx]
+			overlay_main_poly.polygon = overlay_points
+			overlay_main_poly.position = Vector2.ZERO
+			overlay_main_poly.visible = true
+			overlay_main_poly.color = overlay_color
+			overlay_main_poly.z_index = overlay_zidx
+			overlay_main_poly.texture = null
+			overlay_main_poly.material = null  # Sin shader, color directo
+			overlay_main_poly.modulate = Color.WHITE
 			
 			# Ocultar borde de tile para overlays
 			if idx < border_pool.size():
@@ -684,6 +697,9 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	_cached_surf_entries = surf_entries
 	_cached_base_elevation = base_elevation
 	_update_hex_labels(surf_entries, base_elevation)
+	
+	# Update terrain decorators
+	_update_terrain_decorators(surf_entries, base_elevation)
 
 	# Debug: print small stats so we can tune
 	if Engine.is_editor_hint() or debug_show_depth:
@@ -806,10 +822,10 @@ func _update_hex_labels(surf_entries: Array, base_elevation: int):
 		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		
 		# Ajustar tamaño según número de líneas
-		var lbl_height = 20 * line_count + 10
-		var lbl_width = 50 if line_count > 1 else 40
+		var lbl_height: float = 20.0 * line_count + 10.0
+		var lbl_width: float = 50.0 if line_count > 1 else 40.0
 		lbl.size = Vector2(lbl_width, lbl_height)
-		lbl.position = center - Vector2(lbl_width / 2, lbl_height / 2)
+		lbl.position = center - Vector2(lbl_width / 2.0, lbl_height / 2.0)
 		lbl.z_index = 0
 		
 		lbl.text = label_text
@@ -1123,3 +1139,115 @@ func _update_debug_test():
 	_debug_main_container.add_child(lbl_high)
 
 	print_debug("[TEST] Debug test created - should see blue (LOW) and red (HIGH) with occlusion")
+
+
+# ==============================================================================
+# TERRAIN DECORATOR SYSTEM
+# ==============================================================================
+
+func _load_decorator_textures() -> void:
+	"""Load all terrain decorator SVG textures"""
+	var decorator_paths = {
+		# TerrainType enum values -> decorator path
+		9: "res://assets/sprites/terrain/decorator_light_woods.svg",   # LIGHT_WOODS
+		10: "res://assets/sprites/terrain/decorator_heavy_woods.svg",  # HEAVY_WOODS
+		3: "res://assets/sprites/terrain/decorator_rough.svg",         # ROUGH
+		13: "res://assets/sprites/terrain/decorator_rubble.svg",       # RUBBLE
+		4: "res://assets/sprites/terrain/decorator_pavement.svg",      # PAVEMENT
+		7: "res://assets/sprites/terrain/decorator_building.svg",      # BUILDING
+		# Water uses depth to determine which decorator
+		"water_shallow": "res://assets/sprites/terrain/decorator_water_shallow.svg",
+		"water_deep": "res://assets/sprites/terrain/decorator_water_deep.svg",
+	}
+	
+	for key in decorator_paths:
+		var path = decorator_paths[key]
+		if ResourceLoader.exists(path):
+			decorator_textures[key] = load(path)
+
+
+func _get_decorator_for_terrain(terrain_type: int, depth: int = 0) -> Texture2D:
+	"""Get the appropriate decorator texture for a terrain type"""
+	# Special handling for water based on depth
+	if terrain_type == 2:  # WATER
+		if depth <= 0:
+			return decorator_textures.get("water_shallow", null)
+		else:
+			return decorator_textures.get("water_deep", null)
+	
+	return decorator_textures.get(terrain_type, null)
+
+
+func _update_terrain_decorators(surf_entries: Array, _base_elevation: int) -> void:
+	"""Update terrain decorator sprites based on surface entries"""
+	if not show_terrain_decorators or not decorator_root:
+		# Hide all decorators
+		for dec_sprite in decorator_pool:
+			dec_sprite.visible = false
+		return
+	
+	var decorator_idx = 0
+	
+	for s_entry in surf_entries:
+		# Only process top surfaces (not sides or overlays)
+		if s_entry.get("is_overlay", false):
+			continue
+		
+		var s = s_entry.get("surf", null)
+		if s == null:
+			continue
+		
+		# Only decorate "top" type surfaces
+		if s.get("type", "") != "top":
+			continue
+		
+		var terrain = s.get("terrain", 0)
+		var _elevation = s.get("elevation", 0)
+		var center = s.get("center", Vector2.ZERO)
+		var hex_pos = s.get("hex", Vector2i.ZERO)
+		
+		# Get water depth if applicable
+		var water_depth = 0
+		if terrain == 2 and hex_grid_ref and hex_grid_ref.has_method("get_water_depth"):
+			water_depth = hex_grid_ref.get_water_depth(hex_pos)
+		
+		# Get decorator texture for this terrain
+		var decorator_tex = _get_decorator_for_terrain(terrain, water_depth)
+		if decorator_tex == null:
+			continue
+		
+		# Ensure we have enough sprites in the pool
+		while decorator_idx >= decorator_pool.size():
+			var new_sprite = Sprite2D.new()
+			new_sprite.centered = true
+			decorator_root.add_child(new_sprite)
+			decorator_pool.append(new_sprite)
+		
+		# Configure the decorator sprite
+		var sprite: Sprite2D = decorator_pool[decorator_idx]
+		sprite.texture = decorator_tex
+		sprite.position = center
+		sprite.visible = true
+		
+		# Scale decorator to fit hex size (assuming hex_size ~48)
+		var tex_size = decorator_tex.get_size()
+		var target_size = 80.0  # Slightly smaller than hex for visual appeal
+		var scale_factor = target_size / max(tex_size.x, tex_size.y)
+		sprite.scale = Vector2(scale_factor, scale_factor)
+		
+		# Z-index based on elevation for proper layering
+		sprite.z_index = int(center.y) + 10
+		
+		# Slight random rotation for variety (except buildings and pavement)
+		# Use hex position as seed for consistent rotation
+		if terrain != 7 and terrain != 4 and terrain != 12:  # Not BUILDING, PAVEMENT, ROAD
+			var rot_seed = (hex_pos.x * 7 + hex_pos.y * 13) % 100
+			sprite.rotation = (rot_seed - 50) * 0.003  # Small consistent rotation
+		else:
+			sprite.rotation = 0
+		
+		decorator_idx += 1
+	
+	# Hide unused sprites
+	for i in range(decorator_idx, decorator_pool.size()):
+		decorator_pool[i].visible = false

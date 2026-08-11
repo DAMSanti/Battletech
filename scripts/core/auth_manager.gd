@@ -1048,8 +1048,7 @@ func _create_error_from_api_response(result: Dictionary, provider: AuthProvider)
 func _log_info(message: String) -> void:
 	if _logger:
 		_logger.info("[AuthManager] " + message)
-	else:
-		print("[AuthManager] INFO: " + message)
+	# No usar push_warning para INFO - causa falsos positivos en tests
 
 
 func _log_warning(message: String) -> void:

@@ -651,7 +651,7 @@ func get_valid_targets(mech_id: String) -> Array:
 	
 	return targets
 
-func get_attack_modifier(attacker_id: String, defender_id: String, weapon_index: int) -> int:
+func get_attack_modifier(attacker_id: String, defender_id: String, _weapon_index: int) -> int:
 	var modifier = 0
 	
 	var attacker = _state.get_mech(attacker_id)
