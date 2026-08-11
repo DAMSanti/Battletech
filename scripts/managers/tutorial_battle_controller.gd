@@ -919,11 +919,16 @@ These attacks generate [color=green]NO HEAT[/color]!""",
 func _setup_physical_approach():
 	input_unblocked.emit()
 	
-	# Hexes adyacentes al enemigo
-	allowed_hexes = [
-		Vector2i(5, 6), Vector2i(6, 5), Vector2i(7, 5),
-		Vector2i(5, 7), Vector2i(7, 6)
-	]
+	# Hexes adyacentes al enemigo. Antes esto era una lista fija de
+	# vecinos de un hex asumido como posicion del enemigo (6,6), pero el
+	# Hunchback llega a esta fase habiendose movido por su propia IA
+	# durante los turnos anteriores, asi que esa posicion fija casi nunca
+	# coincidia con donde estaba realmente - las casillas resaltadas no
+	# rodeaban al enemigo. Se calcula ahora a partir de su hex_position real.
+	allowed_hexes = []
+	if battle_scene and battle_scene.enemy_mechs.size() > 0 and battle_scene.hex_grid:
+		var enemy = battle_scene.enemy_mechs[0]
+		allowed_hexes = battle_scene.hex_grid.get_neighbors(enemy.hex_position)
 	required_action = "move"
 	
 	force_action.emit("highlight_hexes", {"hexes": allowed_hexes, "color": "tutorial"})
