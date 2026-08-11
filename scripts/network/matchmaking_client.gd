@@ -354,7 +354,13 @@ func _parse_response(body: PackedByteArray) -> Dictionary:
 	var json = JSON.new()
 	var error = json.parse(json_string)
 	if error != OK:
-		Log.error("Matchmaking", "Failed to parse response", {"error": error})
+		ErrorHandler.report(
+			"Failed to parse matchmaking response",
+			ErrorHandler.ErrorCategory.NETWORK,
+			ErrorHandler.ErrorSeverity.LOW,
+			{"error": error},
+			false
+		)
 		return {}
 	
 	return json.data if json.data is Dictionary else {}

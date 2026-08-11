@@ -119,9 +119,7 @@ var camera: Camera2D
 const CAMERA_SMOOTH_SPEED = 10.0
 
 # Sistema de long press (indicador visual - el estado lo maneja BattleInputRouter)
-var long_press_indicator: Node2D = null
-const LONG_PRESS_DURATION: float = 0.5
-const LONG_PRESS_VISUAL_DELAY: float = 0.15
+var long_press_indicator: LongPressIndicator = null
 
 # Sistema de indicador de mech activo
 var active_mech_indicator: Control = null  # ActiveMechIndicator
@@ -556,18 +554,8 @@ func _process(delta):
 	if ui_interaction_cooldown > 0:
 		ui_interaction_cooldown -= delta
 	
-	# Procesar indicador visual de long press (lee estado del componente)
-	if use_component_input and battle_components and battle_components.input_router:
-		var lp_active: bool = battle_components.input_router.is_long_press_active()
-		var lp_timer: float = battle_components.input_router.long_press_timer
-		var lp_start_pos: Vector2 = battle_components.input_router.get_long_press_start_pos()
-		
-		if lp_active and long_press_indicator:
-			long_press_indicator.visible = lp_timer >= LONG_PRESS_VISUAL_DELAY
-			long_press_indicator.position = lp_start_pos
-			long_press_indicator.queue_redraw()
-		elif long_press_indicator:
-			long_press_indicator.visible = false
+	# El indicador de long press gestiona su propio estado en _process/_draw
+	# (ver scripts/ui/long_press_indicator.gd)
 
 
 # ==============================================================================
@@ -2051,57 +2039,17 @@ func _handle_mech_inspect(hex: Vector2i):
 
 
 func _create_long_press_indicator():
-	# Crear un CanvasLayer para el indicador (así usa coordenadas de pantalla)
+	# Delegado a LongPressIndicator (scripts/ui/long_press_indicator.gd)
 	var indicator_layer = CanvasLayer.new()
 	indicator_layer.name = "LongPressIndicatorLayer"
 	indicator_layer.layer = 100  # Encima del UI normal
 	add_child(indicator_layer)
 	
-	# Crear un nodo 2D para el indicador visual del long press
-	long_press_indicator = Node2D.new()
+	long_press_indicator = LongPressIndicator.new()
 	long_press_indicator.name = "LongPressIndicator"
+	long_press_indicator.scene = self
 	long_press_indicator.visible = false
-	long_press_indicator.draw.connect(_draw_long_press_indicator)
 	indicator_layer.add_child(long_press_indicator)
-
-func _draw_long_press_indicator():
-	if not long_press_indicator:
-		return
-	
-	# Obtener estado del long press del componente
-	if not (use_component_input and battle_components and battle_components.input_router):
-		return
-	
-	var lp_active: bool = battle_components.input_router.is_long_press_active()
-	var lp_timer: float = battle_components.input_router.long_press_timer
-	
-	if not lp_active:
-		return
-	
-	# Calcular progreso (0.0 a 1.0), ajustado por el delay visual
-	var visual_timer: float = max(0.0, lp_timer - LONG_PRESS_VISUAL_DELAY)
-	var visual_duration: float = LONG_PRESS_DURATION - LONG_PRESS_VISUAL_DELAY
-	var progress: float = min(visual_timer / visual_duration, 1.0)
-	
-	# Radio del círculo
-	var radius = 30.0
-	
-	# Dibujar círculo de fondo (semi-transparente)
-	long_press_indicator.draw_circle(Vector2.ZERO, radius, Color(0.2, 0.2, 0.2, 0.5))
-	
-	# Dibujar borde del círculo
-	long_press_indicator.draw_arc(Vector2.ZERO, radius, 0, TAU, 32, Color.WHITE, 2.0)
-	
-	# Dibujar progreso (arco que se llena)
-	if progress > 0:
-		var end_angle = -PI/2 + (TAU * progress)
-		long_press_indicator.draw_arc(Vector2.ZERO, radius - 5, -PI/2, end_angle, 32, Color.CYAN, 6.0)
-	
-	# Dibujar icono de inspección en el centro (opcional)
-	if progress > 0.8:
-		# Nota: Para un texto centrado necesitarías usar draw_string con una fuente
-		# Por simplicidad, solo dibujamos un punto central
-		long_press_indicator.draw_circle(Vector2.ZERO, 5.0, Color.CYAN)
 
 func _show_active_mech_indicator(unit):
 	"""Muestra un indicador visual sobre el mech activo - usa componente dedicado"""

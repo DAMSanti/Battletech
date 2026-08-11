@@ -512,10 +512,13 @@ func _parse_response(endpoint: String, response: Array) -> Dictionary:
 	
 	# Check for network errors
 	if result != HTTPRequest.RESULT_SUCCESS:
-		Log.error(LOG_CATEGORY, "Network error", {
-			"endpoint": endpoint,
-			"result": result
-		})
+		ErrorHandler.report(
+			"Network error",
+			ErrorHandler.ErrorCategory.NETWORK,
+			ErrorHandler.ErrorSeverity.MEDIUM,
+			{"endpoint": endpoint, "result": result},
+			false
+		)
 		return _create_error_response("NETWORK_ERROR", _result_to_error(result), 0)
 	
 	# Parse JSON body
@@ -528,10 +531,13 @@ func _parse_response(endpoint: String, response: Array) -> Dictionary:
 		if parse_error == OK:
 			data = json.data
 		else:
-			Log.warning(LOG_CATEGORY, "Failed to parse response JSON", {
-				"endpoint": endpoint,
-				"error": json.get_error_message()
-			})
+			ErrorHandler.report(
+				"Failed to parse response JSON",
+				ErrorHandler.ErrorCategory.NETWORK,
+				ErrorHandler.ErrorSeverity.LOW,
+				{"endpoint": endpoint, "error": json.get_error_message()},
+				false
+			)
 	
 	# Check for HTTP errors
 	if response_code >= 400:

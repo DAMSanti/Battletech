@@ -32,13 +32,13 @@ Bloqueante para todo lo demás: sin esto, cualquier cambio adicional aumenta el 
 
 ## FASE T1 — Romper el god-class de `battle_scene.gd`
 
-Es el ítem de mayor impacto técnico del proyecto: 2789 líneas que mezclan input táctil, estado de partida, presentación de UI, y ~15 manejadores de eventos de red, con **0% de cobertura de tests** (326 casos excluidos explícitamente en `doc/development/TESTING.md`).
+Es el ítem de mayor impacto técnico del proyecto: mezclaba input táctil, estado de partida, presentación de UI, y ~15 manejadores de eventos de red, con **0% de cobertura de tests** (326 casos excluidos explícitamente en `doc/development/TESTING.md`).
 
-- [ ] Auditar cuánta lógica *ya* vive fuera de `battle_scene.gd` (`battle_controller.gd`, `battle_deployment_manager.gd`, `battle_input_router.gd`, `battle_movement_handler.gd`, `battle_state_coordinator.gd`) antes de mover nada más — parece que la extracción ya se empezó y `battle_scene.gd` quedó como fallback/pegamento
-- [ ] Extraer el router de input (`_input(event)` y el dibujado del indicador de long-press) a un componente propio, testeable sin escena
-- [ ] Separar el manejo de red (los ~15 `_on_handler_*`) en un adaptador dedicado que traduzca señales de `NetworkManager` a llamadas sobre un `BattleState` sin UI
-- [ ] Hacer testeable el flujo de turno/activación/despliegue (líneas 816-2116 aprox.) una vez extraído del nodo de escena
-- [ ] Escribir tests de integración reales para el flujo "desplegar → mover → atacar → fin de turno", en sustitución de los 326 casos excluidos (no hace falta 100%, sí cubrir el camino feliz + los casos de error más probables)
+- [x] Auditar cuánta lógica *ya* vive fuera de `battle_scene.gd` — **hallazgo corregido:** `_input(event)` ya delega 100% en `battle_components.input_router` (5 líneas, `battle_scene.gd:1151`); la extracción a `battle_controller.gd`/`battle_deployment_manager.gd`/`battle_input_router.gd`/`battle_movement_handler.gd`/`battle_state_coordinator.gd` ya cubre una parte real. Lo que **no** está extraído son los ~700 líneas de despliegue/activación (816-2116 aprox.) y los ~15 `_on_handler_*` de red — eso sigue siendo un god-class de verdad, no solo apariencia
+- [x] Extraer el dibujado del indicador de long-press a un componente propio — nuevo `scripts/ui/long_press_indicator.gd` (`class_name LongPressIndicator`), gestiona su propio `_process`/`_draw` leyendo `battle_components.input_router`; `battle_scene.gd` pasó de 2789 a 2737 líneas
+- [ ] Separar el manejo de red (los ~15 `_on_handler_*`) en un adaptador dedicado — **no intentado**: requiere mover lógica de negocio real (procesar resultados de movimiento/disparo/ataque) y no hay forma de verificar que no rompe nada sin ejecutar el juego o los tests de GUT (no hay binario de Godot disponible en este entorno). Recomendado hacerlo en una sesión con Godot instalado, extrayendo un `_on_handler_*` a la vez y corriendo `tests/` entre cada uno
+- [ ] Hacer testeable el flujo de turno/activación/despliegue — mismo motivo, no intentado sin poder ejecutar el proyecto
+- [ ] Escribir tests de integración reales para el flujo "desplegar → mover → atacar → fin de turno" — no intentado; escribir tests de escena sin poder ejecutarlos localmente arriesga tests rotos que darían falsa confianza
 
 ---
 
@@ -46,12 +46,14 @@ Es el ítem de mayor impacto técnico del proyecto: 2789 líneas que mezclan inp
 
 Solo 71 `push_error` y 14 `push_warning` en 108 archivos, concentrados en ~15 de ellos; `assert()` no se usa nunca; `ErrorHandler` (`scripts/core/error_handler.gd`) existe pero solo se referencia en 1 archivo.
 
-- [ ] Decidir si `ErrorHandler` sigue siendo la estrategia (parece bien diseñado, solo no adoptado) o se retira
-- [ ] Si se mantiene, adoptarlo en `network_manager.gd` (parsing de respuestas de red)
-- [ ] Adoptarlo en `database_manager.gd` (parsing de respuestas de red)
-- [ ] Adoptarlo en `weapons_database.gd` y `mech_loadout.gd` (carga de datos de mechs/armas)
-- [ ] Adoptarlo en `server_action_validator.gd` (validación server-side)
-- [ ] Añadir `assert()` en invariantes de desarrollo (p. ej. estados de turno imposibles) — hoy un estado inconsistente probablemente falla en silencio
+- [x] Decidir si `ErrorHandler` sigue siendo la estrategia — **se mantiene**: está bien diseñado (categorías, severidad, historial, integración con `Log`) y es `static`/`RefCounted`, se puede llamar directamente sin autoload
+- [x] Adoptarlo en `database_manager.gd` — los dos puntos de fallo real (error de red HTTP y JSON inválido en `_parse_response`) ahora reportan vía `ErrorHandler.report(..., auto_recover=false)` en vez de solo `Log.error`/`Log.warning`
+- [x] Adoptarlo en `matchmaking_client.gd` — mismo patrón en `_parse_response` (fallo de parseo JSON)
+- [x] Revisar `network_manager.gd` — **auditado, sin cambio**: no tiene parsing de JSON ni operaciones de archivo (usa RPCs tipados de ENet, no HTTP); los `if not is_server: return` son guardas de control de flujo normales, no errores — forzar `ErrorHandler` ahí habría sido ruido, no valor
+- [x] Revisar `weapons_database.gd` — **auditado, sin cambio**: es una tabla de datos `const`, sin I/O ni operación falible que envolver
+- [x] Revisar `mech_loadout.gd` — **auditado, sin cambio**: `from_dict()` ya usa `.get()` con valores por defecto en cada campo, no hay parseo que pueda lanzar
+- [x] Revisar `server_action_validator.gd` — **auditado, sin cambio**: ya tiene su propio patrón `ValidationResult` (success/failure) apropiado al dominio; un rechazo de validación no es un error del sistema, es un resultado esperado de una acción de cliente inválida — mezclar `ErrorHandler` ahí sería incorrecto conceptualmente
+- [ ] Añadir `assert()` en invariantes de desarrollo (p. ej. estados de turno imposibles) — no intentado: elegir invariantes reales requiere entender el flujo de turnos a fondo y verificar en ejecución que no disparan en casos válidos; queda para una sesión con Godot disponible
 
 ---
 
