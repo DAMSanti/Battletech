@@ -218,6 +218,58 @@ func test_validate_movement_run_distance() -> void:
 	assert_true(result.valid, "Running 5 hexes with run_mp=6 should work")
 
 
+func test_validate_movement_rejects_out_of_activation_order() -> void:
+	# Ver ROADMAP.md Fase T3: _handle_move_request no comprobaba el orden
+	# de activacion, solo fase + propiedad + "no se ha movido ya este turno".
+	# Un cliente podia mover cualquiera de sus mechs no usados en cualquier
+	# orden dentro de la fase, en vez de respetar units_to_activate (ver
+	# GDD.md "orden de iniciativa").
+	var match_data = _create_test_match_data()
+	var mech1 = _create_test_mech(1, 1001, "player", Vector2i(5, 5))
+	var mech2 = _create_test_mech(2, 1001, "player", Vector2i(6, 6))
+	match_data["mechs"][1] = mech1
+	match_data["mechs"][2] = mech2
+	match_data["units_to_activate"] = [2, 1]  # Le toca al mech 2 primero
+	match_data["current_unit_index"] = 0
+
+	var result = ServerActionValidator.validate_movement(
+		match_data, 1, 1001, Vector2i(6, 5), 1  # Intenta mover el mech 1 (no le toca)
+	)
+
+	assert_false(result.valid, "Should reject moving a mech that isn't up in the activation order")
+	assert_eq(result.reason, "Not this mech's turn to activate")
+
+
+func test_validate_movement_allows_mech_at_front_of_activation_queue() -> void:
+	var match_data = _create_test_match_data()
+	var mech1 = _create_test_mech(1, 1001, "player", Vector2i(5, 5))
+	var mech2 = _create_test_mech(2, 1001, "player", Vector2i(6, 6))
+	match_data["mechs"][1] = mech1
+	match_data["mechs"][2] = mech2
+	match_data["units_to_activate"] = [2, 1]
+	match_data["current_unit_index"] = 0
+
+	var result = ServerActionValidator.validate_movement(
+		match_data, 2, 1001, Vector2i(7, 6), 1  # Mueve el mech 2, que si le toca
+	)
+
+	assert_true(result.valid, "Should allow moving the mech at the front of the activation queue")
+
+
+func test_validate_movement_ignores_activation_order_when_queue_empty() -> void:
+	# Compatibilidad: partidas/tests que no rellenan units_to_activate no
+	# deben verse afectados por esta validacion nueva.
+	var match_data = _create_test_match_data()
+	var mech = _create_test_mech(1, 1001, "player", Vector2i(5, 5))
+	match_data["mechs"][1] = mech
+
+	var result = ServerActionValidator.validate_movement(
+		match_data, 1, 1001, Vector2i(6, 5), 1
+	)
+
+	assert_true(result.valid, "Without an activation queue, movement should not be restricted by turn order")
+
+
 # ============================================================
 # ROTATION VALIDATION TESTS
 # ============================================================
@@ -327,6 +379,26 @@ func test_validate_weapon_attack_out_of_range() -> void:
 	
 	assert_false(result.valid, "Out of range attack should fail")
 	assert_eq(result.reason, "All weapons out of range")
+
+
+func test_validate_weapon_attack_rejects_out_of_activation_order() -> void:
+	var match_data = _create_test_match_data()
+	match_data["current_phase"] = "weapon_attack"
+	var attacker1 = _create_test_mech(1, 1001, "player", Vector2i(5, 5))
+	var attacker2 = _create_test_mech(2, 1001, "player", Vector2i(6, 5))
+	var target = _create_test_mech(3, 1002, "enemy", Vector2i(5, 6))
+	match_data["mechs"][1] = attacker1
+	match_data["mechs"][2] = attacker2
+	match_data["mechs"][3] = target
+	match_data["units_to_activate"] = [2, 1]  # Le toca al mech 2 primero
+	match_data["current_unit_index"] = 0
+
+	var result = ServerActionValidator.validate_weapon_attack(
+		match_data, 1, 3, [0], 1001  # Dispara con el mech 1, que no le toca
+	)
+
+	assert_false(result.valid, "Should reject firing with a mech that isn't up in the activation order")
+	assert_eq(result.reason, "Not this mech's turn to activate")
 
 
 func test_validate_weapon_attack_no_ammo() -> void:

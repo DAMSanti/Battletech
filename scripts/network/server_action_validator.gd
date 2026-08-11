@@ -48,6 +48,36 @@ class ValidationResult:
 		return ValidationResult.new(false, rejection_reason, ctx)
 
 # ============================================================
+# ACTIVATION ORDER VALIDATION
+# ============================================================
+
+## Verifica que mech_id es la unidad que le toca activar en match_data["units_to_activate"].
+## Si units_to_activate no esta poblado (partidas/tests que no lo usan) no restringe nada,
+## para mantener compatibilidad con flujos que aun no rellenan la cola de activacion.
+static func _validate_activation_order(match_data: Dictionary, mech_id: int) -> ValidationResult:
+	var queue: Array = match_data.get("units_to_activate", [])
+	if queue.is_empty():
+		return ValidationResult.success()
+
+	var index: int = match_data.get("current_unit_index", 0)
+	if index < 0 or index >= queue.size():
+		return ValidationResult.failure("Invalid activation index", {
+			"current_unit_index": index,
+			"queue_size": queue.size()
+		})
+
+	var expected_mech_id = queue[index]
+	if expected_mech_id != mech_id:
+		return ValidationResult.failure("Not this mech's turn to activate", {
+			"mech_id": mech_id,
+			"expected_mech_id": expected_mech_id,
+			"current_unit_index": index
+		})
+
+	return ValidationResult.success()
+
+
+# ============================================================
 # MOVEMENT VALIDATION
 # ============================================================
 
@@ -81,6 +111,11 @@ static func validate_movement(
 		return ValidationResult.failure("Not movement phase", {
 			"current_phase": match_data["current_phase"]
 		})
+	
+	# 3b. Verificar orden de activacion (le toca a esta unidad, no a otra)
+	var activation_check: ValidationResult = _validate_activation_order(match_data, mech_id)
+	if not activation_check.valid:
+		return activation_check
 	
 	# 4. Verificar que el mech no ha sido destruido
 	if mech.get("is_destroyed", false):
@@ -218,6 +253,11 @@ static func validate_weapon_attack(
 	if attacker["owner_peer"] != peer_id:
 		return ValidationResult.failure("Not your mech", {"attacker_id": attacker_id})
 	
+	# 3b. Verificar orden de activacion
+	var activation_check: ValidationResult = _validate_activation_order(match_data, attacker_id)
+	if not activation_check.valid:
+		return activation_check
+	
 	# 4. Verificar que el atacante no está destruido
 	if attacker.get("is_destroyed", false):
 		return ValidationResult.failure("Attacker is destroyed")
@@ -300,6 +340,11 @@ static func validate_physical_attack(
 	# 3. Verificar propiedad
 	if attacker["owner_peer"] != peer_id:
 		return ValidationResult.failure("Not your mech")
+	
+	# 3b. Verificar orden de activacion
+	var activation_check: ValidationResult = _validate_activation_order(match_data, attacker_id)
+	if not activation_check.valid:
+		return activation_check
 	
 	# 4. Verificar estado del atacante
 	if attacker.get("is_destroyed", false):
