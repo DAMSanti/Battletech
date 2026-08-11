@@ -408,6 +408,27 @@ static func validate_physical_attack(
 
 
 # ============================================================
+# END ACTIVATION VALIDATION
+# ============================================================
+
+## Validates a "end activation" request: the mech must exist, belong to
+## the requesting peer, and - crucially - be the unit actually at the
+## front of the activation queue. Without this last check any client
+## could end any of its own mechs' "activation" at any time and force
+## advance match_data["current_unit_index"], effectively skipping the
+## opponent's turn to activate their own unit.
+static func validate_end_activation(match_data: Dictionary, mech_id: int, peer_id: int) -> ValidationResult:
+	if not match_data["mechs"].has(mech_id):
+		return ValidationResult.failure("Mech not found", {"mech_id": mech_id})
+
+	var mech: Dictionary = match_data["mechs"][mech_id]
+	if mech["owner_peer"] != peer_id:
+		return ValidationResult.failure("Not your mech", {"mech_id": mech_id})
+
+	return _validate_activation_order(match_data, mech_id)
+
+
+# ============================================================
 # DEPLOYMENT VALIDATION
 # ============================================================
 

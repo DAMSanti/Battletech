@@ -544,7 +544,21 @@ func _handle_end_activation(sender_id: int, match_id: int, mech_id: int) -> void
 	
 	var match_data = active_battles[match_id]
 	
-	if not ServerMatchValidator.validate_mech_ownership(match_data, mech_id, sender_id):
+	# Ver ROADMAP.md Fase T3: sin validate_end_activation, cualquier cliente
+	# podia terminar la "activacion" de cualquiera de sus propios mechs en
+	# cualquier momento y forzar el avance de la cola de activacion, saltandose
+	# el turno del rival de activar su propia unidad.
+	var validation: ServerActionValidator.ValidationResult = ServerActionValidator.validate_end_activation(
+		match_data, mech_id, sender_id
+	)
+	if not validation.valid:
+		Log.warning("Combat", "End activation rejected", {
+			"peer": sender_id,
+			"mech_id": mech_id,
+			"reason": validation.reason,
+			"context": validation.context
+		})
+		network_manager.rpc_id(sender_id, "client_action_rejected", validation.reason)
 		return
 	
 	Log.info("Combat", "End activation accepted, advancing to next unit")

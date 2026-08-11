@@ -520,6 +520,63 @@ func test_validate_physical_attack_prone() -> void:
 
 
 # ============================================================
+# END ACTIVATION VALIDATION TESTS
+# ============================================================
+# Ver ROADMAP.md Fase T3: sin esta validacion, cualquier cliente podia
+# terminar la "activacion" de cualquiera de sus mechs en cualquier momento
+# y forzar el avance de la cola de activacion, saltandose el turno del
+# rival de activar su propia unidad.
+
+func test_validate_end_activation_valid_for_mech_at_front_of_queue() -> void:
+	var match_data = _create_test_match_data()
+	var mech1 = _create_test_mech(1, 1001, "player", Vector2i(5, 5))
+	match_data["mechs"][1] = mech1
+	match_data["units_to_activate"] = [1]
+	match_data["current_unit_index"] = 0
+
+	var result = ServerActionValidator.validate_end_activation(match_data, 1, 1001)
+
+	assert_true(result.valid, "Ending activation for the active mech should be allowed")
+
+
+func test_validate_end_activation_rejects_wrong_mech_in_queue() -> void:
+	var match_data = _create_test_match_data()
+	var mech1 = _create_test_mech(1, 1001, "player", Vector2i(5, 5))
+	var mech2 = _create_test_mech(2, 1001, "player", Vector2i(6, 6))
+	match_data["mechs"][1] = mech1
+	match_data["mechs"][2] = mech2
+	match_data["units_to_activate"] = [1, 2]  # Le toca al mech 1
+	match_data["current_unit_index"] = 0
+
+	# Intenta terminar la activacion del mech 2, que no le toca (no deberia
+	# poder forzar el avance de la cola saltandose al mech 1)
+	var result = ServerActionValidator.validate_end_activation(match_data, 2, 1001)
+
+	assert_false(result.valid, "Should reject ending activation for a mech that isn't up next")
+	assert_eq(result.reason, "Not this mech's turn to activate")
+
+
+func test_validate_end_activation_rejects_other_players_mech() -> void:
+	var match_data = _create_test_match_data()
+	var mech = _create_test_mech(1, 1001, "player", Vector2i(5, 5))
+	match_data["mechs"][1] = mech
+
+	var result = ServerActionValidator.validate_end_activation(match_data, 1, 1002)
+
+	assert_false(result.valid, "Should reject ending activation for another player's mech")
+	assert_eq(result.reason, "Not your mech")
+
+
+func test_validate_end_activation_rejects_unknown_mech() -> void:
+	var match_data = _create_test_match_data()
+
+	var result = ServerActionValidator.validate_end_activation(match_data, 999, 1001)
+
+	assert_false(result.valid, "Should reject ending activation for a mech that doesn't exist")
+	assert_eq(result.reason, "Mech not found")
+
+
+# ============================================================
 # DEPLOYMENT VALIDATION TESTS
 # ============================================================
 
