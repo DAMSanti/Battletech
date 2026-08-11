@@ -59,14 +59,18 @@ Solo 71 `push_error` y 14 `push_warning` en 108 archivos, concentrados en ~15 de
 
 ## FASE T3 — Auditoría de la capa de red server-authoritative
 
-El patrón general (RPCs `any_peer` vs `authority`, uso de `multiplayer.get_remote_sender_id()` en vez de confiar en IDs del cliente, `ServerActionValidator` dedicado) está bien planteado. Lo que falta es **verificación sistemática**, no rediseño.
+El patrón general (RPCs `any_peer` vs `authority`, uso de `multiplayer.get_remote_sender_id()` en vez de confiar en IDs del cliente, `ServerActionValidator` dedicado) está bien planteado. Lo que faltaba era **verificación sistemática**, no rediseño — y la auditoría encontró dos huecos reales, no solo teóricos.
 
-- [ ] Auditar, RPC por RPC en `network_manager.gd`, que toda mutación de estado autoritativo pase por `server_action_validator.gd` antes de aplicarse
-- [ ] Auditar, RPC por RPC en `server_battle_manager.gd`, lo mismo
-- [ ] Revisar la duplicación de superficie RPC entre `network_manager.gd` y `server_battle_manager.gd` (4753 líneas combinadas) — candidato a fusión o a una interfaz más clara de quién es dueño de qué mensaje
-- [ ] Añadir test: intento de acción fuera de turno
-- [ ] Añadir test: intento de acción sobre unidad ajena
-- [ ] Añadir test: acción con datos fuera de rango (posición inválida, arma inexistente, etc.)
+- [x] Auditar, RPC por RPC en `network_manager.gd`, que toda mutación de estado autoritativo pase por `server_action_validator.gd` — **hallazgo confirmado**: los `@rpc("any_peer")` de combate (`server_request_deploy_mech`, `server_request_move`, `server_request_rotate`, `server_request_fire`, `server_request_physical_attack`, `server_request_end_activation`) son puro *forwarding* (`if not is_server: return` + delegar a `server_battle._handle_*`), no mutan estado directamente. Los RPCs de lobby/meta (`server_register_player`, `server_send_chat`, etc.) solo tocan el estado del propio peer que llama — sin hallazgos críticos ahí.
+- [x] Auditar, RPC por RPC en `server_battle_manager.gd`, que toda mutación pase por `server_action_validator.gd` — **2 huecos reales encontrados y corregidos** (ver commits `6ee6fad` y `edb0bf5`):
+  - `_handle_move_request`, `_handle_rotate_request`, `_handle_fire_request`, `_handle_physical_request` validaban propiedad + fase, pero **no** el orden de activación (`units_to_activate`/`current_unit_index`) — un cliente podía actuar con cualquiera de sus propios mechs no usados en cualquier orden dentro de la fase, en vez de respetar el "orden de iniciativa" que documenta `GDD.md`. Corregido con `ServerActionValidator._validate_activation_order()`, aplicado a los 3 validadores de acción.
+  - `_handle_end_activation` **no validaba en absoluto** que el mech pasado fuera la unidad activa: cualquier cliente podía llamar `server_request_end_activation` con cualquiera de sus propios mechs en cualquier momento y forzar `_advance_to_next_unit()`, saltándose el turno del rival de activar su propia unidad. Corregido con `ServerActionValidator.validate_end_activation()`.
+- [x] Revisar la duplicación de superficie RPC entre `network_manager.gd` y `server_battle_manager.gd` — **confirmada**: `server_battle_manager.gd` tiene su propia sección "LEGACY RPCs" (líneas ~557-586) que redeclara `server_request_deploy_mech`/`_move`/`_rotate`/`_fire`/`_end_activation` como `@rpc` propios, además de los que ya existen en `network_manager.gd` reenviando a los mismos handlers. Funcionalmente inofensivo (ambos acaban llamando al mismo `_handle_*`), pero es superficie RPC duplicada y confusa sobre quién es la fuente de verdad. No se ha tocado en esta sesión — fusionar/eliminar la sección legacy es candidato para Fase T5 (requiere confirmar que ningún cliente depende de invocar esos RPCs directamente sobre `ServerBattleManager` en vez de `NetworkManager`).
+- [x] Añadir test: intento de acción fuera de turno — `test_validate_movement_rejects_out_of_activation_order`, `test_validate_weapon_attack_rejects_out_of_activation_order`, `test_validate_end_activation_rejects_wrong_mech_in_queue`
+- [x] Añadir test: intento de acción sobre unidad ajena — ya cubierto por `test_validate_movement_not_your_mech` (preexistente) + nuevo `test_validate_end_activation_rejects_other_players_mech`
+- [x] Añadir test: acción con datos fuera de rango — ya cubierto por `test_validate_weapon_attack_out_of_range` e `test_validate_weapon_attack_invalid_weapon_index` (preexistentes) + nuevo `test_validate_end_activation_rejects_unknown_mech`
+
+Verificado con Godot 4.5.1: suite de `server_action_validator` 45/45 passing, suite completa del proyecto sin regresiones frente al baseline (los fallos preexistentes de `test_database_manager.gd`/`test_logger.gd` no relacionados con esta fase se mantienen igual).
 
 ---
 
@@ -109,7 +113,7 @@ Presupuesto, contratación, marketing, publicación en tiendas, localización y 
 
 - [x] **T0** — no perder trabajo, no dejar landmines (`.backup`, credenciales en claro)
 - [~] **T1** — el núcleo del juego (`battle_scene.gd`) necesita tests antes de seguir creciendo: primer smoke test hecho y verificado con Godot real; la extracción grande de handlers de red y despliegue/activación queda pendiente de una sesión incremental con TDD
-- [ ] **T3** — la validación server-side es lo único que impide hacer trampas en PvP; verificarla vale más que features nuevas — **siguiente**
+- [x] **T3** — la validación server-side es lo único que impide hacer trampas en PvP; verificarla vale más que features nuevas — auditada, 2 huecos reales corregidos con TDD (orden de activación en movimiento/disparo/físico, y en fin de activación)
 - [x] **T2** — manejo de errores consistente, para que T1/T3 sean depurables
 - [ ] **T4** — completar el core loop de gameplay (progresión, economía, reparación)
 - [ ] **T5** — limpieza estructural cuando haya margen

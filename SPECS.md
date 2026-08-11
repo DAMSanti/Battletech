@@ -53,12 +53,14 @@ godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs 
 | Métrica | Valor |
 |---|---|
 | Scripts de test | 30 |
-| Tests totales | 923 |
-| Passing | 899 |
-| Failing | 17 (pre-existentes, no relacionados con cambios recientes — ver detalle abajo) |
+| Tests totales | 931 |
+| Passing | ~906-907 |
+| Failing | 17-18 (pre-existentes y algo variables entre ejecuciones — ver detalle abajo) |
 | Risky/Pending | 7 |
-| Asserts | 2457/2474 |
+| Asserts | ~2470/2488 |
 | Tiempo | ~55s |
+
+El número exacto de fallos varía ligeramente (17 vs 18) entre ejecuciones — todos dentro del mismo cluster de `test_database_manager.gd` (llamadas de red a endpoints inalcanzables) más `test_logger.gd`; no se ha investigado la causa exacta de la variación pero no está relacionada con ninguno de los cambios de T0-T3.
 
 `doc/development/TESTING.md` (334/334 core, 50.6% total) está desactualizado — la cifra real de hoy es sustancialmente mayor porque se añadieron ~40 tests de facing/ELO/LoS/armas en la sesión anterior más un smoke test de `battle_scene.tscn` en esta.
 
