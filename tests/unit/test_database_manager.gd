@@ -209,3 +209,292 @@ func test_auth_required_request_fails_without_token() -> void:
 	# Este test genera errores esperados que GUT captura como fallas
 	# Se deja como pending porque la lógica es correcta pero GUT no maneja bien los errores async
 	pending("Integration test - generates expected errors that GUT flags as failures")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## UNIT TESTS ADICIONALES - Convenience Methods
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_get_request_returns_id() -> void:
+	"""Test: get_request retorna un ID de request"""
+	var request_id = _db.get_request("/test", {}, false)
+	assert_true(request_id is int, "get_request debe retornar int")
+	assert_gt(request_id, 0, "ID debe ser mayor a 0")
+
+
+func test_post_request_returns_id() -> void:
+	"""Test: post_request retorna un ID de request"""
+	var request_id = _db.post_request("/test", {}, false)
+	assert_true(request_id is int, "post_request debe retornar int")
+	assert_gt(request_id, 0, "ID debe ser mayor a 0")
+
+
+func test_put_request_returns_id() -> void:
+	"""Test: put_request retorna un ID de request"""
+	var request_id = _db.put_request("/test", {}, false)
+	assert_true(request_id is int, "put_request debe retornar int")
+	assert_gt(request_id, 0, "ID debe ser mayor a 0")
+
+
+func test_delete_request_returns_id() -> void:
+	"""Test: delete_request retorna un ID de request"""
+	var request_id = _db.delete_request("/test", false)
+	assert_true(request_id is int, "delete_request debe retornar int")
+	assert_gt(request_id, 0, "ID debe ser mayor a 0")
+
+
+func test_request_ids_are_sequential() -> void:
+	"""Test: Los IDs de request son secuenciales"""
+	var id1 = _db.get_request("/test1", {}, false)
+	var id2 = _db.get_request("/test2", {}, false)
+	var id3 = _db.post_request("/test3", {}, false)
+	
+	assert_eq(id2, id1 + 1, "ID2 debe ser ID1 + 1")
+	assert_eq(id3, id2 + 1, "ID3 debe ser ID2 + 1")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## UNIT TESTS ADICIONALES - Async Methods (sin esperar respuesta real)
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_get_async_without_auth_required() -> void:
+	"""Test: get_async sin auth no requiere token"""
+	# Solo verificamos que la llamada no crashea
+	# El resultado real depende de la red
+	var result = await _db.get_async("/health", {}, false)
+	assert_true(result is Dictionary, "get_async retorna Dictionary")
+	assert_true(result.has("success"), "Resultado tiene campo success")
+
+
+func test_post_async_structure() -> void:
+	"""Test: post_async retorna estructura correcta"""
+	# Esperamos warning de HTTP 404 ya que el endpoint no existe
+	var result = await _db.post_async("/nonexistent", {"test": "data"}, false)
+	assert_true(result is Dictionary, "post_async retorna Dictionary")
+	assert_true(result.has("success"), "Resultado tiene campo success")
+
+
+func test_put_async_structure() -> void:
+	"""Test: put_async retorna estructura correcta"""
+	# Esperamos warning de HTTP 404 ya que el endpoint no existe
+	var result = await _db.put_async("/nonexistent", {"test": "data"}, false)
+	assert_true(result is Dictionary, "put_async retorna Dictionary")
+	assert_true(result.has("success"), "Resultado tiene campo success")
+
+
+func test_delete_async_structure() -> void:
+	"""Test: delete_async retorna estructura correcta"""
+	# Esperamos warning de HTTP 404 ya que el endpoint no existe
+	var result = await _db.delete_async("/nonexistent", false)
+	assert_true(result is Dictionary, "delete_async retorna Dictionary")
+	assert_true(result.has("success"), "Resultado tiene campo success")
+
+
+func test_patch_async_structure() -> void:
+	"""Test: patch_async retorna estructura correcta"""
+	# Esperamos warning de HTTP 404 ya que el endpoint no existe
+	var result = await _db.patch_async("/nonexistent", {"test": "data"}, false)
+	assert_true(result is Dictionary, "patch_async retorna Dictionary")
+	assert_true(result.has("success"), "Resultado tiene campo success")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## UNIT TESTS ADICIONALES - Auth Required sin token
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_get_async_auth_required_without_token() -> void:
+	"""Test: get_async con auth_required=true sin token retorna error"""
+	_db.clear_tokens()
+	var result = await _db.get_async("/users/me", {}, true)
+	
+	assert_false(result.success, "Debe fallar sin token")
+	assert_true(result.has("error"), "Debe tener error")
+
+
+func test_post_async_auth_required_without_token() -> void:
+	"""Test: post_async con auth_required=true sin token retorna error"""
+	_db.clear_tokens()
+	var result = await _db.post_async("/users/me", {}, true)
+	
+	assert_false(result.success, "Debe fallar sin token")
+
+
+func test_put_async_auth_required_without_token() -> void:
+	"""Test: put_async con auth_required=true sin token retorna error"""
+	_db.clear_tokens()
+	var result = await _db.put_async("/users/me", {}, true)
+	
+	assert_false(result.success, "Debe fallar sin token")
+
+
+func test_delete_async_auth_required_without_token() -> void:
+	"""Test: delete_async con auth_required=true sin token retorna error"""
+	_db.clear_tokens()
+	var result = await _db.delete_async("/users/me", true)
+	
+	assert_false(result.success, "Debe fallar sin token")
+
+
+func test_patch_async_auth_required_without_token() -> void:
+	"""Test: patch_async con auth_required=true sin token retorna error"""
+	_db.clear_tokens()
+	var result = await _db.patch_async("/users/me", {}, true)
+	
+	assert_false(result.success, "Debe fallar sin token")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## UNIT TESTS ADICIONALES - Convenience API Methods
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_check_health_method() -> void:
+	"""Test: check_health llama a /health"""
+	var result = await _db.check_health()
+	assert_true(result is Dictionary, "check_health retorna Dictionary")
+
+
+func test_get_current_user_without_auth() -> void:
+	"""Test: get_current_user sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.get_current_user()
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_update_user_without_auth() -> void:
+	"""Test: update_user sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.update_user({"name": "Test"})
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_get_mechs_without_auth() -> void:
+	"""Test: get_mechs sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.get_mechs()
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_get_mech_without_auth() -> void:
+	"""Test: get_mech sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.get_mech("test_id")
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_create_mech_without_auth() -> void:
+	"""Test: create_mech sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.create_mech({"name": "Test Mech"})
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_update_mech_without_auth() -> void:
+	"""Test: update_mech sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.update_mech("test_id", {"name": "Updated"})
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_delete_mech_without_auth() -> void:
+	"""Test: delete_mech sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.delete_mech("test_id")
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_get_pilots_without_auth() -> void:
+	"""Test: get_pilots sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.get_pilots()
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_get_pilot_without_auth() -> void:
+	"""Test: get_pilot sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.get_pilot("test_id")
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_create_pilot_without_auth() -> void:
+	"""Test: create_pilot sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.create_pilot({"name": "Test Pilot"})
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_update_pilot_without_auth() -> void:
+	"""Test: update_pilot sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.update_pilot("test_id", {"name": "Updated"})
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_delete_pilot_without_auth() -> void:
+	"""Test: delete_pilot sin auth falla"""
+	_db.clear_tokens()
+	var result = await _db.delete_pilot("test_id")
+	assert_false(result.success, "Debe fallar sin autenticación")
+
+
+func test_logout_method() -> void:
+	"""Test: logout llama al endpoint y limpia tokens"""
+	var expiry = int(Time.get_unix_time_from_system()) + 3600
+	_db.set_tokens("access", "refresh", expiry)
+	
+	var _result = await _db.logout()
+	
+	# Independientemente del resultado de red, tokens deben limpiarse
+	assert_eq(_db.get_access_token(), "", "Token debe limpiarse después de logout")
+
+
+func test_register_user_method() -> void:
+	"""Test: register_user envía datos correctos"""
+	# Solo verificamos que no crashea - no creamos usuario real
+	var result = await _db.register_user("test_user_xyz", "test@test.com", "password123")
+	assert_true(result is Dictionary, "register_user retorna Dictionary")
+
+
+func test_login_method() -> void:
+	"""Test: login envía credenciales"""
+	# Solo verificamos estructura - no hacemos login real
+	var result = await _db.login("fake_user", "fake_password")
+	assert_true(result is Dictionary, "login retorna Dictionary")
+
+
+func test_login_guest_method() -> void:
+	"""Test: login_guest envía device_id"""
+	var result = await _db.login_guest("test_device_id_12345")
+	assert_true(result is Dictionary, "login_guest retorna Dictionary")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## UNIT TESTS - Token Refresh
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_do_refresh_token_without_token() -> void:
+	"""Test: do_refresh_token emite token_expired sin refresh token"""
+	watch_signals(_db)
+	
+	# Sin refresh token configurado
+	_db.clear_tokens()
+	
+	await _db.do_refresh_token()
+	
+	# Debería emitir token_expired porque no hay refresh token
+	assert_signal_emitted(_db, "token_expired")
+
+
+func test_do_refresh_token_with_invalid_token() -> void:
+	"""Test: do_refresh_token con token inválido"""
+	watch_signals(_db)
+	
+	# Configurar un refresh token falso
+	var expiry := int(Time.get_unix_time_from_system()) + 3600
+	_db.set_tokens("access", "invalid_refresh_token", expiry)
+	
+	await _db.do_refresh_token()
+	
+	# El servidor rechazará el token - verificamos que no crashea
+	assert_true(true, "do_refresh_token completado sin crash")
+

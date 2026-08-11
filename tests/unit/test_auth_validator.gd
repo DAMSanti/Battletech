@@ -322,3 +322,73 @@ func test_validation_result_failure_has_correct_properties() -> void:
 	assert_false(result.is_valid, "Failure result should be invalid")
 	assert_eq(result.error_message, "Error message", "Should have error message")
 	assert_eq(result.field, "field_name", "Should have field name")
+
+
+# =============================================================================
+# ADDITIONAL TESTS - Login Validation Methods
+# =============================================================================
+
+func test_validate_username_for_login_valid() -> void:
+	"""Test: validate_username_for_login con username válido"""
+	var result = _validator.validate_username_for_login("testuser")
+	assert_true(result.is_valid, "Username válido debe pasar")
+
+
+func test_validate_username_for_login_empty() -> void:
+	"""Test: validate_username_for_login con username vacío"""
+	var result = _validator.validate_username_for_login("")
+	assert_false(result.is_valid, "Username vacío debe fallar")
+	assert_eq(result.field, "username")
+
+
+func test_validate_username_for_login_too_short() -> void:
+	"""Test: validate_username_for_login con username muy corto"""
+	var result = _validator.validate_username_for_login("ab")
+	assert_false(result.is_valid, "Username muy corto debe fallar")
+
+
+func test_validate_password_for_login_valid() -> void:
+	"""Test: validate_password_for_login con password válido"""
+	var result = _validator.validate_password_for_login("anypassword")
+	assert_true(result.is_valid, "Password válido debe pasar")
+
+
+func test_validate_password_for_login_empty() -> void:
+	"""Test: validate_password_for_login con password vacío"""
+	var result = _validator.validate_password_for_login("")
+	assert_false(result.is_valid, "Password vacío debe fallar")
+	assert_eq(result.field, "password")
+
+
+# =============================================================================
+# ADDITIONAL TESTS - Registration Username Validation
+# =============================================================================
+
+func test_validate_username_for_registration_valid() -> void:
+	"""Test: validate_username_for_registration con username válido"""
+	var result = _validator.validate_username_for_registration("validuser123")
+	assert_true(result.is_valid, "Username válido debe pasar registro")
+
+
+func test_validate_username_for_registration_empty() -> void:
+	"""Test: validate_username_for_registration con username vacío"""
+	var result = _validator.validate_username_for_registration("")
+	assert_false(result.is_valid, "Username vacío debe fallar")
+
+
+func test_validate_username_for_registration_too_short() -> void:
+	"""Test: validate_username_for_registration con username muy corto"""
+	var result = _validator.validate_username_for_registration("ab")
+	assert_false(result.is_valid, "Username muy corto debe fallar")
+
+
+func test_validate_username_for_registration_too_long() -> void:
+	"""Test: validate_username_for_registration con username muy largo"""
+	var result = _validator.validate_username_for_registration("a".repeat(25))
+	assert_false(result.is_valid, "Username muy largo debe fallar")
+
+
+func test_validate_username_for_registration_invalid_chars() -> void:
+	"""Test: validate_username_for_registration con caracteres inválidos"""
+	var result = _validator.validate_username_for_registration("user@name!")
+	assert_false(result.is_valid, "Username con caracteres especiales debe fallar")

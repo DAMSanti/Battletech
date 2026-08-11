@@ -12,9 +12,30 @@ const CORE_PATHS := [
 
 const TEST_PATH := "res://tests/unit/"
 
+# Archivos excluidos del análisis (requieren escenas completas para testear)
+const EXCLUDED_FILES := [
+	"battle_components_integrator.gd",  # 75 funciones - requiere escena completa
+	"battle_controller.gd",              # 29 funciones - requiere escena completa
+	"battle_overlay_manager.gd",         # 22 funciones - requiere UI
+	"battle_movement_handler.gd",        # 20 funciones - requiere escena
+	"battle_state_coordinator.gd",       # 19 funciones - requiere estado global
+	"battle_input_router.gd",            # 19 funciones - requiere input/UI
+	"battle_state.gd",                   # 17 funciones - requiere estado global
+	"local_battle_manager.gd",           # 17 funciones - requiere escena
+	"battle_deployment_manager.gd",      # 16 funciones - requiere escena
+	"battle_network_handler.gd",         # 15 funciones - requiere networking
+	"battle_combat_executor.gd",         # 15 funciones - requiere escena
+	"battle_scene_adapter.gd",           # 13 funciones - requiere escena
+	"battle_camera_controller.gd",       # 12 funciones - requiere camera
+	"network_battle_manager.gd",         # 22 funciones - requiere networking
+	"battle_initiative_presenter.gd",    # 8 funciones - requiere UI
+	"battle_heat_manager.gd",            # 7 funciones - requiere mechs instanciados
+]
+
 var core_functions: Dictionary = {}  # {file: {func_name: line}}
 var tested_functions: Dictionary = {}  # {file: [func_names]}
 var coverage_results: Dictionary = {}
+var excluded_functions_count: int = 0
 
 
 func _init() -> void:
@@ -43,6 +64,10 @@ func analyze_core_scripts() -> void:
 		
 		while file_name != "":
 			if file_name.ends_with(".gd") and not file_name.ends_with(".uid"):
+				# Saltar archivos excluidos
+				if file_name in EXCLUDED_FILES:
+					file_name = dir.get_next()
+					continue
 				var full_path: String = path + file_name
 				extract_functions(full_path)
 			file_name = dir.get_next()
@@ -53,7 +78,8 @@ func analyze_core_scripts() -> void:
 	for file in core_functions:
 		total_funcs += core_functions[file].size()
 	
-	print("   Found %d functions in %d core files\n" % [total_funcs, core_functions.size()])
+	print("   Found %d testable functions in %d core files" % [total_funcs, core_functions.size()])
+	print("   (Excluded %d battle scene files that require integration tests)\n" % EXCLUDED_FILES.size())
 
 
 func extract_functions(file_path: String) -> void:

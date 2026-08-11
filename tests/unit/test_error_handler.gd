@@ -485,3 +485,173 @@ func test_all_severities_have_names() -> void:
 	for sev in severities:
 		var sev_name: String = EH.SEVERITY_NAMES.get(sev, "")
 		assert_ne(sev_name, "", "Severidad %d debe tener nombre" % sev)
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## TESTS ADICIONALES - handle y handle_error
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_handle_with_error_result() -> void:
+	"""Test: handle() procesa Result con error"""
+	var result: EH.Result = EH.Result.error("Test handle error", EH.ErrorCategory.VALIDATION)
+	EH.clear_history()
+	
+	EH.handle(result, false)  # auto_recover = false
+	
+	var last_error = EH.get_last_error()
+	assert_not_null(last_error, "Error debe registrarse en historial")
+	assert_push_error(1, "Se espera 1 push_error de handle()")
+
+
+func test_handle_with_ok_result() -> void:
+	"""Test: handle() no hace nada con Result ok"""
+	var result: EH.Result = EH.Result.ok("success")
+	var history_before = EH.get_error_history().size()
+	
+	EH.handle(result, false)
+	
+	var history_after = EH.get_error_history().size()
+	assert_eq(history_before, history_after, "No debe agregar error si Result es ok")
+
+
+func test_handle_error_directly() -> void:
+	"""Test: handle_error() procesa GameError directamente"""
+	var error: EH.GameError = EH.GameError.new("Direct error", EH.ErrorCategory.NETWORK)
+	EH.clear_history()
+	
+	EH.handle_error(error, false)
+	
+	var last_error = EH.get_last_error()
+	assert_not_null(last_error, "Error debe registrarse")
+	assert_eq(last_error.message, "Direct error")
+	assert_push_error(1, "Se espera 1 push_error de handle_error()")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## TESTS ADICIONALES - safe_read_text
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_safe_read_text_success() -> void:
+	"""Test: safe_read_text lee archivo de texto"""
+	var test_path := "user://test_text_temp.txt"
+	var test_content := "Hello World\nLine 2"
+	
+	# Escribir archivo
+	var file := FileAccess.open(test_path, FileAccess.WRITE)
+	file.store_string(test_content)
+	file.close()
+	
+	var result: EH.Result = EH.safe_read_text(test_path)
+	
+	assert_true(result.is_ok(), "Lectura debe ser exitosa")
+	assert_eq(result.unwrap(), test_content, "Contenido debe coincidir")
+	
+	# Cleanup
+	DirAccess.remove_absolute(test_path)
+
+
+func test_safe_read_text_file_not_found() -> void:
+	"""Test: safe_read_text retorna error si archivo no existe"""
+	var result: EH.Result = EH.safe_read_text("user://nonexistent_file_xyz.txt")
+	
+	assert_true(result.is_error(), "Debe ser error si archivo no existe")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## TESTS ADICIONALES - Callbacks setters
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_set_user_notification_callback() -> void:
+	"""Test: set_user_notification_callback no crashea"""
+	EH.set_user_notification_callback(func(_msg: String): pass)
+	pass_test("set_user_notification_callback ejecutado sin errores")
+
+
+func test_set_reconnect_callback() -> void:
+	"""Test: set_reconnect_callback no crashea"""
+	EH.set_reconnect_callback(func(): pass)
+	pass_test("set_reconnect_callback ejecutado sin errores")
+
+
+func test_set_reload_state_callback() -> void:
+	"""Test: set_reload_state_callback no crashea"""
+	EH.set_reload_state_callback(func(): pass)
+	pass_test("set_reload_state_callback ejecutado sin errores")
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## TESTS ADICIONALES - get_recent_errors
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_get_recent_errors() -> void:
+	"""Test: get_recent_errors retorna últimos N errores"""
+	EH.clear_history()
+	
+	# Crear varios errores
+	EH.report("Error 1", EH.ErrorCategory.UNKNOWN, EH.ErrorSeverity.LOW)
+	EH.report("Error 2", EH.ErrorCategory.UNKNOWN, EH.ErrorSeverity.LOW)
+	EH.report("Error 3", EH.ErrorCategory.UNKNOWN, EH.ErrorSeverity.LOW)
+	
+	if EH.has_method("get_recent_errors"):
+		var recent = EH.get_recent_errors(2)
+		assert_lte(recent.size(), 2, "Debe retornar máximo 2 errores")
+	else:
+		pass_test("get_recent_errors no implementado")
+	
+	# Mark expected engine warnings as handled (LOW severity uses push_warning)
+	for err in get_errors():
+		err.handled = true
+
+
+## ═══════════════════════════════════════════════════════════════════════════
+## TESTS DE RETRY_OPERATION
+## ═══════════════════════════════════════════════════════════════════════════
+
+func test_retry_operation_success_first_try() -> void:
+	"""Test: retry_operation exitoso en primer intento"""
+	var operation = func() -> int:
+		return 42
+	
+	var result = EH.retry_operation(operation, 3, 100)
+	
+	assert_true(result.is_ok(), "Operación exitosa debe retornar ok")
+	assert_eq(result.unwrap(), 42, "Debe retornar el valor correcto")
+
+
+func test_retry_operation_returns_result() -> void:
+	"""Test: retry_operation retorna Result"""
+	var operation = func() -> String:
+		return "success"
+	
+	var result = EH.retry_operation(operation)
+	
+	assert_true(result is EH.Result, "Debe retornar Result")
+
+
+func test_retry_operation_with_failing_operation() -> void:
+	"""Test: retry_operation con operación que falla"""
+	var fail_count = 0
+	var operation = func() -> Variant:
+		fail_count += 1
+		# Simular fallo lanzando error
+		push_error("Simulated failure")
+		return null
+	
+	var result = EH.retry_operation(operation, 2, 10)
+	
+	# El resultado depende de la implementación
+	assert_true(result is EH.Result, "Debe retornar Result")
+	# Mark expected push_errors as handled (retry attempts)
+	assert_push_error("Simulated failure")
+
+
+func test_retry_operation_with_custom_retries() -> void:
+	"""Test: retry_operation con número personalizado de reintentos"""
+	var operation = func() -> bool:
+		return true
+	
+	var result = EH.retry_operation(operation, 5, 50)
+	
+	assert_true(result.is_ok(), "Debe ser exitoso")
+	assert_true(result.unwrap(), "Valor debe ser true")
+

@@ -226,3 +226,78 @@ func test_heat_scenario_sustained_fire():
 	# Fin de turno: Disipa
 	mech.dissipate_heat()
 	assert_eq(mech.heat, 3, "Debería quedar 3 de calor residual")
+
+
+# ============================================================================
+# TESTS DE FUNCIONES ESTÁTICAS DE HeatSystem
+# ============================================================================
+
+const HeatSystem = preload("res://scripts/core/combat/heat_system.gd")
+
+class MockMechForHeatSystem:
+	var heat: int = 0
+	var heat_dissipation: int = 10
+	var is_shutdown: bool = false
+
+
+func test_heatsystem_get_heat_effects():
+	"""Test: HeatSystem.get_heat_effects retorna efectos correctos"""
+	var effects = HeatSystem.get_heat_effects(0)
+	assert_eq(effects["name"], "Normal", "Calor 0 = Normal")
+	
+	effects = HeatSystem.get_heat_effects(14)
+	assert_eq(effects["name"], "Critical Heat", "Calor 14 = Critical Heat")
+
+
+func test_heatsystem_get_heat_status_color():
+	"""Test: HeatSystem.get_heat_status_color retorna colores"""
+	var color_low = HeatSystem.get_heat_status_color(5, 30)
+	assert_eq(color_low, Color.GREEN, "Calor bajo = verde")
+	
+	var color_high = HeatSystem.get_heat_status_color(25, 30)
+	assert_eq(color_high, Color.RED, "Calor alto = rojo")
+
+
+func test_heatsystem_calculate_movement_heat():
+	"""Test: HeatSystem.calculate_movement_heat calcula correctamente"""
+	var walk_heat = HeatSystem.calculate_movement_heat(1, 5)  # WALK
+	assert_eq(walk_heat, 0, "Caminar no genera calor")
+	
+	var run_heat = HeatSystem.calculate_movement_heat(2, 5)  # RUN
+	assert_eq(run_heat, 2, "Correr genera 2 calor")
+	
+	var jump_heat = HeatSystem.calculate_movement_heat(3, 4)  # JUMP
+	assert_eq(jump_heat, 4, "Saltar 4 hexes = 4 calor")
+
+
+func test_heatsystem_check_shutdown():
+	"""Test: HeatSystem.check_shutdown verifica shutdown"""
+	var result_low = HeatSystem.check_shutdown(10)
+	assert_false(result_low["must_shutdown"], "Calor bajo no causa shutdown")
+	
+	var result_max = HeatSystem.check_shutdown(30)
+	assert_true(result_max["must_shutdown"], "Calor 30 = shutdown automático")
+
+
+func test_heatsystem_check_ammo_explosion():
+	"""Test: HeatSystem.check_ammo_explosion verifica explosiones"""
+	var result_low = HeatSystem.check_ammo_explosion(10)
+	assert_false(result_low["explodes"], "Calor bajo no causa explosión")
+
+
+func test_heatsystem_apply_heat_dissipation():
+	"""Test: HeatSystem.apply_heat_dissipation disipa calor"""
+	var mech = MockMechForHeatSystem.new()
+	mech.heat = 15
+	mech.heat_dissipation = 10
+	
+	var result = HeatSystem.apply_heat_dissipation(mech)
+	
+	assert_eq(result["heat_removed"], 10, "Disipó 10 calor")
+	assert_eq(mech.heat, 5, "Mech tiene 5 calor restante")
+
+
+func test_heatsystem_get_heat_description():
+	"""Test: HeatSystem.get_heat_description retorna descripción"""
+	var desc = HeatSystem.get_heat_description(0)
+	assert_eq(desc, "Normal", "Descripción de calor 0")
