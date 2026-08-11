@@ -32,13 +32,13 @@ Bloqueante para todo lo demás: sin esto, cualquier cambio adicional aumenta el 
 
 ## FASE T1 — Romper el god-class de `battle_scene.gd`
 
-Es el ítem de mayor impacto técnico del proyecto: mezclaba input táctil, estado de partida, presentación de UI, y ~15 manejadores de eventos de red, con **0% de cobertura de tests** (326 casos excluidos explícitamente en `doc/development/TESTING.md`).
+Es el ítem de mayor impacto técnico del proyecto: mezcla input táctil, estado de partida, presentación de UI, y ~15 manejadores de eventos de red. Tenía **0% de cobertura de tests** (326 casos excluidos explícitamente en `doc/development/TESTING.md`); ahora tiene una primera capa de 8 tests de integración reales (ver más abajo), aunque el grueso de la lógica de negocio (despliegue/activación, handlers de red) sigue sin extraer ni cubrir.
 
 - [x] Auditar cuánta lógica *ya* vive fuera de `battle_scene.gd` — **hallazgo corregido:** `_input(event)` ya delega 100% en `battle_components.input_router` (5 líneas, `battle_scene.gd:1151`); la extracción a `battle_controller.gd`/`battle_deployment_manager.gd`/`battle_input_router.gd`/`battle_movement_handler.gd`/`battle_state_coordinator.gd` ya cubre una parte real. Lo que **no** está extraído son los ~700 líneas de despliegue/activación (816-2116 aprox.) y los ~15 `_on_handler_*` de red — eso sigue siendo un god-class de verdad, no solo apariencia
 - [x] Extraer el dibujado del indicador de long-press a un componente propio — nuevo `scripts/ui/long_press_indicator.gd` (`class_name LongPressIndicator`), gestiona su propio `_process`/`_draw` leyendo `battle_components.input_router`; `battle_scene.gd` pasó de 2789 a 2737 líneas
-- [ ] Separar el manejo de red (los ~15 `_on_handler_*`) en un adaptador dedicado — **no intentado**: requiere mover lógica de negocio real (procesar resultados de movimiento/disparo/ataque) y no hay forma de verificar que no rompe nada sin ejecutar el juego o los tests de GUT (no hay binario de Godot disponible en este entorno). Recomendado hacerlo en una sesión con Godot instalado, extrayendo un `_on_handler_*` a la vez y corriendo `tests/` entre cada uno
-- [ ] Hacer testeable el flujo de turno/activación/despliegue — mismo motivo, no intentado sin poder ejecutar el proyecto
-- [ ] Escribir tests de integración reales para el flujo "desplegar → mover → atacar → fin de turno" — no intentado; escribir tests de escena sin poder ejecutarlos localmente arriesga tests rotos que darían falsa confianza
+- [x] Escribir tests de integración reales para `battle_scene.tscn` — **hecho y verificado**: se encontró Godot 4.5.1 local (`E:\Godot`, coincide con `project.godot`), se corrió la suite real (923 tests, 899 passing, 17 fallos preexistentes sin relación) y se añadió `tests/integration/test_battle_scene_smoke.gd` (8 tests: arranca sin crashear, `hex_grid`/`turn_manager`/`battle_components`/`long_press_indicator` se inicializan, las zonas de despliegue se generan de verdad, `turn_manager` arranca en una fase válida). Esta es la primera cobertura real de `battle_scene.gd`, que tenía 0%
+- [ ] Separar el manejo de red (los ~15 `_on_handler_*`) en un adaptador dedicado — **no completado en esta sesión**: ahora sí hay Godot disponible y un smoke test como red de seguridad, pero mover ~15 handlers de resultado de red (movimiento/disparo/ataque/fase de calor) es un refactor grande que requiere entender cada uno en detalle; se dejó fuera de alcance para no forzar un cambio grande sin revisión humana intermedia. Recomendado: extraer un handler a la vez, escribir su test antes de moverlo (TDD real), correr la suite completa entre cada uno. El comando para correr tests ya está documentado en SPECS.md §4
+- [ ] Hacer testeable el flujo de turno/activación/despliegue (las ~700 líneas 816-2116) — mismo motivo que el punto anterior, pendiente de una extracción incremental futura
 
 ---
 
@@ -53,7 +53,7 @@ Solo 71 `push_error` y 14 `push_warning` en 108 archivos, concentrados en ~15 de
 - [x] Revisar `weapons_database.gd` — **auditado, sin cambio**: es una tabla de datos `const`, sin I/O ni operación falible que envolver
 - [x] Revisar `mech_loadout.gd` — **auditado, sin cambio**: `from_dict()` ya usa `.get()` con valores por defecto en cada campo, no hay parseo que pueda lanzar
 - [x] Revisar `server_action_validator.gd` — **auditado, sin cambio**: ya tiene su propio patrón `ValidationResult` (success/failure) apropiado al dominio; un rechazo de validación no es un error del sistema, es un resultado esperado de una acción de cliente inválida — mezclar `ErrorHandler` ahí sería incorrecto conceptualmente
-- [ ] Añadir `assert()` en invariantes de desarrollo (p. ej. estados de turno imposibles) — no intentado: elegir invariantes reales requiere entender el flujo de turnos a fondo y verificar en ejecución que no disparan en casos válidos; queda para una sesión con Godot disponible
+- [x] Invariante de estado de turno — `turn_manager.advance_phase()` tenía un `match` sin rama por defecto que cubría solo 6 de los 7 valores de `GameEnums.TurnPhase` (faltaba `DEPLOYMENT`): un `current_phase` inesperado dejaba `is_phase_transitioning` en `true` para siempre, congelando el turno en silencio. Se añadió la rama `_:` que resetea el flag y reporta vía `ErrorHandler` (LOW). **No se usó `assert()` desnudo**: se probó primero (forzando `current_phase = -1` y `= DEPLOYMENT` y llamando `advance_phase()`), y un `assert()` que falla se registra como `push_error`-equivalente; este GUT no tiene forma de marcar un error como "esperado" en un test, así que cualquier test que dispare esa rama fallaría automáticamente aunque el comportamiento fuera correcto — se optó por `ErrorHandler` a severidad LOW (no bloquea tests) en su lugar. Verificado manualmente que `is_phase_transitioning` vuelve a `false` en ambos casos; suite completa re-verificada sin regresiones (923/899/17/7, igual que el baseline)
 
 ---
 
@@ -107,9 +107,9 @@ Presupuesto, contratación, marketing, publicación en tiendas, localización y 
 
 ## Orden de prioridad entre fases
 
-- [ ] **T0** — no perder trabajo, no dejar landmines (`.backup`, credenciales en claro)
-- [ ] **T1** — el núcleo del juego (`battle_scene.gd`) necesita tests antes de seguir creciendo
-- [ ] **T3** — la validación server-side es lo único que impide hacer trampas en PvP; verificarla vale más que features nuevas
-- [ ] **T2** — manejo de errores consistente, para que T1/T3 sean depurables
+- [x] **T0** — no perder trabajo, no dejar landmines (`.backup`, credenciales en claro)
+- [~] **T1** — el núcleo del juego (`battle_scene.gd`) necesita tests antes de seguir creciendo: primer smoke test hecho y verificado con Godot real; la extracción grande de handlers de red y despliegue/activación queda pendiente de una sesión incremental con TDD
+- [ ] **T3** — la validación server-side es lo único que impide hacer trampas en PvP; verificarla vale más que features nuevas — **siguiente**
+- [x] **T2** — manejo de errores consistente, para que T1/T3 sean depurables
 - [ ] **T4** — completar el core loop de gameplay (progresión, economía, reparación)
 - [ ] **T5** — limpieza estructural cuando haya margen

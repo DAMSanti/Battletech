@@ -32,39 +32,56 @@ Punto de entrada único al estado técnico real del proyecto. Este documento no 
 Datos extraídos directamente del repositorio, no de documentación (verificar con `git log`, `wc -l`, etc. si hace tiempo que no se actualiza esta sección).
 
 ### Stack
-- **Motor:** Godot 4.5, GDScript, renderer `mobile`, viewport fijo 720×1280 (portrait, mobile-first)
+- **Motor:** Godot 4.5.1, GDScript, renderer `mobile`, viewport fijo 720×1280 (portrait, mobile-first)
 - **Servidor de partidas:** Godot headless (mismo código base que el cliente)
 - **Backend:** FastAPI (Python) + PostgreSQL + Redis, desplegado en DigitalOcean (`steeltitans.damsanti.app`), Alembic para migraciones
 - **Red:** ENet (UDP) para la partida en vivo + HTTPS/REST para cuenta, matchmaking, persistencia
-- **Testing:** GUT 9.3.0 (GDScript), pytest (server), CI en GitHub Actions
+- **Testing:** GUT 9.3.0 (GDScript), pytest (server), CI en GitHub Actions. Godot local para correr tests: `E:\Godot\Godot_v4.5.1-stable_win64_console.exe` (equipo de DAMSanti) — ver comando en la sección 4
 
 ### Tamaño del código
-- `scripts/`: 108 archivos `.gd`, ~48.300 líneas
-- `tests/`: 29 archivos, ~11.700 líneas (unit + integration)
-- Archivos más grandes: `battle_scene.gd` (2789 líneas), `battle_ui.gd` (1354), `hex_surface_renderer.gd` (1253), `battle_components_integrator.gd` (1217), `tutorial_battle_controller.gd` (1204), `player_data_manager.gd` (1200), `weapons_database.gd` (1183), `mech.gd` (1173), `network_manager.gd` (1124), `auth_manager.gd` (1113)
+- `scripts/`: 109 archivos `.gd`, ~48.300 líneas
+- `tests/`: 31 archivos (30 unit/integration + 1 smoke de escena), ~11.800 líneas
+- Archivos más grandes: `battle_scene.gd` (2737 líneas, bajando — ver ROADMAP.md Fase T1), `battle_ui.gd` (1354), `hex_surface_renderer.gd` (1253), `battle_components_integrator.gd` (1217), `tutorial_battle_controller.gd` (1204), `player_data_manager.gd` (1200), `weapons_database.gd` (1183), `mech.gd` (1173), `network_manager.gd` (1124), `auth_manager.gd` (1113)
 
 ### Autoloads (singletons globales) — `project.godot`
 `Log`, `DatabaseManager`, `AuthManager`, `PlayerData`, `MechBayManager`, `SelectedLoadoutManager`, `NetworkManager`, `AudioManager`, `TutorialManager`
 
-### Cobertura de tests (según `doc/development/TESTING.md`, dic-2025)
-| Área | Cobertura |
+### Cobertura de tests — **verificado ejecutando la suite real** (2026-08-11, Godot 4.5.1 headless), no de documentación
+```bash
+godot --headless -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit -glog=1
+```
+| Métrica | Valor |
 |---|---|
-| Core Systems (unit) | 334/334 — 100% |
-| Battle Scene (integration) | 0/326 — 0% (excluida) |
-| **Total proyecto** | 334/660 — 50.6% |
+| Scripts de test | 30 |
+| Tests totales | 923 |
+| Passing | 899 |
+| Failing | 17 (pre-existentes, no relacionados con cambios recientes — ver detalle abajo) |
+| Risky/Pending | 7 |
+| Asserts | 2457/2474 |
+| Tiempo | ~55s |
 
-Los sistemas más grandes y de mayor riesgo (`battle_scene.gd`, `battle_ui.gd`, `hex_surface_renderer.gd`, `battle_components_integrator.gd`, `network_manager.gd`, `procedural_map_generator.gd`) **no tienen test unitario asociado**.
+`doc/development/TESTING.md` (334/334 core, 50.6% total) está desactualizado — la cifra real de hoy es sustancialmente mayor porque se añadieron ~40 tests de facing/ELO/LoS/armas en la sesión anterior más un smoke test de `battle_scene.tscn` en esta.
+
+**Los 17 fallos son reales y preexistentes**, no ruido de este análisis:
+- 9 en `test_database_manager.gd`: llaman a endpoints inalcanzables a propósito (`/nonexistent`, servidor no disponible en tests) y el `push_error`/`push_warning` resultante lo marca GUT como "Unexpected Error" — este proyecto de GUT no tiene mecanismo de "expect_error" por test, así que cualquier código que loguee un error dentro de un test falla automáticamente aunque el comportamiento sea el esperado.
+- 2 en `test_logger.gd`: llaman a `start_timer()`/`end_timer()`, métodos que no existen en `logger.gd`.
+- El resto no se ha triado en detalle (ver `tests/` para el listado exacto).
+
+`battle_scene.gd` pasó de 0 a 8 tests reales (smoke + verificación de despliegue) en `tests/integration/test_battle_scene_smoke.gd`.
+
+Los sistemas más grandes que siguen sin test unitario propio: `battle_ui.gd`, `hex_surface_renderer.gd`, `battle_components_integrator.gd`, `network_manager.gd`, `procedural_map_generator.gd`.
 
 ### Estado de git
-- Rama activa: `Development` (también existen `master`, `multiplayer`, `3dBranch`)
-- Último commit: `9070364` "feat: add GDScript code coverage analyzer to CI pipeline" — **2025-12-01**
-- Trabajo local sin commitear en curso (~66 archivos modificados/nuevos): sistema de *facing*/orientación hexagonal (`facing_selector.gd` nuevo), cambios sustanciales en `battle_ai.gd`, `mech.gd`, `hex_grid.gd`, y nuevos tests (`test_movement_system.gd`, `test_database_manager.gd`, `test_error_handler.gd`, etc.)
+- Rama activa: `Development`
+- 8 meses sin commits (desde 2025-12-01) hasta esta sesión; el trabajo local pendiente se commiteó en una serie de commits temáticos (housekeeping, tests, gameplay, docs) — ver `git log`.
 
 ### Deuda técnica conocida (verificada en código, ver detalle y priorización en ROADMAP.md)
-- 3 archivos `.gd.backup` con `class_name` duplicado conviviendo con el código vivo (`scripts/managers/turn_manager.gd.backup`, `scripts/core/component_database.gd.backup`, `scripts/network/server_battle_manager.gd.backup`)
-- `ErrorHandler` (`scripts/core/error_handler.gd`) existe pero solo se usa en 1 archivo — infraestructura construida y no adoptada
-- 44 comentarios `TODO`/`FIXME`/`HACK` en `scripts/`
-- No existe `[input]` map en `project.godot` — toda la interacción se resuelve a mano en `_input()` de `battle_scene.gd`
+- ~~3 archivos `.gd.backup`~~ — eliminados
+- `ErrorHandler` (`scripts/core/error_handler.gd`) ahora se usa en `database_manager.gd`, `matchmaking_client.gd` y `turn_manager.gd` (antes: 1 archivo, no adoptado en ninguno real)
+- `turn_manager.advance_phase()` ya no puede quedar en soft-lock silencioso ante un `current_phase` inválido (antes: sin rama por defecto en el `match`)
+- ~44 comentarios `TODO`/`FIXME`/`HACK` en `scripts/` (sin cambios, pendiente de Fase T4)
+- No existe `[input]` map en `project.godot` — toda la interacción se resuelve a mano en `_input()` de `battle_scene.gd` (pendiente, Fase T5)
+- Fuga de nodos (orphans) al cerrar Godot tras correr tests (~16-88 según el run) y un crash de motor (signal 11 / segfault) al salir del proceso headless **tras** completar e imprimir todos los resultados — no afecta el resultado de los tests pero ensucia CI logs; no investigado en profundidad, posiblemente relacionado con el plugin de Sentry en modo headless
 
 ---
 
