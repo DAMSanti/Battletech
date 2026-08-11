@@ -24,6 +24,10 @@ var unit_info_label: Label
 var mech_paper_doll: Control = null  # Paper doll del mech
 var end_turn_button: Button
 var help_label: Label
+var pause_menu_button: Button
+var pause_menu_panel: Panel = null
+var _end_turn_locked_by_tutorial: bool = false
+var _end_turn_symbolic_only: bool = false  # true: solo enseña el gesto, no hay activación real que terminar
 var cancel_movement_button: Button  # Botón para cancelar selección de movimiento
 
 # Panel superior mejorado - Heat y MP visual
@@ -146,14 +150,26 @@ func _setup_ui():
 	# BOX DERECHA: Robot + MPs + Heat + Nombre + Eye
 	# ============================================
 	
+	# Botón de menú (☰) - siempre visible, arriba a la derecha
+	var menu_btn_size = 34 * scale_factor
+	pause_menu_button = Button.new()
+	pause_menu_button.text = "☰"
+	pause_menu_button.size = Vector2(menu_btn_size, menu_btn_size)
+	pause_menu_button.position = Vector2(screen_width - margin - menu_btn_size, margin)
+	pause_menu_button.add_theme_font_size_override("font_size", int(20 * scale_factor))
+	pause_menu_button.tooltip_text = "Menu"
+	pause_menu_button.pressed.connect(_on_menu_button_pressed)
+	add_child(pause_menu_button)
+
 	# Calcular dimensiones de la box basadas en porcentajes de pantalla
 	var box_height = screen_height * 0.18
 	var box_width = screen_width * 0.28  # Ancho relativo a la pantalla
 	box_width = clampf(box_width, 120, 300)  # Limitar tamaño mínimo y máximo
-	
+	var box_top_y = margin + menu_btn_size + 4 * scale_factor  # Dejar sitio para el botón de menú
+
 	# Crear el panel (box) arriba a la derecha
 	info_panel = Panel.new()
-	info_panel.position = Vector2(screen_width - margin - box_width, margin)
+	info_panel.position = Vector2(screen_width - margin - box_width, box_top_y)
 	info_panel.size = Vector2(box_width, box_height)
 	
 	# Estilo Steel Titans azul
@@ -361,13 +377,17 @@ func _setup_ui():
 	physical_attack_panel.position = Vector2((screen_width - physical_panel_width) / 2, (screen_height - physical_panel_height) / 2 - 60 * scale_factor)
 	physical_attack_panel.size = Vector2(physical_panel_width, physical_panel_height)
 	physical_attack_panel.visible = false
+	# Antes no tenía ningún estilo aplicado (Panel gris por defecto de Godot),
+	# a diferencia de movement_selector_panel y el resto de menús - mismo
+	# estilo centralizado que todos los demás.
+	physical_attack_panel.add_theme_stylebox_override("panel", _styles.create_main_panel_style())
 	add_child(physical_attack_panel)
-	
-	var physical_title = Label.new()
-	physical_title.text = "SELECT PHYSICAL ATTACK"
-	physical_title.position = Vector2(margin, margin)
-	physical_title.add_theme_font_size_override("font_size", int(20 * scale_factor))
-	physical_title.add_theme_color_override("font_color", Color.MAGENTA)
+
+	# Antes era un Label suelto en magenta - fuera del tema Steel Titans.
+	# create_title_label() es el mismo helper que usa movement_selector_title.
+	var physical_title = _factory.create_title_label("SELECT PHYSICAL ATTACK")
+	physical_title.position = Vector2(margin * 2, margin * 2)
+	physical_title.size = Vector2(physical_panel_width - margin * 4, 30 * scale_factor)
 	physical_attack_panel.add_child(physical_title)
 	
 	var phys_button_height = (physical_panel_height - 80 * scale_factor) / 5
@@ -408,6 +428,7 @@ func _setup_ui():
 	var confirm_panel_height = 90 * scale_factor
 	confirmation_panel = _factory.create_confirmation_panel(confirm_panel_width, confirm_panel_height)
 	confirmation_panel.position = Vector2((screen_width - confirm_panel_width) / 2, (screen_height - confirm_panel_height) / 2)
+	confirmation_panel.process_mode = Node.PROCESS_MODE_ALWAYS  # Debe poder usarse con el árbol pausado (menú de pausa)
 	add_child(confirmation_panel)
 	
 	# Mensaje centrado horizontalmente en la parte superior del panel
@@ -437,6 +458,9 @@ func _setup_ui():
 	cancel_button = _factory.create_cancel_icon_button(button_size, _on_confirmation_cancel)
 	cancel_button.position = Vector2(button_x_start + button_size + button_spacing, button_y)
 	confirmation_panel.add_child(cancel_button)
+
+	# Menú de pausa in-game
+	_create_pause_menu(screen_width, screen_height)
 
 func _on_turn_changed(_team: String, turn_number: int):
 	if turn_label:
@@ -574,8 +598,58 @@ func update_phase_info(phase: String):
 	_on_phase_changed(phase)
 
 func _on_end_turn_pressed():
+	if _end_turn_locked_by_tutorial:
+		show_floating_message("END is disabled during this part of the tutorial")
+		return
+
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		tutorial_mgr.notify_end_turn_pressed()
+		if _end_turn_symbolic_only:
+			# Turno 1 ya resuelto del todo (el motor real ya completó la
+			# fase de calor y el avance de ronda en segundo plano, solo
+			# estaba oculto tras el bloqueo de iniciativa). No hay ninguna
+			# activación real pendiente que terminar aquí - llamar a
+			# end_current_activation() de todas formas arriesgaría un doble
+			# avance de ronda sobre una cola de activación ya obsoleta.
+			return
+
 	if battle_scene and battle_scene.has_method("end_current_activation"):
 		battle_scene.end_current_activation()
+
+func set_end_turn_symbolic(symbolic: bool) -> void:
+	_end_turn_symbolic_only = symbolic
+
+func set_end_turn_locked(locked: bool) -> void:
+	"""Mantiene el botón END visible pero visualmente desactivado durante pasos guiados del tutorial.
+	No se usa Button.disabled=true porque eso bloquearía el evento 'pressed' y no podríamos
+	interceptar el clic para mostrar el mensaje flotante de aviso."""
+	_end_turn_locked_by_tutorial = locked
+	if end_turn_button:
+		end_turn_button.modulate = Color(0.55, 0.55, 0.55, 0.85) if locked else Color.WHITE
+
+func show_floating_message(text: String) -> void:
+	"""Mensaje flotante (toast) que aparece brevemente y se desvanece"""
+	var toast = Label.new()
+	toast.text = text
+	toast.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	toast.add_theme_font_size_override("font_size", int(16 * scale_factor))
+	toast.add_theme_color_override("font_color", Color(1, 0.85, 0.3, 1))
+	toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	toast.add_theme_constant_override("outline_size", 3)
+	toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	var viewport_size = get_viewport().get_visible_rect().size
+	toast.size = Vector2(viewport_size.x * 0.8, 30 * scale_factor)
+	toast.position = Vector2((viewport_size.x - toast.size.x) / 2, viewport_size.y * 0.35)
+	toast.modulate = Color(1, 1, 1, 0)
+	add_child(toast)
+
+	var tween = create_tween()
+	tween.tween_property(toast, "modulate:a", 1.0, 0.15)
+	tween.tween_interval(1.4)
+	tween.tween_property(toast, "modulate:a", 0.0, 0.4)
+	tween.tween_callback(toast.queue_free)
 
 func _on_cancel_movement_pressed():
 	"""Cancelar selección de movimiento y volver al selector de tipo"""
@@ -1051,6 +1125,124 @@ func show_game_over(winner_name: String, loser_name: String, loser_death_reason:
 func _on_return_to_menu_pressed():
 	# Volver al menú principal
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+# ============================================
+# MENÚ DE PAUSA IN-GAME
+# ============================================
+
+func _create_pause_menu(screen_width: float, screen_height: float) -> void:
+	var panel_width = screen_width * 0.8
+	var panel_height = screen_height * 0.5
+
+	pause_menu_panel = Panel.new()
+	pause_menu_panel.position = Vector2((screen_width - panel_width) / 2, (screen_height - panel_height) / 2)
+	pause_menu_panel.size = Vector2(panel_width, panel_height)
+	pause_menu_panel.add_theme_stylebox_override("panel", _styles.create_main_panel_style())
+	pause_menu_panel.visible = false
+	# Debe seguir procesando aunque el árbol esté pausado (así es como se pausa la partida)
+	pause_menu_panel.process_mode = Node.PROCESS_MODE_ALWAYS
+	add_child(pause_menu_panel)
+
+	var vbox = VBoxContainer.new()
+	vbox.position = Vector2(margin * 2, margin * 2)
+	vbox.size = Vector2(panel_width - margin * 4, panel_height - margin * 4)
+	vbox.add_theme_constant_override("separation", int(16 * scale_factor))
+	pause_menu_panel.add_child(vbox)
+
+	var title = Label.new()
+	title.text = "MENU"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", int(28 * scale_factor))
+	title.add_theme_color_override("font_color", SteelTitansStyles.get_cyan_text_color())
+	vbox.add_child(title)
+
+	var resume_btn = Button.new()
+	resume_btn.text = "RESUME"
+	resume_btn.custom_minimum_size = Vector2(0, 50 * scale_factor)
+	resume_btn.add_theme_font_size_override("font_size", int(18 * scale_factor))
+	resume_btn.pressed.connect(_on_resume_pressed)
+	vbox.add_child(resume_btn)
+
+	var volume_label = Label.new()
+	volume_label.text = "MASTER VOLUME"
+	volume_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	volume_label.add_theme_font_size_override("font_size", int(14 * scale_factor))
+	vbox.add_child(volume_label)
+
+	var volume_slider = HSlider.new()
+	volume_slider.min_value = 0.0
+	volume_slider.max_value = 1.0
+	volume_slider.step = 0.05
+	var audio_mgr = get_node_or_null("/root/AudioManager")
+	volume_slider.value = audio_mgr.master_volume if audio_mgr else 1.0
+	volume_slider.custom_minimum_size = Vector2(0, 30 * scale_factor)
+	volume_slider.value_changed.connect(_on_pause_volume_changed)
+	vbox.add_child(volume_slider)
+
+	var exit_menu_btn = Button.new()
+	exit_menu_btn.text = "EXIT TO MAIN MENU"
+	exit_menu_btn.custom_minimum_size = Vector2(0, 50 * scale_factor)
+	exit_menu_btn.add_theme_font_size_override("font_size", int(16 * scale_factor))
+	exit_menu_btn.pressed.connect(_on_pause_exit_to_menu_pressed)
+	vbox.add_child(exit_menu_btn)
+
+	var quit_btn = Button.new()
+	quit_btn.text = "QUIT GAME"
+	quit_btn.custom_minimum_size = Vector2(0, 50 * scale_factor)
+	quit_btn.add_theme_font_size_override("font_size", int(16 * scale_factor))
+	quit_btn.pressed.connect(_on_pause_quit_game_pressed)
+	vbox.add_child(quit_btn)
+
+func _on_menu_button_pressed() -> void:
+	if not pause_menu_panel:
+		return
+	if pause_menu_panel.visible:
+		_close_pause_menu()
+	else:
+		_open_pause_menu()
+
+func _open_pause_menu() -> void:
+	pause_menu_panel.visible = true
+	# Solo pausar el árbol en single player: en multiplayer pausar
+	# localmente desincronizaría la partida con el rival.
+	if not (battle_scene and battle_scene.get("is_multiplayer_mode")):
+		get_tree().paused = true
+
+func _close_pause_menu() -> void:
+	if pause_menu_panel:
+		pause_menu_panel.visible = false
+	if get_tree().paused:
+		get_tree().paused = false
+
+func _on_resume_pressed() -> void:
+	_close_pause_menu()
+
+func _on_pause_volume_changed(value: float) -> void:
+	var audio_mgr = get_node_or_null("/root/AudioManager")
+	if audio_mgr:
+		audio_mgr.master_volume = value
+
+func _on_pause_exit_to_menu_pressed() -> void:
+	show_confirmation_dialog(
+		"Exit to Main Menu",
+		"Leave battle and return to the main menu? Progress will be lost.",
+		_do_pause_exit_to_menu
+	)
+
+func _do_pause_exit_to_menu() -> void:
+	if get_tree().paused:
+		get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+func _on_pause_quit_game_pressed() -> void:
+	show_confirmation_dialog(
+		"Quit Game",
+		"Are you sure you want to quit?",
+		_do_pause_quit_game
+	)
+
+func _do_pause_quit_game() -> void:
+	get_tree().quit()
 
 func show_mech_inspector(mech):
 	"""Muestra el inspector de mech (delegado a BattleMechInspector)"""

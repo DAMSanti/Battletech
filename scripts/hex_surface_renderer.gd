@@ -326,24 +326,34 @@ func update_surfaces(surfaces: Array, base_elevation: int = -2):
 	if pending_overlays.size() > 0 and pending_overlays_hex_grid:
 		# Crear lista temporal de overlays a añadir
 		var overlays_to_add = []
-		
+
+		# Bug de rendimiento: por cada overlay se recorría TODO surf_entries de
+		# forma lineal para encontrar su tile "top" - con un puñado de hexes
+		# resaltados (despliegue, movimiento) es barato, pero un overlay que
+		# cubre buena parte del mapa (LoS) lo convierte en O(overlays × tiles)
+		# y puede colgar/laguear el juego. Tabla hex -> tile en O(1) una sola vez.
+		var tile_by_hex: Dictionary = {}
+		for entry in surf_entries:
+			if entry.has("surf"):
+				var s = entry["surf"]
+				if s.has("type") and s["type"] == "top" and s.has("hex"):
+					tile_by_hex[s["hex"]] = entry
+
 		for overlay_data in pending_overlays:
 			var hex = overlay_data.get("hex", Vector2i(0, 0))
 			var color = overlay_data.get("color", Color(1.0, 0.0, 0.0, 0.5))
-			
+
 			# Buscar el tile "top" correspondiente
 			var tile_elevation = base_elevation
 			var tile_depth = null
 			var tile_poly_points = null  # Usar los mismos puntos del tile
-			for entry in surf_entries:
-				if entry.has("surf"):
-					var s = entry["surf"]
-					if s.has("type") and s["type"] == "top" and s.has("hex") and s["hex"] == hex:
-						tile_elevation = s.get("elevation", base_elevation)
-						tile_depth = entry.get("depth", 0.0)
-						tile_poly_points = entry.get("poly_points", null)
-						break
-			
+			var matched_entry = tile_by_hex.get(hex)
+			if matched_entry != null:
+				var s = matched_entry["surf"]
+				tile_elevation = s.get("elevation", base_elevation)
+				tile_depth = matched_entry.get("depth", 0.0)
+				tile_poly_points = matched_entry.get("poly_points", null)
+
 			if tile_depth == null or tile_poly_points == null:
 				continue  # No encontramos el tile, skip este overlay
 			

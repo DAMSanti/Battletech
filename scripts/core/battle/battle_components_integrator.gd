@@ -602,6 +602,11 @@ func _on_heat_phase_completed() -> void:
 
 func _on_mech_heat_processed(mech, initial: int, final: int, dissipated: int) -> void:
 	Log.debug("Heat", "%s: %d -> %d (-%d)" % [mech.mech_name, initial, final, dissipated])
+	# VFX de calor: vapor al disipar + tinte rojo cuanto más cerca del shutdown
+	if mech.has_method("show_heat_dissipation_effect"):
+		mech.show_heat_dissipation_effect(dissipated)
+	if mech.has_method("update_overheat_glow"):
+		mech.update_overheat_glow(final)
 
 
 func _on_mech_heat_processing_started(mech) -> void:

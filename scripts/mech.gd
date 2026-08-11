@@ -227,6 +227,46 @@ func hide_shutdown_effect() -> void:
 	queue_redraw()
 
 
+func show_heat_dissipation_effect(dissipated: int) -> void:
+	"""VFX de vapor expulsado al disipar calor - un puff breve que sube y se desvanece.
+	Reutiliza el asset de humo del shutdown (nodo propio, no smoke_sprite, para no
+	interferir con su tween en bucle si el mech está apagado a la vez)."""
+	if dissipated <= 0 or not is_inside_tree():
+		return
+	var texture_path = "res://assets/sprites/effects/smoke_shutdown.svg"
+	if not ResourceLoader.exists(texture_path):
+		return
+
+	var puff = Sprite2D.new()
+	puff.texture = load(texture_path)
+	puff.position = Vector2(0, -10)
+	puff.scale = Vector2(0.5, 0.5)
+	puff.modulate = Color(0.85, 0.9, 1.0, 0.0)
+	puff.z_index = 15
+	add_child(puff)
+
+	var tween = create_tween()
+	tween.tween_property(puff, "modulate:a", 0.55, 0.2)
+	tween.parallel().tween_property(puff, "position:y", -35.0, 1.1).set_trans(Tween.TRANS_SINE)
+	tween.tween_property(puff, "modulate:a", 0.0, 0.6)
+	tween.tween_callback(puff.queue_free)
+
+
+func update_overheat_glow(heat: int) -> void:
+	"""'Metal al rojo vivo': tiñe el sprite de rojo/naranja según se acerca al
+	shutdown (umbral 19, igual que HeatSystem.check_shutdown). No hace nada si
+	el mech está apagado - show_shutdown_effect() ya controla ese tinte."""
+	if not sprite or is_shutdown:
+		return
+
+	const DANGER_THRESHOLD := 19
+	if heat >= DANGER_THRESHOLD:
+		var t = clamp(float(heat - DANGER_THRESHOLD) / float(max(1, heat_capacity - DANGER_THRESHOLD)), 0.0, 1.0)
+		sprite.modulate = Color(1.0, lerp(1.0, 0.45, t), lerp(1.0, 0.25, t), 1.0)
+	else:
+		sprite.modulate = Color(1, 1, 1, 1)
+
+
 func show_explosion_effect() -> void:
 	"""Muestra una animación de explosión sobre el mech (para ammo explosion)"""
 	# Crear el sprite de explosión si no existe

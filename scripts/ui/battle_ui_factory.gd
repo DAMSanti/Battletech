@@ -116,6 +116,11 @@ func create_physical_attack_button(text: String, callback: Callable) -> Button:
 	"""Crea un botón de ataque físico"""
 	var btn = Button.new()
 	btn.text = text
+	# Bug de estilo: a diferencia de create_movement_button, este botón nunca
+	# aplicaba el theme compartido, así que salía con el Button gris por
+	# defecto de Godot en vez del estilo Steel Titans del resto de menús.
+	if _theme:
+		btn.theme = _theme
 	btn.add_theme_font_size_override("font_size", int(22 * scale_factor))
 	btn.pressed.connect(callback)
 	return btn

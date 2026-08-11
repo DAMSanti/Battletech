@@ -54,20 +54,29 @@ func create_initiative_screen(my_mechs: Array = [], opponent_mechs: Array = []) 
 	
 	initiative_screen.player_mech_names = []
 	initiative_screen.player_mech_destroyed = []
+	initiative_screen.player_mech_bonuses = []
 	for mech in p_mechs:
 		initiative_screen.player_mech_names.append(mech.mech_name)
 		initiative_screen.player_mech_destroyed.append(mech.is_destroyed)
-	
+		initiative_screen.player_mech_bonuses.append(_compute_initiative_bonus(mech.tonnage))
+
 	initiative_screen.enemy_mech_names = []
 	initiative_screen.enemy_mech_destroyed = []
+	initiative_screen.enemy_mech_bonuses = []
 	for mech in e_mechs:
 		initiative_screen.enemy_mech_names.append(mech.mech_name)
 		initiative_screen.enemy_mech_destroyed.append(mech.is_destroyed)
+		initiative_screen.enemy_mech_bonuses.append(_compute_initiative_bonus(mech.tonnage))
 	
 	# Forzar actualización de labels después de asignar nombres
 	initiative_screen.call_deferred("refresh_mech_display")
 	
 	return initiative_screen
+
+
+func _compute_initiative_bonus(tonnage: float) -> int:
+	"""Regla clásica de BattleTech: +1 a iniciativa por cada 5 toneladas por debajo de 100"""
+	return max(0, int((100.0 - tonnage) / 5.0))
 
 
 func show_initiative_screen(_is_multiplayer: bool = false) -> void:

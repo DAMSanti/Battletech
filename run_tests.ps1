@@ -9,8 +9,14 @@ param(
     [switch]$Verbose
 )
 
-$GodotPath = "G:\Godot\Godot_v4.5.1-stable_win64_console.exe"
-$ProjectPath = "G:\Battletech"
+if (-not $GodotPath) {
+    if (Test-Path "E:\Godot\Godot_v4.5.1-stable_win64_console.exe") {
+        $GodotPath = "E:\Godot\Godot_v4.5.1-stable_win64_console.exe"
+    } else {
+        $GodotPath = "godot"
+    }
+}
+$ProjectPath = $PSScriptRoot
 
 Write-Host "═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "  Steel Titans - Test Runner" -ForegroundColor Cyan

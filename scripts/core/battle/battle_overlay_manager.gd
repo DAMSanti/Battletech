@@ -225,9 +225,14 @@ func _build_preview_path_overlays() -> Array:
 
 
 func _build_movement_overlays() -> Array:
-	"""Construye overlays para hexágonos de movimiento"""
+	"""Construye overlays para hexágonos de movimiento.
+	Nota: en el tutorial esto se pinta A LA VEZ que el overlay de tutorial_hexes
+	(ver build_overlays) - mismo patrón que usa el despliegue (_build_deployment_overlays
+	pinta toda la zona válida mientras el overlay de tutorial resalta el único
+	hex permitido). La restricción real no es visual, es en el manejador de
+	clics (battle_movement_handler.handle_movement_click)."""
 	var overlays: Array = []
-	
+
 	for hex in reachable_hexes:
 		var terrain_elev = hex_grid.get_elevation(hex)
 		overlays.append({
@@ -347,6 +352,20 @@ func get_preview_destination() -> Vector2i:
 
 func sync_from_ui(ui_node: Node) -> void:
 	"""Sincroniza datos de overlay desde la UI (para LOS overlay)"""
-	if ui_node and "los_overlay_visible" in ui_node and "los_overlay_hexes" in ui_node:
-		los_overlay_visible = ui_node.los_overlay_visible
-		los_overlay_hexes = ui_node.los_overlay_hexes
+	if not ui_node:
+		return
+
+	# Bug crítico: se llamaba con `ui` (battle_ui.gd) directamente, pero
+	# los_overlay_visible/los_overlay_hexes viven en su hijo eye_menu_panel
+	# (BattleOverlayMenu, ver battle_overlay_menu.gd), no en battle_ui.gd
+	# mismo. La comprobación de abajo nunca encontraba esas propiedades en
+	# battle_ui, así que el overlay de LoS se calculaba correctamente pero
+	# jamás llegaba a overlay_manager para renderizarse - el toggle no hacía
+	# nada visible pese a que la lógica de cálculo funcionaba.
+	var source = ui_node
+	if not ("los_overlay_visible" in source) and ("eye_menu_panel" in source) and source.eye_menu_panel:
+		source = source.eye_menu_panel
+
+	if "los_overlay_visible" in source and "los_overlay_hexes" in source:
+		los_overlay_visible = source.los_overlay_visible
+		los_overlay_hexes = source.los_overlay_hexes

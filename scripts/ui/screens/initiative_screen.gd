@@ -23,6 +23,8 @@ var player_mech_names = []
 var enemy_mech_names = []
 var player_mech_destroyed = []  # Array de booleanos indicando si cada mech está destruido
 var enemy_mech_destroyed = []   # Array de booleanos indicando si cada mech está destruido
+var player_mech_bonuses = []    # Bonificador de iniciativa por tonelaje (+1 por cada 5t bajo 100)
+var enemy_mech_bonuses = []
 
 # Variables para multiplayer
 var is_multiplayer_mode: bool = false
@@ -37,9 +39,12 @@ func _ready():
 	visible = true
 	layer = 100
 	
-	# Verificar si estamos en modo tutorial
+	# Verificar si estamos en modo tutorial. En la ronda 1 el resultado está
+	# garantizado (is_tutorial_mode fuerza los dados); en la ronda 2 el
+	# tutorial pide una tirada real (TutorialManager.initiative_roll_forced =
+	# false, ver TutorialBattleController._setup_waiting_round2_initiative).
 	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
-	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active and tutorial_mgr.initiative_roll_forced:
 		is_tutorial_mode = true
 		Log.info("Tutorial", "Initiative screen in tutorial mode - player will always win")
 	
@@ -325,9 +330,9 @@ func _auto_continue_server_mode():
 	var enemy_totals = []
 	
 	for i in range(player_mech_names.size()):
-		player_totals.append(player_results[i][0] + player_results[i][1])
+		player_totals.append(_player_initiative_total(i))
 	for i in range(enemy_mech_names.size()):
-		enemy_totals.append(enemy_results[i][0] + enemy_results[i][1])
+		enemy_totals.append(_enemy_initiative_total(i))
 	
 	var data = {
 		"player_initiatives": player_totals,
@@ -338,6 +343,29 @@ func _auto_continue_server_mode():
 	
 	initiative_complete.emit(data)
 	queue_free()
+
+func _bonus_applies() -> bool:
+	"""El bonificador de tonelaje se aplica en local/singleplayer y en tutorial
+	(los dados del tutorial están fijados precisamente para que el resultado
+	siga garantizado incluso con el bonus real sumado - ver _on_roll_pressed).
+	En multiplayer el servidor es la autoridad para este cálculo."""
+	if is_multiplayer_mode:
+		return false
+	if has_meta("server_mode") and get_meta("server_mode"):
+		return false
+	return true
+
+func _player_initiative_total(i: int) -> int:
+	var total = player_results[i][0] + player_results[i][1]
+	if _bonus_applies() and i < player_mech_bonuses.size():
+		total += player_mech_bonuses[i]
+	return total
+
+func _enemy_initiative_total(i: int) -> int:
+	var total = enemy_results[i][0] + enemy_results[i][1]
+	if _bonus_applies() and i < enemy_mech_bonuses.size():
+		total += enemy_mech_bonuses[i]
+	return total
 
 func _show_dice_result(dice: Control, value: int):
 	"""Muestra un resultado de dado sin animación"""
@@ -613,24 +641,28 @@ func _on_roll_pressed():
 	var player_count = player_mech_names.size()
 	var enemy_count = enemy_mech_names.size()
 	
-	# En modo tutorial, el jugador SIEMPRE gana
+	# En modo tutorial, el jugador SIEMPRE gana (o al menos empata, y el empate
+	# cuenta como victoria - ver player_won = player_total >= enemy_total más
+	# abajo). Los dados están fijados (no aleatorios) porque el bonificador de
+	# tonelaje real ahora SÍ se aplica aquí: el Hunchback (50t) recibe +10 sobre
+	# el Atlas (100t, +0), así que con dados aleatorios el enemigo podría ganar.
+	# Fijando el máximo (12) para el jugador y el mínimo (2) para el enemigo se
+	# garantiza 12 >= 2+10 en todas las ejecuciones.
 	if is_tutorial_mode:
-		# Jugador: dados altos (5-6)
 		for i in range(player_count):
 			var player_is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
 			if not player_is_dead:
-				player_results[i][0] = 5 + (randi() % 2)  # 5 o 6
-				player_results[i][1] = 5 + (randi() % 2)  # 5 o 6
+				player_results[i][0] = 6
+				player_results[i][1] = 6
 			else:
 				player_results[i][0] = 0
 				player_results[i][1] = 0
-		
-		# Enemigo: dados bajos (1-3)
+
 		for i in range(enemy_count):
 			var enemy_is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
 			if not enemy_is_dead:
-				enemy_results[i][0] = 1 + (randi() % 3)  # 1, 2 o 3
-				enemy_results[i][1] = 1 + (randi() % 3)  # 1, 2 o 3
+				enemy_results[i][0] = 1
+				enemy_results[i][1] = 1
 			else:
 				enemy_results[i][0] = 0
 				enemy_results[i][1] = 0
@@ -875,7 +907,7 @@ func show_results():
 	var player_count = player_mech_names.size()
 	for i in range(player_count):
 		var player_name = player_mech_names[i]
-		var player_total = player_results[i][0] + player_results[i][1]
+		var player_total = _player_initiative_total(i)
 		var is_dead = i < player_mech_destroyed.size() and player_mech_destroyed[i]
 		
 		var row = HBoxContainer.new()
@@ -900,7 +932,8 @@ func show_results():
 			score_label.text = "――"  # Tachado visual para muertos
 			score_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
 		else:
-			score_label.text = str(player_total)
+			var p_bonus = player_mech_bonuses[i] if (_bonus_applies() and i < player_mech_bonuses.size()) else 0
+			score_label.text = str(player_total) if p_bonus == 0 else "%d (+%d)" % [player_total, p_bonus]
 			score_label.add_theme_color_override("font_color", Color(0.4, 1, 0.4, 1))
 			score_label.add_theme_color_override("font_outline_color", Color(0, 0.2, 0, 1))
 			score_label.add_theme_constant_override("outline_size", 2)
@@ -967,7 +1000,7 @@ func show_results():
 	var enemy_count = enemy_mech_names.size()
 	for i in range(enemy_count):
 		var enemy_name = enemy_mech_names[i]
-		var enemy_total = enemy_results[i][0] + enemy_results[i][1]
+		var enemy_total = _enemy_initiative_total(i)
 		var is_dead = i < enemy_mech_destroyed.size() and enemy_mech_destroyed[i]
 		
 		var row = HBoxContainer.new()
@@ -992,7 +1025,8 @@ func show_results():
 			score_label.text = "――"  # Tachado visual para muertos
 			score_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
 		else:
-			score_label.text = str(enemy_total)
+			var e_bonus = enemy_mech_bonuses[i] if (_bonus_applies() and i < enemy_mech_bonuses.size()) else 0
+			score_label.text = str(enemy_total) if e_bonus == 0 else "%d (+%d)" % [enemy_total, e_bonus]
 			score_label.add_theme_color_override("font_color", Color(1, 0.4, 0.4, 1))
 			score_label.add_theme_color_override("font_outline_color", Color(0.2, 0, 0, 1))
 			score_label.add_theme_constant_override("outline_size", 2)
@@ -1061,9 +1095,9 @@ func _do_continue_animation():
 	var enemy_totals = []
 	
 	for i in range(player_mech_names.size()):
-		player_totals.append(player_results[i][0] + player_results[i][1])
+		player_totals.append(_player_initiative_total(i))
 	for i in range(enemy_mech_names.size()):
-		enemy_totals.append(enemy_results[i][0] + enemy_results[i][1])
+		enemy_totals.append(_enemy_initiative_total(i))
 	
 	var data = {
 		"player_initiatives": player_totals,

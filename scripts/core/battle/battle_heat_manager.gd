@@ -23,6 +23,7 @@ signal battle_end_check_requested()
 # CONSTANTS
 # ==============================================================================
 const HEAT_PROCESS_DELAY: float = 1.2  # Pausa entre mechs para visualización
+const TUTORIAL_HEAT_PROCESS_DELAY: float = 2.8  # Pausa más larga en el tutorial: da tiempo a ver la barra de calor bajar
 
 # ==============================================================================
 # STATE
@@ -31,6 +32,7 @@ var processing_heat: bool = false
 var _scene_tree: SceneTree = null
 var _current_mech_index: int = 0
 var _mechs_to_process: Array = []
+var _is_tutorial: bool = false
 
 # ==============================================================================
 # REFERENCES
@@ -60,14 +62,16 @@ func process_heat_phase() -> void:
 		if _scene_tree:
 			tutorial_mgr = _scene_tree.root.get_node_or_null("/root/TutorialManager")
 	
-	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+	_is_tutorial = tutorial_mgr != null and tutorial_mgr.is_tutorial_active
+
+	if _is_tutorial:
 		# Esperar a que el hint de heat se cierre antes de procesar
 		while tutorial_mgr.is_heat_phase_blocked():
 			if _scene_tree:
 				await _scene_tree.create_timer(0.1).timeout
 			else:
 				break
-	
+
 	processing_heat = true
 	heat_phase_started.emit()
 	
@@ -101,8 +105,10 @@ func _schedule_next_mech_processing() -> void:
 		_process_all_mechs_sync()
 		return
 	
-	# Crear timer para procesar el siguiente mech
-	var timer = _scene_tree.create_timer(HEAT_PROCESS_DELAY)
+	# Crear timer para procesar el siguiente mech (más lento en tutorial para
+	# dar tiempo real a observar cómo baja la barra de calor tras disipar)
+	var delay = TUTORIAL_HEAT_PROCESS_DELAY if _is_tutorial else HEAT_PROCESS_DELAY
+	var timer = _scene_tree.create_timer(delay)
 	timer.timeout.connect(_process_next_mech, CONNECT_ONE_SHOT)
 
 

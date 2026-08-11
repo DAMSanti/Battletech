@@ -223,23 +223,30 @@ func _update_los_overlay(hex_grid) -> void:
 					visible_hexes[hex_key] = target_hex
 					break
 	
-	# Preparar overlays
+	# Antes esto marcaba las casillas VISIBLES con un tinte verde encima. El
+	# pedido original era el contrario: las casillas FUERA de LoS deben
+	# quedar visualmente apagadas/desaturadas para que sea obvio a simple
+	# vista qué zonas no son visibles, no resaltar las que sí lo son.
 	var overlays: Array = []
-	var los_color = Color(0.2, 0.8, 0.2, 0.25)
-	
-	for hex_key in visible_hexes:
-		var hex = visible_hexes[hex_key]
-		var elevation = hex_grid.get_elevation(hex)
-		overlays.append({
-			"hex": hex,
-			"color": los_color,
-			"elevation": elevation
-		})
-	
+	var out_of_los_color = Color(0.05, 0.05, 0.08, 0.55)  # Oscurece/desatura en vez de resaltar
+
+	for q in range(hex_grid.grid_width):
+		for r in range(hex_grid.grid_height):
+			var hex_key = "%d,%d" % [q, r]
+			if visible_hexes.has(hex_key):
+				continue
+			var hex = Vector2i(q, r)
+			var elevation = hex_grid.get_elevation(hex)
+			overlays.append({
+				"hex": hex,
+				"color": out_of_los_color,
+				"elevation": elevation
+			})
+
 	los_overlay_hexes = overlays
 	los_overlay_requested.emit(overlays)
-	
-	Log.debug("UI", "LOS overlay showing visible hexes", {"count": visible_hexes.size()})
+
+	Log.debug("UI", "LOS overlay showing out-of-LoS hexes", {"count": overlays.size()})
 
 func _clear_los_overlay() -> void:
 	los_overlay_hexes.clear()

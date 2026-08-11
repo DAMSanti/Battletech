@@ -22,6 +22,7 @@ var combat_log_mode: String = "full"  # "full", "short", "chat"
 var combat_log_collapsed: bool = false
 var log_expanded_height: float = 0.0
 var log_collapsed_height: float = 40.0
+var _anchor_bottom_y: float = 0.0  # Borde inferior fijo; el panel se colapsa hacia aqui, no hacia arriba
 var message_history: Array = []  # [{text: String, color: Color}]
 var chat_history: Array = []  # [{text: String, sender: String, color: Color}]
 
@@ -43,8 +44,9 @@ func _setup_panel() -> void:
 	# Aplicar estilo del panel
 	add_theme_stylebox_override("panel", _styles.create_log_panel_style())
 	
-	# Guardar altura expandida
+	# Guardar altura expandida y el borde inferior (referencia fija de anclaje)
 	log_expanded_height = size.y
+	_anchor_bottom_y = position.y + size.y
 	
 	var header_height = 30 * scale_factor
 	
@@ -258,38 +260,61 @@ func _update_chat_input_visibility() -> void:
 		var chat_input_height = 28 * scale_factor
 		var bottom_margin = 10 * scale_factor
 		
+		# Usar log_expanded_height (altura objetivo cuando esta expandido) en vez de
+		# size.y: durante la animacion de colapso/expansion, size.y esta en un
+		# valor intermedio del tween y calcular con ese valor deja el contenido
+		# con una altura incorrecta hasta el siguiente toggle.
 		if chat_input_container.visible:
-			var new_height = size.y - log_content_top - chat_input_height - bottom_margin - 5 * scale_factor
+			var new_height = log_expanded_height - log_content_top - chat_input_height - bottom_margin - 5 * scale_factor
 			combat_log.size.y = new_height
 			if combat_log_scrollbar:
 				combat_log_scrollbar.size.y = new_height
 		else:
-			var new_height = size.y - log_content_top - bottom_margin
+			var new_height = log_expanded_height - log_content_top - bottom_margin
 			combat_log.size.y = new_height
 			if combat_log_scrollbar:
 				combat_log_scrollbar.size.y = new_height
 
 func _update_collapse_state() -> void:
 	var target_height = log_collapsed_height if combat_log_collapsed else log_expanded_height
-	
-	# Actualizar tamaño (la posición la maneja el padre)
-	size.y = target_height
-	
+	var target_y = _anchor_bottom_y - target_height
+
 	if collapse_log_button:
 		collapse_log_button.text = "▲" if combat_log_collapsed else "▼"
-	
-	if combat_log:
-		combat_log.visible = not combat_log_collapsed
-	if combat_log_scrollbar:
-		combat_log_scrollbar.visible = not combat_log_collapsed
-	if full_button:
-		full_button.visible = not combat_log_collapsed
-	if short_button:
-		short_button.visible = not combat_log_collapsed
-	if chat_button:
-		chat_button.visible = not combat_log_collapsed
-	
+
+	# Al colapsar, ocultar el contenido de inmediato para que no se vea
+	# recortado mientras el panel se encoge. Al expandir, el contenido
+	# reaparece cuando termina la animación (ver _on_collapse_tween_finished).
+	if combat_log_collapsed:
+		_set_content_visible(false)
+
+	# Animar tamaño Y posición en paralelo para que el panel se contraiga
+	# hacia su borde inferior fijo (_anchor_bottom_y), no hacia arriba.
+	var tween = create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(self, "size:y", target_height, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "position:y", target_y, 0.2).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+	if not combat_log_collapsed:
+		tween.chain().tween_callback(_on_expand_tween_finished)
+
 	_update_chat_input_visibility()
+
+func _set_content_visible(is_visible: bool) -> void:
+	if combat_log:
+		combat_log.visible = is_visible
+	if combat_log_scrollbar:
+		combat_log_scrollbar.visible = is_visible
+	if full_button:
+		full_button.visible = is_visible
+	if short_button:
+		short_button.visible = is_visible
+	if chat_button:
+		chat_button.visible = is_visible
+
+func _on_expand_tween_finished() -> void:
+	if not combat_log_collapsed:
+		_set_content_visible(true)
 
 func _update_scrollbar_range() -> void:
 	if not combat_log or not combat_log_scrollbar:

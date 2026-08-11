@@ -174,6 +174,20 @@ func update_overlays():
 		# - deployment_hexes del deployment_manager
 		battle_components.sync_and_update_overlays()
 
+func _exit_tree() -> void:
+	# TutorialManager es un autoload persistente que guarda una referencia
+	# fuerte a battle_controller (RefCounted, con 5 señales conectadas) y un
+	# puntero a esta escena (_battle_scene). Solo se limpiaban al completar o
+	# saltar el tutorial explícitamente - si el jugador salía a mitad de
+	# partida (Exit to Main Menu / Quit Game del menú de pausa, o cerrando la
+	# ventana) esas referencias sobrevivían indefinidamente al autoload.
+	if is_tutorial_mode:
+		var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+		if tutorial_mgr and tutorial_mgr.has_method("_cleanup_battle_controller"):
+			tutorial_mgr._cleanup_battle_controller()
+			tutorial_mgr.is_tutorial_active = false
+
+
 func _ready():
 	Log.info("Combat", "_ready() called")
 	
@@ -1354,9 +1368,11 @@ func on_facing_selected(facing: int):
 		# Estamos después del movimiento - ajuste final de facing (gratis)
 		Log.debug("Movement", "Post-movement facing adjustment: %d -> %d" % [selected_unit.facing, facing])
 		
-		# Trigger tutorial para movimiento completado
-		_trigger_tutorial_event("movement_completed")
-		
+		# NOTA: la notificacion real de "movimiento completado" al tutorial se
+		# hace en _on_movement_execution_complete() (cuando el mech LLEGA al
+		# hex), no aqui: aqui el facing ya ha sido elegido, y el tutorial
+		# necesita saberlo antes para poder explicar el facing.
+
 		# En multiplayer, enviar rotación al servidor
 		if is_multiplayer_mode and network_battle_client:
 			var mech_id = selected_unit.get_meta("network_id", -1)
@@ -1446,7 +1462,14 @@ func _on_movement_execution_complete(_mech) -> void:
 	"""Callback cuando el componente termina de ejecutar movimiento"""
 	# Limpiar estado de movimiento via componente
 	_clear_movement_state()
-	
+
+	# Notificar al tutorial que el mech del jugador llego a su hex. Antes esto
+	# se intentaba con _trigger_tutorial_event() (stub deprecado, no hacia
+	# nada) y ademas desde el handler de facing post-movimiento, que es
+	# demasiado tarde en el flujo del tutorial.
+	if _mech and (_mech in player_mechs):
+		_notify_tutorial("movement_completed", _mech.hex_position)
+
 	update_overlays()
 	
 	# NOTA: El facing selector se muestra via facing_adjustment_requested del componente
@@ -1481,9 +1504,20 @@ func select_movement_type(movement_type: int):  # Mech.MovementType
 	"""Llamado cuando el jugador selecciona Walk/Run/Jump"""
 	if battle_components:
 		battle_components.movement_select_type(movement_type)
-	
-	# Trigger tutorial para tipo de movimiento seleccionado
-	_trigger_tutorial_event("movement_type_selected")
+
+	# Bug: esto usaba _trigger_tutorial_event(), que es un stub DEPRECADO que
+	# no hace nada (ver su definicion). Resultado: el tutorial nunca recibia
+	# "el jugador ha pulsado WALK", nunca avanzaba de MOVEMENT_SELECT_WALK a
+	# MOVEMENT_SELECT_HEX, y por tanto _setup_hex_selection() nunca llegaba a
+	# rellenar allowed_hexes. Con allowed_hexes vacio, is_hex_allowed()
+	# devuelve true para CUALQUIER hex, asi que el jugador podia moverse a
+	# cualquier casilla alcanzable pese a la validacion.
+	var type_names := {
+		GameEnums.MovementType.WALK: "walk",
+		GameEnums.MovementType.RUN: "run",
+		GameEnums.MovementType.JUMP: "jump",
+	}
+	_notify_tutorial("movement_type_selected", type_names.get(movement_type, ""))
 
 func select_turn_only():
 	"""Llamado cuando el jugador selecciona solo girar sin moverse"""
@@ -1498,6 +1532,9 @@ func cancel_movement_selection():
 
 func _handle_movement_click(hex: Vector2i):
 	"""Maneja click en hex durante fase de movimiento"""
+	# La restricción real del tutorial vive en battle_movement_handler.handle_movement_click()
+	# (mismo patrón que battle_deployment_manager.handle_hex_click()) para que
+	# cubra cualquier vía de confirmación, no solo este punto de entrada.
 	if battle_components:
 		battle_components.movement_handle_click(hex)
 
@@ -1633,14 +1670,24 @@ func _end_weapon_attack_phase():
 func _on_physical_attack_complete():
 	# Terminar fase de ataque físico y continuar
 	current_attack_target = null
-	
+
+	# Bug: esta función se llama de verdad tras cada ataque físico (vía
+	# battle_components_integrator._on_physical_attack_completed), pero nunca
+	# notificaba al tutorial - el dispatcher de _notify_tutorial ya tenía el
+	# caso "physical_attack_completed" listo, pero nadie lo invocaba nunca.
+	# El controlador del tutorial se quedaba esperando on_physical_attack_completed()
+	# para siempre, así que tras el puñetazo/patada la partida seguía avanzando
+	# sola (calor, fin de turno, iniciativa de la ronda 2) sin que el tutorial
+	# mostrara ni un solo hint más ni desbloqueara el botón END.
+	_notify_tutorial("physical_attack_completed")
+
 	# Limpiar overlays y finalizar fase
 	# NOTA: battle_components.end_physical_attack_phase() ya emite activation_complete_requested
 	# que llama turn_manager.complete_unit_activation() via _on_activation_complete
 	if battle_components:
 		battle_components.end_physical_attack_phase()
 	update_overlays()
-	
+
 	# NO llamar complete_unit_activation() aquí - ya lo hace el componente
 
 
@@ -1923,6 +1970,29 @@ func _handle_enemy_unit_activation(unit) -> void:
 	
 	if ui:
 		ui.add_combat_message("Enemy turn: %s" % unit.mech_name, Color.RED)
+
+	# Bug: la IA real (battle_ai.gd) no comprobaba is_tutorial_active y se
+	# ejecutaba igualmente en cada activación del enemigo, compitiendo con el
+	# movimiento/ataque scriptados de TutorialBattleController (force_action
+	# "enemy_move"/"enemy_attack"). El resultado final dependía de cuál de
+	# los dos ganara la carrera, así que el enemigo casi nunca terminaba en
+	# el hex acordado. Durante el tutorial el guion ya se encarga de mover y
+	# atacar visualmente en su propio momento (ver ENEMY_TURN_MOVEMENT /
+	# ENEMY_TURN_ATTACK) - aquí solo hace falta completar la activación para
+	# que turn_manager pueda seguir avanzando de fase.
+	var tutorial_mgr = get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		# Aplicar el movimiento scriptado AQUÍ, durante la fase de movimiento
+		# real del enemigo, para que se mueva "en su turno de movimiento"
+		# como espera el jugador (antes solo se aplicaba mucho más tarde,
+		# como narración posterior tras el disparo/calor del jugador).
+		if turn_manager and turn_manager.current_phase == GameEnums.TurnPhase.MOVEMENT:
+			tutorial_mgr.force_enemy_movement_to_target()
+		await get_tree().create_timer(0.5).timeout
+		if turn_manager:
+			turn_manager.complete_unit_activation()
+		return
+
 	# Esperar un poco antes de que la IA actúe para que se vea
 	await get_tree().create_timer(0.5).timeout
 	_ai_turn(unit)

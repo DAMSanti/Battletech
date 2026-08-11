@@ -166,7 +166,16 @@ func _play_muzzle_flash(start_pos: Vector2, end_pos: Vector2) -> void:
 	
 	var flash = Sprite2D.new()
 	flash.texture = _muzzle_flash_texture
-	flash.z_index = 1000  # Very high to ensure visibility
+	flash.process_mode = Node.PROCESS_MODE_ALWAYS  # No debe congelarse si el tutorial pausa el árbol
+	# Bug: el terreno (hex_surface_renderer.gd) usa z_index dinámico = avg_y +
+	# altura*10 para el pintado correcto por profundidad, que en hexes al sur
+	# del mapa o con elevación alta supera holgadamente 1000 (+500 del
+	# effects_layer padre = 1500) y el proyectil quedaba por debajo de la
+	# malla. z_as_relative=false hace el z_index absoluto (ignora al padre) y
+	# 4000 queda seguro por debajo del límite de Godot (4096) pero por encima
+	# de cualquier profundidad de terreno realista.
+	flash.z_as_relative = false
+	flash.z_index = 4000
 	flash.scale = Vector2(3.0, 3.0)  # Start bigger for visibility
 	flash.modulate = Color(1, 1, 1, 1)  # Fully visible
 	
@@ -197,7 +206,9 @@ func _play_beam_animation(start_pos: Vector2, end_pos: Vector2, projectile_type:
 	
 	var beam = Sprite2D.new()
 	beam.texture = _projectile_textures[projectile_type]
-	beam.z_index = 1000  # VERY high z-index to be above everything
+	beam.process_mode = Node.PROCESS_MODE_ALWAYS  # No debe congelarse si el tutorial pausa el árbol
+	beam.z_as_relative = false  # z_index absoluto - ver comentario en _play_muzzle_flash
+	beam.z_index = 4000
 	
 	# Calculate beam properties
 	var direction = (end_pos - start_pos).normalized()
@@ -240,7 +251,9 @@ func _play_projectile_animation(start_pos: Vector2, end_pos: Vector2, projectile
 	
 	var projectile = Sprite2D.new()
 	projectile.texture = _projectile_textures[projectile_type]
-	projectile.z_index = 1000  # Very high z-index
+	projectile.process_mode = Node.PROCESS_MODE_ALWAYS  # No debe congelarse si el tutorial pausa el árbol
+	projectile.z_as_relative = false  # z_index absoluto - ver comentario en _play_muzzle_flash
+	projectile.z_index = 4000
 	projectile.scale = Vector2(3.0, 3.0)  # Bigger for visibility
 	projectile.modulate = Color(1, 1, 1, 1)  # Fully visible
 	
@@ -291,12 +304,14 @@ func _play_impact_effect(pos: Vector2, impact_type: String) -> void:
 	
 	var impact = Sprite2D.new()
 	impact.texture = _impact_textures[impact_type]
-	
+	impact.process_mode = Node.PROCESS_MODE_ALWAYS  # No debe congelarse si el tutorial pausa el árbol
+	impact.z_as_relative = false  # z_index absoluto - ver comentario en _play_muzzle_flash
+
 	# MUST add to scene tree BEFORE setting global_position
 	_parent_node.add_child(impact)
-	
+
 	impact.global_position = pos
-	impact.z_index = 1000  # Very high to be visible
+	impact.z_index = 4000
 	impact.scale = Vector2(1.5, 1.5)  # Start bigger for visibility (was 0.3)
 	impact.modulate = Color(1, 1, 1, 1)  # Start FULLY VISIBLE (was 0)
 	
@@ -389,12 +404,14 @@ func _fire_single_missile(start_pos: Vector2, end_pos: Vector2, hits: bool) -> v
 	
 	var missile = Sprite2D.new()
 	missile.texture = _projectile_textures[ProjectileType.MISSILE]
-	
+	missile.z_as_relative = false  # z_index absoluto - ver comentario en _play_muzzle_flash
+	missile.process_mode = Node.PROCESS_MODE_ALWAYS
+
 	# MUST add to scene tree BEFORE setting global_position
 	_parent_node.add_child(missile)
-	
+
 	missile.global_position = start_pos
-	missile.z_index = 1000  # Same as other projectiles
+	missile.z_index = 4000
 	missile.scale = Vector2(3.0, 3.0)  # Larger for visibility
 	missile.modulate = Color(1, 1, 1, 1)  # Fully visible
 	

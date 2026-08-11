@@ -19,8 +19,12 @@ const TUTORIAL_MAP_SEED: int = 42424242
 # Posiciones fijas de los mechs
 const PLAYER_START_HEX := Vector2i(6, 12)   # Centro-sur del mapa
 const PLAYER_START_FACING := 0              # Mirando norte
-const ENEMY_START_HEX := Vector2i(6, 3)     # Centro-norte del mapa  
+const ENEMY_START_HEX := Vector2i(6, 3)     # Centro-norte del mapa
 const ENEMY_START_FACING := 3               # Mirando sur
+
+# Posición a la que se fuerza al enemigo durante SU fase de movimiento real de la ronda 1
+const ENEMY_MOVEMENT_TARGET_HEX := Vector2i(6, 8)
+const ENEMY_MOVEMENT_TARGET_FACING := 3     # Mirando sur (hacia el jugador)
 
 # ============================================================
 # PASOS DEL TUTORIAL
@@ -47,8 +51,11 @@ enum TutorialStep {
 	ENEMY_TURN_MOVEMENT,        # Enemigo se mueve (automático)
 	ENEMY_TURN_ATTACK,          # Enemigo ataca, jugador recibe daño
 	DAMAGE_EXPLANATION,         # Explicar daño y armadura
-	ROUND_2_START,              # Inicio ronda 2
-	PHYSICAL_APPROACH,          # Acercarse para ataque físico
+	END_OF_TURN,                # Cierre explícito del turno 1 (recap antes de pasar de ronda)
+	PROMPT_END_TURN,            # Acción requerida: pulsar END de verdad para avanzar de ronda
+	WAITING_ROUND2_INITIATIVE,  # Paso silencioso: bloquea la iniciativa automática y la muestra cuando el guion está listo
+	ROUND_2_START,              # Inicio ronda 2 (fin del tutorial guiado)
+	PHYSICAL_APPROACH,          # Acercarse para ataque físico (sin usar en ronda 1: jugador y enemigo ya quedan adyacentes tras el movimiento)
 	PHYSICAL_EXPLANATION,       # Explicar ataques físicos
 	PHYSICAL_ATTACK,            # Jugador hace ataque físico
 	ENEMY_SHUTDOWN_SETUP,       # Enemigo sobrecalentado
@@ -182,6 +189,12 @@ func _show_step(step: TutorialStep):
 			_execute_enemy_attack()
 		TutorialStep.DAMAGE_EXPLANATION:
 			_show_damage_explanation()
+		TutorialStep.END_OF_TURN:
+			_show_end_of_turn()
+		TutorialStep.PROMPT_END_TURN:
+			_setup_prompt_end_turn()
+		TutorialStep.WAITING_ROUND2_INITIATIVE:
+			_setup_waiting_round2_initiative()
 		TutorialStep.ROUND_2_START:
 			_show_round_2_start()
 		TutorialStep.PHYSICAL_APPROACH:
@@ -250,6 +263,27 @@ func can_skip_movement() -> bool:
 	if current_step in [TutorialStep.MOVEMENT_SELECT_HEX, TutorialStep.PHYSICAL_APPROACH]:
 		return false
 	return true
+
+func can_end_turn() -> bool:
+	"""El botón END termina la ACTIVACIÓN de la unidad actual (turn_manager.
+	complete_unit_activation), no la ronda - las rondas avanzan solas cuando
+	todas las unidades han actuado en todas las fases. La única fase donde el
+	motor de verdad necesita que el jugador pulse END es la de MOVIMIENTO: el
+	disparo y el ataque físico completan la activación automáticamente al
+	ejecutarse (ver battle_scene._end_weapon_attack_phase), pero el movimiento
+	no, así que sin pulsar END aquí el turno nunca avanza a la fase de armas.
+	En despliegue, iniciativa, ataque, melee y calor el tutorial es 100%
+	guiado y END no tiene ninguna acción legítima que completar."""
+	return current_step in [
+		TutorialStep.MOVEMENT_SELECT_HEX,
+		TutorialStep.FACING_EXPLANATION,
+		TutorialStep.FACING_SELECT,
+		TutorialStep.PHYSICAL_APPROACH,
+		# El turno 1 ya está completo (movimiento, armas, melee, calor) y se
+		# le pide activamente al jugador que pulse END para avanzar de ronda
+		# - ver _setup_prompt_end_turn()/on_end_turn_pressed().
+		TutorialStep.PROMPT_END_TURN,
+	]
 
 func can_skip_attack() -> bool:
 	"""El tutorial no permite saltar ataques en ciertos pasos"""
@@ -344,19 +378,32 @@ func on_weapon_fired():
 	if current_step == TutorialStep.WEAPONS_FIRE:
 		# Esperar un momento para que se vea el resultado
 		await battle_scene.get_tree().create_timer(1.5).timeout
-		_advance_to(TutorialStep.HEAT_EXPLANATION)
+		# El motor real pasa de WEAPON_ATTACK a PHYSICAL_ATTACK antes que a
+		# HEAT (ver turn_manager.advance_phase). El tutorial saltaba
+		# directamente a la explicación de calor sin pararse en el ataque a
+		# melee - el jugador y el enemigo ya quedan adyacentes tras el
+		# movimiento forzado de la ronda 1 (6,9)/(6,8), así que no hace
+		# falta un paso de aproximación: se puede atacar cuerpo a cuerpo ya.
+		_advance_to(TutorialStep.PHYSICAL_EXPLANATION)
 
 func on_physical_attack_completed():
 	"""Llamado después de ataque físico"""
 	if current_step == TutorialStep.PHYSICAL_ATTACK:
 		await battle_scene.get_tree().create_timer(1.0).timeout
-		_advance_to(TutorialStep.ENEMY_SHUTDOWN_SETUP)
+		_advance_to(TutorialStep.HEAT_EXPLANATION)
 	elif current_step == TutorialStep.FINAL_ATTACK:
 		await battle_scene.get_tree().create_timer(1.0).timeout
 		_advance_to(TutorialStep.AMMO_EXPLOSION)
 
 func on_initiative_completed(data: Dictionary):
 	"""Llamado cuando se completa la pantalla de iniciativa"""
+	if current_step == TutorialStep.WAITING_ROUND2_INITIATIVE:
+		# Iniciativa de la ronda 2 ya resuelta (mostrada manualmente desde
+		# _setup_waiting_round2_initiative) - pasar directo al cierre del
+		# tutorial guiado, sin repetir la explicación de "quién gana".
+		_advance_to(TutorialStep.ROUND_2_START)
+		return
+
 	if current_step == TutorialStep.INITIATIVE_ROLL:
 		# Bloquear input mientras mostramos el resultado
 		input_blocked.emit()
@@ -434,9 +481,16 @@ func on_hint_dismissed():
 				tutorial_mgr.heat_phase_blocked = false
 			_advance_to(TutorialStep.ENEMY_TURN_MOVEMENT)
 		TutorialStep.DAMAGE_EXPLANATION:
-			_advance_to(TutorialStep.ROUND_2_START)
+			_advance_to(TutorialStep.END_OF_TURN)
+		TutorialStep.END_OF_TURN:
+			_advance_to(TutorialStep.PROMPT_END_TURN)
 		TutorialStep.ROUND_2_START:
-			_advance_to(TutorialStep.PHYSICAL_APPROACH)
+			# El tutorial guiado termina aquí - el jugador ya ha visto un
+			# round completo (iniciativa, movimiento, ataque, calor, turno
+			# enemigo). Se cierra el tutorial y se le lleva a elegir mechs
+			# para una partida real en vez de continuar el guion de melee/
+			# shutdown/explosión de munición.
+			_end_tutorial_and_return_to_mech_select()
 		TutorialStep.PHYSICAL_EXPLANATION:
 			_advance_to(TutorialStep.PHYSICAL_ATTACK)
 		TutorialStep.SHUTDOWN_EXPLANATION:
@@ -672,29 +726,27 @@ Walking lets you move AND attack in the same turn.""",
 		"highlight_ui": "walk_button"
 	})
 
+const MOVEMENT_TARGET_HEX := Vector2i(6, 9)  # Único hex permitido - 3 hexes al norte, máximo walk del Atlas
+
 func _setup_hex_selection():
-	# Definir hexes permitidos (una línea hacia el enemigo)
-	allowed_hexes = [
-		Vector2i(6, 11),  # Un hex adelante
-		Vector2i(6, 10),  # Dos hexes adelante
-		Vector2i(6, 9),   # Tres hexes adelante (máximo walk)
-		Vector2i(5, 10),  # Alternativa lateral
-		Vector2i(7, 10),  # Alternativa lateral
-	]
+	# Un único hex permitido (no un abanico de opciones): el tutorial guía a
+	# una posición exacta para que el resto del guion (facing, rango de
+	# armas, aproximación en la ronda 2) sea siempre predecible.
+	allowed_hexes = [MOVEMENT_TARGET_HEX]
 	required_action = "move"
-	
-	# Highlight los hexes permitidos
+
+	# Highlight del hex permitido (el overlay normal de rango de movimiento
+	# se oculta automáticamente mientras haya tutorial_hexes activos - ver
+	# battle_overlay_manager._build_movement_overlays)
 	force_action.emit("highlight_hexes", {"hexes": allowed_hexes, "color": "tutorial"})
-	
+
 	hint_requested.emit({
 		"id": "select_hex",
 		"title": "📍 MOVE YOUR MECH",
-		"content": """The [color=cyan]BLUE hexes[/color] show where you can walk.
+		"content": """The [color=cyan]highlighted hex[/color] shows exactly where to walk.
 
-[color=yellow]Tap one of the highlighted hexes[/color] to move there.
-
-Try to get closer to the enemy (north) while staying at a good firing range.""",
-		"tip": "⚡ Action required: Tap a blue hex to move",
+[color=yellow]Tap it[/color] to move there.""",
+		"tip": "⚡ Action required: Tap the highlighted hex",
 		"button_text": "",
 		"blocks_game": false
 	})
@@ -778,16 +830,10 @@ func _setup_weapon_selection():
 	hint_requested.emit({
 		"id": "select_weapons",
 		"title": "🔫 SELECT WEAPONS",
-		"content": """The weapon panel shows your available weapons.
+		"content": """[color=cyan]Tap a weapon's name[/color] for details, or its [color=cyan]switch[/color] to select it.
 
-[color=cyan]Tap weapons to toggle them ON/OFF[/color]
-
-For this attack, select:
-• [color=cyan]AC/20[/color] - Your main cannon
-• [color=orange]Medium Lasers[/color] - For extra damage
-
-Watch the [color=red]HEAT[/color] meter - don't select too many!""",
-		"tip": "⚡ Action required: Select weapons, then tap FIRE",
+Select [color=cyan]AC/20[/color] + [color=orange]Medium Lasers[/color], watch your [color=red]HEAT[/color].""",
+		"tip": "⚡ Select weapons, then tap FIRE",
 		"button_text": "",
 		"blocks_game": false,
 		"highlight_ui": "weapon_panel"
@@ -813,11 +859,21 @@ The [color=yellow]hit location[/color] is randomly determined:
 
 func _show_heat_explanation():
 	input_blocked.emit()
-	
+
 	# Bloquear la fase de calor hasta que el usuario cierre este hint
 	var tutorial_mgr = battle_scene.get_node_or_null("/root/TutorialManager")
 	if tutorial_mgr:
 		tutorial_mgr.heat_phase_blocked = true
+
+	# Bug: la pantalla de iniciativa de la ronda 2 se dispara automáticamente
+	# en cuanto termina la fase de calor real (turn_manager.start_turn()),
+	# lo cual podía coincidir con el resto del guion post-combate (recap del
+	# turno del enemigo + explicación de daño) que todavía se está mostrando,
+	# dejando dos modales bloqueantes compitiendo a la vez. Se bloquea aquí
+	# y se vuelve a pedir manualmente cuando el guion está listo, en
+	# _setup_waiting_round2_initiative() - mismo patrón que ya se usa para
+	# bloquear la iniciativa de la ronda 1 durante el despliegue del enemigo.
+	force_action.emit("block_initiative", {})
 	
 	hint_requested.emit({
 		"id": "heat_explain",
@@ -841,18 +897,21 @@ A shutdown mech cannot move or attack until it cools.""",
 func _execute_enemy_movement():
 	input_blocked.emit()
 	
-	# Forzar movimiento del enemigo hacia el jugador
-	var target_hex = Vector2i(6, 6)  # Acercarse pero no demasiado
-	force_action.emit("enemy_move", {"hex": target_hex, "facing": 3})  # Facing sur
-	
+	# Nota: el movimiento real ya se aplicó antes, en la fase de movimiento
+	# real del enemigo (ver battle_scene._handle_enemy_unit_activation ->
+	# TutorialManager.force_enemy_movement_to_target). Re-emitirlo aquí es
+	# idempotente (mismo hex) y mantiene el recap narrativo funcionando
+	# aunque algo cambie el orden en el futuro.
+	force_action.emit("enemy_move", {"hex": ENEMY_MOVEMENT_TARGET_HEX, "facing": ENEMY_MOVEMENT_TARGET_FACING})
+
 	hint_requested.emit({
 		"id": "enemy_moving",
 		"title": "⚔️ ENEMY TURN",
-		"content": """The enemy Hunchback is moving!
+		"content": """The enemy Hunchback moved into position!
 
-Watch as it advances toward your position.
+It advanced toward you during its movement phase.
 
-After it moves, it will attack you.""",
+Next, it will attack you.""",
 		"tip": "👀 Pay attention to enemy movement to predict their attacks.",
 		"button_text": "",
 		"blocks_game": false,
@@ -895,25 +954,88 @@ Each body part has separate armor:
 		"blocks_game": true
 	})
 
+func _show_end_of_turn():
+	"""Cierre explícito del turno 1: movimiento, disparo, melee, calor y el
+	turno del enemigo ya han pasado. Antes de esto el tutorial saltaba
+	directamente a la iniciativa de la ronda 2 sin marcar claramente que el
+	turno había terminado."""
+	input_blocked.emit()
+	hint_requested.emit({
+		"id": "end_of_turn",
+		"title": "🏁 END OF TURN 1",
+		"content": """Turn 1 is complete! You've now seen the full sequence:
+
+[color=cyan]Movement[/color] → [color=cyan]Weapons[/color] → [color=cyan]Physical Attack[/color] → [color=cyan]Heat[/color]
+
+Both sides acted, damage was dealt, and heat was dissipated.
+
+Every turn in Steel Titans follows this same order.""",
+		"tip": "🔄 Next: tap END to advance to the next round.",
+		"button_text": "CONTINUE",
+		"blocks_game": true
+	})
+
+func _setup_prompt_end_turn():
+	"""Acción requerida: en vez de que el tutorial avance solo, se le pide al
+	jugador que pulse el botón END real para avanzar de ronda - así aprende el
+	gesto que usará en partidas normales. can_end_turn() desbloquea el botón
+	solo en este paso."""
+	input_unblocked.emit()
+	required_action = "end_turn"
+
+	hint_requested.emit({
+		"id": "prompt_end_turn",
+		"title": "🔄 END THE ROUND",
+		"content": """[color=cyan]Tap the END button[/color] (top-left) to advance to the next round.""",
+		"tip": "⚡ Action required: Tap END",
+		"button_text": "",
+		"blocks_game": false,
+		"highlight_ui": "end_turn_button"
+	})
+
+func on_end_turn_pressed():
+	"""Llamado cuando el jugador pulsa el botón END real durante el tutorial"""
+	if current_step == TutorialStep.PROMPT_END_TURN:
+		_advance_to(TutorialStep.WAITING_ROUND2_INITIATIVE)
+
+func _setup_waiting_round2_initiative():
+	"""Paso silencioso (sin hint): la iniciativa automática de la ronda 2 quedó
+	bloqueada en _show_heat_explanation() para que no colisionara con el resto
+	del guion post-combate. Ahora que ese guion terminó, se desbloquea y se
+	pide manualmente - mismo patrón que _show_initiative_roll() usa para la
+	ronda 1.
+
+	A diferencia de la ronda 1, aquí NO se fuerza el resultado: se le pide al
+	TutorialManager que deje de trucar los dados (ver
+	TutorialManager.initiative_roll_forced), así el jugador ve una tirada real
+	con el bonificador de tonelaje aplicado de verdad."""
+	force_action.emit("stop_forcing_initiative", {})
+	force_action.emit("unblock_initiative", {})
+	if battle_scene and battle_scene.has_method("show_initiative_screen"):
+		battle_scene.show_initiative_screen()
+
+func _end_tutorial_and_return_to_mech_select():
+	"""Cierra el tutorial guiado y lleva al jugador a elegir mechs para una
+	partida real, en vez de continuar el guion de melee/shutdown/explosión."""
+	is_active = false
+	tutorial_completed.emit()  # TutorialManager marca el save como completado aquí
+	if battle_scene and battle_scene.get_tree():
+		battle_scene.get_tree().change_scene_to_file("res://scenes/team_setup.tscn")
+
 func _show_round_2_start():
 	input_blocked.emit()
 	hint_requested.emit({
 		"id": "round_2",
-		"title": "🔄 ROUND 2",
-		"content": """A new round begins!
+		"title": "🔄 ROUND 2 BEGINS",
+		"content": """A new round begins - initiative is rolled again at the start of every round, just like you just saw.
 
-Initiative is rolled again at the start of each round.
+You've now seen a full round of combat: initiative, movement, facing, weapons, heat, and how the enemy reacts.
 
-This time, let's get close enough for a [color=cyan]PHYSICAL ATTACK[/color]!
-
-Physical attacks include:
-• [color=yellow]PUNCH[/color] - Use your arms
-• [color=orange]KICK[/color] - Use your legs
-
-These attacks generate [color=green]NO HEAT[/color]!""",
-		"tip": "💡 Physical attacks are great for finishing off damaged enemies.",
-		"button_text": "LET'S DO IT",
-		"blocks_game": true
+[color=green]That's the core loop of Steel Titans![/color] Every battle from here plays out the same way - just with more mechs and tougher decisions.""",
+		"tip": "🎮 Time to build your own lance and jump into a real battle!",
+		"button_text": "FINISH TUTORIAL",
+		"blocks_game": true,
+		"is_final": true
 	})
 
 func _setup_physical_approach():

@@ -23,6 +23,7 @@ var battle_controller: TutorialBattleControllerClass = null
 var _battle_scene: Node = null
 var movement_selector_blocked: bool = false  # Bloquea la aparición del selector de movimiento
 var heat_phase_blocked: bool = false  # Bloquea la fase de calor hasta cerrar el hint
+var initiative_roll_forced: bool = true  # true en la ronda 1 (resultado garantizado); false en la ronda 2 (tirada real)
 
 func _ready():
 	Log.info("Tutorial", "TutorialManager initialized")
@@ -55,9 +56,18 @@ func reset_tutorial():
 	if FileAccess.file_exists(TUTORIAL_SAVE_PATH):
 		DirAccess.remove_absolute(TUTORIAL_SAVE_PATH)
 	is_tutorial_active = false
+	_cleanup_battle_controller()
+	Log.info("Tutorial", "Tutorial reset - will show again")
+
+func _cleanup_battle_controller() -> void:
+	"""Libera las referencias al controlador de la batalla tutorial y a la
+	escena. TutorialManager es un autoload persistente: si se sale del
+	tutorial por cualquier vía que no sea _on_tutorial_completed() (ej.
+	skip_tutorial()), antes se quedaban vivas para siempre - un RefCounted
+	con 5 señales conectadas más un puntero crudo a un nodo de escena ya
+	destruido (_battle_scene)."""
 	battle_controller = null
 	_battle_scene = null
-	Log.info("Tutorial", "Tutorial reset - will show again")
 
 # ============================================================
 # CONTROL DEL TUTORIAL
@@ -88,6 +98,7 @@ func skip_tutorial():
 	"""Permite saltar el tutorial y marcarlo como completado"""
 	_mark_completed()
 	is_tutorial_active = false
+	_cleanup_battle_controller()
 
 func get_battle_controller() -> TutorialBattleControllerClass:
 	"""Retorna el controlador de batalla del tutorial (para validaciones)"""
@@ -104,6 +115,12 @@ func _on_hint_requested(hint_data: Dictionary):
 	if _battle_scene and _battle_scene.tutorial_hint_popup:
 		_battle_scene.tutorial_hint_popup.show_hint(hint_data)
 		Log.debug("Tutorial", "Showing hint: %s" % hint_data.get("id", "unknown"))
+
+	# Mantener el botón END sincronizado con el paso actual (visible pero bloqueado en despliegue)
+	if _battle_scene and _battle_scene.ui and _battle_scene.ui.has_method("set_end_turn_locked"):
+		_battle_scene.ui.set_end_turn_locked(not can_end_turn())
+	if _battle_scene and _battle_scene.ui and _battle_scene.ui.has_method("set_end_turn_symbolic") and battle_controller:
+		_battle_scene.ui.set_end_turn_symbolic(battle_controller.current_step == TutorialBattleControllerClass.TutorialStep.PROMPT_END_TURN)
 
 func _on_input_blocked():
 	"""Bloquea el input del jugador"""
@@ -151,11 +168,13 @@ func _on_force_action(action_type: String, action_data: Dictionary):
 			_block_initiative_screen(action_data)
 		"unblock_initiative":
 			_unblock_initiative_screen()
+		"stop_forcing_initiative":
+			initiative_roll_forced = false
 
 func _on_tutorial_completed():
 	"""El tutorial ha sido completado"""
 	is_tutorial_active = false
-	battle_controller = null
+	_cleanup_battle_controller()
 	_mark_completed()
 	tutorial_completed.emit()
 	Log.info("Tutorial", "Tutorial completed and saved!")
@@ -365,6 +384,20 @@ func _center_camera_on_enemy_delayed(_enemy, target_hex: Vector2i):
 	await tween.finished
 	Log.info("Tutorial", "Camera centered on enemy at %s" % target_pos)
 
+func force_enemy_movement_to_target():
+	"""Fuerza al enemigo a su posición scriptada de la ronda 1 en el momento
+	exacto de SU fase de movimiento real (turn_manager.TurnPhase.MOVEMENT),
+	no como narración posterior desconectada. Ver
+	battle_scene._handle_enemy_unit_activation(), que es quien llama esto -
+	antes la IA real no se ejecutaba durante el tutorial y nada movía al
+	enemigo hasta que el guion narrativo llegaba (mucho más tarde, tras el
+	disparo y la explicación de calor del jugador), así que el jugador veía
+	al enemigo quieto durante su propio turno de movimiento."""
+	_force_enemy_move({
+		"hex": TutorialBattleControllerClass.ENEMY_MOVEMENT_TARGET_HEX,
+		"facing": TutorialBattleControllerClass.ENEMY_MOVEMENT_TARGET_FACING
+	})
+
 func _force_enemy_move(data: Dictionary):
 	"""Fuerza el movimiento del enemigo"""
 	if not _battle_scene:
@@ -375,9 +408,26 @@ func _force_enemy_move(data: Dictionary):
 	
 	if _battle_scene.enemy_mechs.size() > 0:
 		var enemy = _battle_scene.enemy_mechs[0]
+		var old_hex = enemy.hex_position
+
 		# Mover el enemigo directamente
 		enemy.hex_position = target_hex
 		enemy.facing = facing
+
+		# Bug critico: esto NUNCA actualizaba hex_grid, solo la posicion
+		# visual del sprite. El grid seguia teniendo al enemigo registrado en
+		# su hex anterior y el hex nuevo quedaba vacio, asi que al hacer click
+		# sobre el enemigo en pantalla hex_grid.get_unit(hex) devolvia null,
+		# no habia objetivo valido y NO se abria el selector de armas (el
+		# ataque parecia simplemente no responder). Ademas dejaba una unidad
+		# fantasma bloqueando el hex viejo para pathfinding y LoS.
+		# El movimiento normal hace exactamente esto en
+		# battle_movement_handler.execute_movement().
+		if _battle_scene.hex_grid:
+			if _battle_scene.hex_grid.get_unit(old_hex) == enemy:
+				_battle_scene.hex_grid.set_unit(old_hex, null)
+			_battle_scene.hex_grid.set_unit(target_hex, enemy)
+
 		# Bug reportado: esto asignaba enemy.position = hex_to_pixel(hex)
 		# directamente, sin sumar hex_grid.position (offset de
 		# Vector2(100, 200) en battle_scene.tscn) ni actualizar z_index.
@@ -389,7 +439,12 @@ func _force_enemy_move(data: Dictionary):
 			enemy.update_visual_position(_battle_scene.hex_grid)
 		if enemy.has_method("update_facing_visual"):
 			enemy.update_facing_visual()
-		Log.debug("Tutorial", "Forced enemy move to %s facing %d" % [target_hex, facing])
+
+		# Refrescar visibilidad/LoS: el enemigo cambio de hex en el grid
+		if _battle_scene.has_method("update_mech_visibility"):
+			_battle_scene.update_mech_visibility()
+
+		Log.debug("Tutorial", "Forced enemy move %s -> %s facing %d" % [old_hex, target_hex, facing])
 
 func _force_enemy_attack(data: Dictionary):
 	"""Fuerza un ataque del enemigo con daño controlado"""
@@ -497,6 +552,12 @@ func can_skip_attack() -> bool:
 		return battle_controller.can_skip_attack()
 	return true
 
+func can_end_turn() -> bool:
+	"""Verifica si el botón END puede usarse en el paso actual del tutorial"""
+	if battle_controller:
+		return battle_controller.can_end_turn()
+	return true
+
 # ============================================================
 # NOTIFICACIONES DESDE BATTLE_SCENE
 # ============================================================
@@ -564,6 +625,11 @@ func notify_physical_attack_completed():
 	"""Notifica que se completó un ataque físico"""
 	if battle_controller:
 		battle_controller.on_physical_attack_completed()
+
+func notify_end_turn_pressed():
+	"""Notifica que el jugador pulsó el botón END real durante el tutorial"""
+	if battle_controller:
+		battle_controller.on_end_turn_pressed()
 
 func notify_initiative_completed(data: Dictionary):
 	"""Notifica que se completó la tirada de iniciativa"""

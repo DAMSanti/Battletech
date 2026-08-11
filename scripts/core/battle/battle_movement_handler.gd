@@ -187,7 +187,23 @@ func handle_movement_click(hex: Vector2i) -> bool:
 	if not _can_control_unit(selected_unit):
 		Log.debug("Movement", "Not my mech - abort")
 		return false
-	
+
+	# Verificar si el tutorial restringe este hex - mismo patrón que
+	# battle_deployment_manager.handle_hex_click(). Se comprueba aquí (en el
+	# handler de más bajo nivel, justo antes de aceptar CUALQUIER hex, tanto
+	# para crear un preview nuevo como para cambiar uno existente) y no solo
+	# en battle_scene, para que ninguna otra vía de confirmación pueda saltarse
+	# la restricción.
+	var tutorial_mgr = Engine.get_singleton("TutorialManager") if Engine.has_singleton("TutorialManager") else null
+	if not tutorial_mgr:
+		var main = Engine.get_main_loop()
+		if main and main.root:
+			tutorial_mgr = main.root.get_node_or_null("/root/TutorialManager")
+	if tutorial_mgr and tutorial_mgr.is_tutorial_active:
+		if not tutorial_mgr.is_hex_allowed(hex):
+			combat_message.emit("Move to the highlighted hex", Color.YELLOW)
+			return true  # Consumimos el click pero no lo procesamos
+
 	# Si ya hay un movimiento pendiente de confirmar
 	if pending_move_confirmation and preview_destination != Vector2i(-1, -1):
 		Log.debug("Movement", "Have pending confirmation - checking if same hex")

@@ -205,6 +205,16 @@ func _setup_animations():
 	
 	animation_player.add_animation_library("", lib)
 
+func _set_mouse_filter_recursive(node: Node, filter: int) -> void:
+	"""Aplica mouse_filter a un Control y a todos sus descendientes.
+	mouse_filter no se propaga automáticamente: cada Control decide por su
+	cuenta si intercepta el ratón dentro de su propio rect, sin importar lo
+	que haga su padre."""
+	if node is Control:
+		node.mouse_filter = filter
+	for child in node.get_children():
+		_set_mouse_filter_recursive(child, filter)
+
 func show_hint(hint_data: Dictionary):
 	"""Muestra un hint con los datos proporcionados"""
 	current_hint_id = hint_data.get("id", "")
@@ -232,37 +242,79 @@ func show_hint(hint_data: Dictionary):
 		close_button.visible = false
 		spacer.visible = false
 		separator.visible = false
-		
-		# Panel más pequeño
-		panel.custom_minimum_size = Vector2(350, 100)
-		title_label.add_theme_font_size_override("normal_font_size", 18)
-		content_label.add_theme_font_size_override("normal_font_size", 14)
-		
-		# Posicionar en esquina superior derecha
+
+		# Panel de tamaño FIJO (no solo mínimo). Antes title_label/content_label
+		# tenían fit_content=true, así que un hint con mucho texto hacía crecer
+		# el panel más allá de esta caja - CenterContainer no recorta a sus
+		# hijos, así que el desborde tapaba paneles reales por debajo (selector
+		# de armas) por muy corto que se intentara dejar el texto. Ahora el
+		# texto se recorta/scrollea DENTRO de una altura fija en vez de
+		# empujar el panel entero hacia abajo.
+		panel.custom_minimum_size = Vector2(350, 150)
+		title_label.fit_content = false
+		title_label.scroll_active = false
+		title_label.custom_minimum_size = Vector2(310, 22)
+		title_label.add_theme_font_size_override("normal_font_size", 16)
+		content_label.fit_content = false
+		content_label.scroll_active = true
+		content_label.custom_minimum_size = Vector2(310, 70)
+		content_label.add_theme_font_size_override("normal_font_size", 13)
+		tip_label.fit_content = false
+		tip_label.scroll_active = true
+		tip_label.custom_minimum_size = Vector2(310, 20)
+
+		# Posicionar en esquina superior derecha. Con el panel ahora acotado
+		# arriba, este rect ya no necesita ser generoso "por si acaso".
 		center_container.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 		center_container.offset_left = -370
 		center_container.offset_top = 20
 		center_container.offset_right = -20
-		center_container.offset_bottom = 200
+		center_container.offset_bottom = 190
+
+		# Bug: la caja de este hint (aunque solo pinta un panel pequeño en
+		# la esquina) tenía mouse_filter STOP por defecto en toda su área
+		# rectangular, incluyendo el espacio vacío. Eso bloqueaba clics en
+		# botones reales que caían debajo (seleccionar arma, cerrar el
+		# detalle de armas) causando soft-locks. mouse_filter no se hereda:
+		# poner IGNORE solo en center_container/panel no bastaba porque
+		# title_label/content_label/tip_label (RichTextLabel, STOP por
+		# defecto) seguían capturando clics dentro de sus propios rects.
+		# Este modo es puramente informativo - nada debajo del panel debe
+		# capturar el ratón.
+		_set_mouse_filter_recursive(center_container, Control.MOUSE_FILTER_IGNORE)
 	else:
 		# Modo normal: centrado, con botón
 		button_container.visible = true
 		close_button.visible = not blocks_game  # Solo mostrar X si no bloquea
 		spacer.visible = true
 		separator.visible = true
-		
-		# Panel tamaño normal
+
+		# Panel tamaño normal - centrado, con espacio de sobra, así que aquí sí
+		# puede crecer libremente con el contenido (restaurar lo que el modo
+		# action_required pudo dejar fijo/acotado).
 		panel.custom_minimum_size = Vector2(500, 200)
+		title_label.fit_content = true
+		title_label.scroll_active = false
+		title_label.custom_minimum_size = Vector2.ZERO
 		title_label.add_theme_font_size_override("normal_font_size", 24)
+		content_label.fit_content = true
+		content_label.scroll_active = false
+		content_label.custom_minimum_size = Vector2.ZERO
 		content_label.add_theme_font_size_override("normal_font_size", 16)
-		
+		tip_label.fit_content = true
+		tip_label.scroll_active = false
+		tip_label.custom_minimum_size = Vector2.ZERO
+
 		# Centrar
 		center_container.set_anchors_preset(Control.PRESET_FULL_RECT)
 		center_container.offset_left = 0
 		center_container.offset_top = 0
 		center_container.offset_right = 0
 		center_container.offset_bottom = 0
-		
+
+		# Restaurar filtro de ratón normal (el modo action_required pudo dejarlo en IGNORE)
+		_set_mouse_filter_recursive(center_container, Control.MOUSE_FILTER_STOP)
+
 		button.text = button_text
 	
 	# Mostrar/ocultar fondo según si bloquea
