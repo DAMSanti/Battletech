@@ -11,6 +11,30 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 ## [Unreleased]
 
 ### Added
+- Sistema de facing/orientación hexagonal (facing_selector, hex_grid, mech,
+  hex_surface_renderer) con implicaciones de arco de armas e impactos traseros
+- Modo tutorial interactivo (TutorialManager, TutorialBattleController,
+  TutorialHintPopup)
+- Combat Animation Manager y VFX de proyectiles/impactos
+- Battle Stats Tracker y pantalla de fin de partida con resumen post-batalla
+- Indicadores visuales de estado de mech y tabla de datos de balance de armas
+- Sprites decorativos de terreno (bosques, escombros, agua, pavimento, edificio)
+- ~40 tests unitarios nuevos (facing, ELO, LoS, sistemas de armas, mechs, etc.)
+- SPECS.md y ROADMAP.md técnico en la raíz del repo
+
+### Changed
+- Comportamiento táctico de battle_ai.gd (gestión de calor, uso de cobertura)
+- Turn manager, initiative screen, selector de armas y log de combate refinados
+
+### Removed
+- Scripts `.gd.backup` obsoletos con `class_name` duplicado
+- Cache del editor de Godot (`.godot/`) deja de trackearse en git
+
+---
+
+## [0.4.0] - 2025-12-02 - Matchmaking y Documentación
+
+### Added
 - Sistema de matchmaking via API REST
 - Sistema de ELO y rankings
 - Reconexión automática de clientes
@@ -66,8 +90,9 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
   - Anti-cheat básico (SuspiciousActivityDetector)
 
 - **Testing**
-  - 380+ tests pasando
-  - ~80% cobertura en core
+  - 383+ tests pasando
+  - **100% cobertura en core** (334/334 funciones)
+  - 50.6% cobertura total (excluyendo battle scene integration)
 
 ### Changed
 - Servidor desplegado en DigitalOcean (steeltitans.damsanti.app)
@@ -139,7 +164,8 @@ y este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.h
 
 ---
 
-[Unreleased]: https://github.com/DAMSanti/Battletech/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DAMSanti/Battletech/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/DAMSanti/Battletech/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DAMSanti/Battletech/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/DAMSanti/Battletech/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DAMSanti/Battletech/compare/v0.0.1...v0.1.0
