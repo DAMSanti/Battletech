@@ -283,7 +283,12 @@ func on_movement_completed(hex: Vector2i):
 		if hex in allowed_hexes or allowed_hexes.is_empty():
 			_advance_to(TutorialStep.FACING_EXPLANATION)
 	elif current_step == TutorialStep.PHYSICAL_APPROACH:
-		_advance_to(TutorialStep.PHYSICAL_EXPLANATION)
+		# Bug reportado: si el hex de destino no es realmente adyacente al
+		# enemigo, el tutorial avanzaba igualmente a PHYSICAL_ATTACK, donde
+		# el ataque fisico real es rechazado por falta de objetivo en rango
+		# y el tutorial se queda bloqueado esperando on_physical_attack_completed().
+		if hex in allowed_hexes or allowed_hexes.is_empty():
+			_advance_to(TutorialStep.PHYSICAL_EXPLANATION)
 
 func on_weapon_attack_phase():
 	"""Llamado cuando empieza la fase de ataque con armas"""

@@ -113,6 +113,11 @@ var music_files: Dictionary = {
 }
 
 func _ready():
+	# El tutorial (y cualquier futuro dialogo/menu) pausa el SceneTree con
+	# get_tree().paused = true. Sin esto, AudioManager (y los
+	# AudioStreamPlayer que crea como hijos) heredan PROCESS_MODE_INHERIT
+	# y dejan de sonar en cuanto el juego se pausa.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_load_settings()
 	_setup_music_player()
 	_setup_sfx_pool()
