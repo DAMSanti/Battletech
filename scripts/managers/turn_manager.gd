@@ -114,6 +114,22 @@ func advance_phase():
 			start_turn()
 			is_phase_transitioning = false
 
+		_:
+			# Invariante: current_phase debe ser uno de los valores anteriores.
+			# Sin este branch, un current_phase invalido (p.ej. DEPLOYMENT, o
+			# datos corruptos llegados por red) dejaba is_phase_transitioning
+			# en true para siempre y soft-lockeaba el turno en silencio.
+			# LOW severity (push_warning, no push_error) para que sea testable
+			# sin disparar el chequeo estricto de errores de GUT.
+			is_phase_transitioning = false
+			ErrorHandler.report(
+				"advance_phase() called with invalid current_phase",
+				ErrorHandler.ErrorCategory.GAME_STATE,
+				ErrorHandler.ErrorSeverity.LOW,
+				{"current_phase": current_phase},
+				false
+			)
+
 ## Inicia la fase de movimiento
 func start_movement_phase():
 	_build_activation_order()
