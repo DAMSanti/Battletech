@@ -1,8 +1,15 @@
 # 📦 Archive - Documentación Histórica
 
-Esta carpeta contenía documentación obsoleta que fue eliminada el **1 de Diciembre, 2025** durante la reorganización de documentación.
+Esta carpeta contiene documentación obsoleta archivada durante la reorganización del proyecto.
 
-## 📋 Documentos Eliminados
+## 📂 Documentos Archivados
+
+### TODOs Diciembre 2025 (archivados 2/12/2025)
+- `TODO_DECEMBER_2025.md` - Plan original de Diciembre con Fases 0-3
+- `TODO_DECEMBER_2025_FASE2.md` - Detalle de implementación Fase 2
+- → Reemplazados por [TODO_DICIEMBRE_2025.md](../todo/TODO_DICIEMBRE_2025.md)
+
+## 📋 Documentos Eliminados (1/12/2025)
 
 Los siguientes documentos fueron eliminados por estar obsoletos o redundantes:
 

@@ -1,0 +1,63 @@
+ID,Name,Category,Tech Base,Weight,Slots,Damage,Heat,Range Short,Range Medium,Range Long,Min Range,Requires Ammo,Special,DPS (Dmg/Wt),Heat Efficiency,Notes
+small_laser,Small Laser,Energy,IS,0.5,1,3,1,1,2,3,,No,,6.00,3.00,Best energy DPS/weight
+medium_laser,Medium Laser,Energy,IS,1.0,1,5,5,3,6,9,,No,,5.00,1.00,Standard workhorse
+large_laser,Large Laser,Energy,IS,5.0,2,8,8,5,10,15,,No,,1.60,1.00,Long range energy
+medium_pulse_laser,Medium Pulse Laser,Energy,IS,2.0,1,6,4,2,4,6,,No,-2 To-Hit,3.00,1.50,Best accuracy
+ppc,PPC,Energy,IS,7.0,3,10,10,6,12,18,3,No,Min Range,1.43,1.00,High alpha strike
+small_pulse_laser,Small Pulse Laser,Energy,IS,1.0,1,3,2,1,2,3,,No,-2 To-Hit,3.00,1.50,Accurate close range
+large_pulse_laser,Large Pulse Laser,Energy,IS,7.0,2,9,10,3,7,10,,No,-2 To-Hit,1.29,0.90,Heavy accurate fire
+er_small_laser,ER Small Laser,Energy,Clan,0.5,1,3,2,2,4,5,,No,,6.00,1.50,Extended range
+er_medium_laser,ER Medium Laser,Energy,Clan,1.0,1,5,5,4,8,12,,No,,5.00,1.00,Extended range
+er_large_laser,ER Large Laser,Energy,Clan,4.0,2,10,12,8,15,19,,No,,2.50,0.83,Best ER laser
+er_ppc,ER PPC,Energy,IS,7.0,2,10,15,7,14,23,,No,,1.43,0.67,Long range high heat
+heavy_ppc,Heavy PPC,Energy,IS,10.0,4,15,15,6,12,18,,No,,1.50,1.00,Maximum PPC damage
+light_ppc,Light PPC,Energy,IS,3.0,2,10,5,6,12,18,,No,,3.33,2.00,Best PPC efficiency
+flamer,Flamer,Energy,IS,1.0,1,2,3,1,2,3,,No,Heat Dmg 2,2.00,0.67,Adds heat to target
+plasma_cannon,Plasma Cannon,Energy,IS,6.0,1,10,10,6,12,18,,No,Heat Dmg 5,1.67,1.00,Damage + heat damage
+ac2,Autocannon/2,Ballistic,IS,6.0,1,2,1,8,16,24,,Yes,,0.33,2.00,Long range sniper
+ac5,Autocannon/5,Ballistic,IS,8.0,4,5,1,6,12,18,,Yes,,0.63,5.00,Versatile AC
+ac10,Autocannon/10,Ballistic,IS,12.0,7,10,3,5,10,15,,Yes,,0.83,3.33,Balanced heavy AC
+ac20,Autocannon/20,Ballistic,IS,14.0,10,20,7,3,6,9,,Yes,,1.43,2.86,Maximum single hit
+gauss_rifle,Gauss Rifle,Ballistic,IS,15.0,7,15,1,7,15,22,,Yes,Explosive,1.00,15.00,Best ballistic efficiency
+machine_gun,Machine Gun,Ballistic,IS,0.5,1,2,0,1,2,3,,Yes,,4.00,∞,Anti-infantry
+lb2x,LB 2-X AC,Ballistic,IS,6.0,4,2,1,9,18,27,,Yes,Cluster,0.33,2.00,Long range cluster
+lb5x,LB 5-X AC,Ballistic,IS,8.0,5,5,1,7,14,20,,Yes,Cluster,0.63,5.00,Mid cluster
+lb10x,LB 10-X AC,Ballistic,IS,11.0,6,10,2,6,12,18,,Yes,Cluster,0.91,5.00,Heavy cluster
+lb20x,LB 20-X AC,Ballistic,IS,14.0,11,20,6,4,8,12,,Yes,Cluster,1.43,3.33,Devastating cluster
+uac2,Ultra AC/2,Ballistic,IS,7.0,3,2,1,9,18,27,,Yes,Ultra (x2),0.29,2.00,Double fire capable
+uac5,Ultra AC/5,Ballistic,IS,9.0,5,5,1,7,14,21,,Yes,Ultra (x2),0.56,5.00,Double fire mid
+uac10,Ultra AC/10,Ballistic,IS,13.0,7,10,3,6,12,18,,Yes,Ultra (x2),0.77,3.33,Double fire heavy
+uac20,Ultra AC/20,Ballistic,IS,15.0,10,20,7,3,7,10,,Yes,Ultra (x2),1.33,2.86,Double fire max
+rac2,Rotary AC/2,Ballistic,IS,8.0,3,2,1,6,12,18,,Yes,Rotary (x6),0.25,2.00,Rapid fire AC
+rac5,Rotary AC/5,Ballistic,IS,10.0,6,5,1,5,10,15,,Yes,Rotary (x6),0.50,5.00,Rapid fire mid
+light_gauss,Light Gauss Rifle,Ballistic,IS,12.0,5,8,1,8,17,25,,Yes,Explosive,0.67,8.00,Long range Gauss
+heavy_gauss,Heavy Gauss Rifle,Ballistic,IS,18.0,11,25,2,6,13,20,,Yes,Explosive,1.39,12.50,Maximum Gauss damage
+light_mg,Light Machine Gun,Ballistic,IS,0.25,1,1,0,1,2,2,,Yes,,4.00,∞,Lightest weapon
+heavy_mg,Heavy Machine Gun,Ballistic,IS,1.0,1,3,0,1,2,3,,Yes,,3.00,∞,Heavy anti-infantry
+srm2,SRM-2,Missile,IS,1.0,1,4,2,3,6,9,,Yes,2 missiles,4.00,2.00,Light SRM
+srm4,SRM-4,Missile,IS,2.0,1,8,3,3,6,9,,Yes,4 missiles,4.00,2.67,Medium SRM
+srm6,SRM-6,Missile,IS,3.0,2,12,4,3,6,9,,Yes,6 missiles,4.00,3.00,Heavy SRM
+lrm5,LRM-5,Missile,IS,2.0,1,5,2,6,14,21,6,Yes,5 missiles,2.50,2.50,Light LRM
+lrm10,LRM-10,Missile,IS,5.0,2,10,4,6,14,21,6,Yes,10 missiles,2.00,2.50,Medium LRM
+lrm15,LRM-15,Missile,IS,7.0,3,15,5,6,14,21,6,Yes,15 missiles,2.14,3.00,Heavy LRM
+lrm20,LRM-20,Missile,IS,10.0,5,20,6,6,14,21,6,Yes,20 missiles,2.00,3.33,Maximum LRM
+streak_srm2,Streak SRM-2,Missile,IS,1.5,1,4,2,3,6,9,,Yes,Streak,2.67,2.00,No waste ammo
+streak_srm4,Streak SRM-4,Missile,IS,3.0,1,8,3,3,6,9,,Yes,Streak,2.67,2.67,Streak medium
+streak_srm6,Streak SRM-6,Missile,IS,4.5,2,12,4,3,6,9,,Yes,Streak,2.67,3.00,Streak heavy
+mml3,MML-3,Missile,IS,1.5,2,3,2,-,-,-,,Yes,Multi (LRM/SRM),2.00,1.50,Flexible launcher
+mml5,MML-5,Missile,IS,3.0,3,5,3,-,-,-,,Yes,Multi (LRM/SRM),1.67,1.67,Flexible mid
+mml7,MML-7,Missile,IS,4.5,4,7,4,-,-,-,,Yes,Multi (LRM/SRM),1.56,1.75,Flexible heavy
+mml9,MML-9,Missile,IS,6.0,5,9,5,-,-,-,,Yes,Multi (LRM/SRM),1.50,1.80,Flexible advanced
+mrm10,MRM-10,Missile,IS,3.0,2,10,4,3,8,15,,Yes,10 missiles,3.33,2.50,Medium range missiles
+mrm20,MRM-20,Missile,IS,7.0,3,20,6,3,8,15,,Yes,20 missiles,2.86,3.33,MRM heavy
+mrm30,MRM-30,Missile,IS,10.0,5,30,10,3,8,15,,Yes,30 missiles,3.00,3.00,MRM very heavy
+mrm40,MRM-40,Missile,IS,12.0,7,40,12,3,8,15,,Yes,40 missiles,3.33,3.33,MRM maximum
+narc,NARC Missile Beacon,Special,IS,3.0,2,0,0,3,6,9,,Yes,Beacon,0.00,N/A,Improves allied missiles
+tag,TAG,Special,IS,1.0,1,0,0,5,9,15,,No,Designator,0.00,N/A,Artillery designator
+rocket_launcher_10,Rocket Launcher 10,Missile,IS,0.5,1,10,3,5,11,18,,No,One-Shot,20.00,3.33,Disposable high alpha
+rocket_launcher_15,Rocket Launcher 15,Missile,IS,1.0,2,15,4,4,9,15,,No,One-Shot,15.00,3.75,Disposable medium
+rocket_launcher_20,Rocket Launcher 20,Missile,IS,1.5,3,20,5,3,7,12,,No,One-Shot,13.33,4.00,Disposable heavy
+thunderbolt5,Thunderbolt 5,Missile,IS,3.0,1,5,3,5,10,15,,Yes,Guided,1.67,1.67,Precision missile
+thunderbolt10,Thunderbolt 10,Missile,IS,7.0,2,10,5,5,10,15,,Yes,Guided,1.43,2.00,Guided medium
+thunderbolt15,Thunderbolt 15,Missile,IS,11.0,3,15,7,5,10,15,,Yes,Guided,1.36,2.14,Guided heavy
+thunderbolt20,Thunderbolt 20,Missile,IS,15.0,5,20,8,5,10,15,,Yes,Guided,1.33,2.50,Guided devastating

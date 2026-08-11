@@ -47,13 +47,39 @@ G:\godot\Godot_v4.5.1-stable_win64.exe --headless -s addons/gut/gut_cmdln.gd -gd
 
 ## 📊 Cobertura Actual
 
-| Component | Tests | Status | Coverage |
-|-----------|-------|--------|----------|
-| Main Menu | 7 | ✅ Complete | 100% |
-| Initiative Screen | 8 | ✅ Complete | 100% |
-| Weapon System | 12 | ✅ Complete | 100% |
-| Physical Attack System | 13 | ✅ Complete | 100% |
-| **TOTAL** | **40** | ✅ | **100%** |
+### Resumen General
+| Tipo | Funciones | Cobertura |
+|------|-----------|----------|
+| Core Systems (Unit Tests) | 334/334 | **100%** ✅ |
+| Battle Scene (Integration) | 0/326 | 0% (excluidos) |
+| **TOTAL PROYECTO** | 334/660 | **50.6%** |
+
+### Archivos con 100% Cobertura (23 archivos)
+| Component | Functions | Status |
+|-----------|-----------|--------|
+| mech_factory.gd | 9/9 | ✅ 100% |
+| lance_data.gd | 4/4 | ✅ 100% |
+| movement_system.gd | 16/16 | ✅ 100% |
+| movement_restrictions.gd | 5/5 | ✅ 100% |
+| facing_system.gd | 16/16 | ✅ 100% |
+| weapon_system.gd | 4/4 | ✅ 100% |
+| weapon_attack_system.gd | 13/13 | ✅ 100% |
+| physical_attack_system.gd | 13/13 | ✅ 100% |
+| line_of_sight.gd | 5/5 | ✅ 100% |
+| heat_system.gd | 7/7 | ✅ 100% |
+| player_data_manager_singleton.gd | 16/16 | ✅ 100% |
+| player_data_manager.gd | 30/30 | ✅ 100% |
+| auth_manager_singleton.gd | 8/8 | ✅ 100% |
+| auth_manager.gd | 26/26 | ✅ 100% |
+| auth_validator.gd | 12/12 | ✅ 100% |
+| component_database.gd | 26/26 | ✅ 100% |
+| database_manager.gd | 35/35 | ✅ 100% |
+| elo_calculator.gd | 14/14 | ✅ 100% |
+| error_handler.gd | 30/30 | ✅ 100% |
+| game_enums.gd | 4/4 | ✅ 100% |
+| logger.gd | 27/27 | ✅ 100% |
+| mech_loadout.gd | 11/11 | ✅ 100% |
+| mech_sprite_manager.gd | 3/3 | ✅ 100% |
 
 ## 📋 Test Details
 

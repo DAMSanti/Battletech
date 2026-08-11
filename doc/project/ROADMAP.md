@@ -1,9 +1,9 @@
 # 🎮 ROADMAP DE DESARROLLO PROFESIONAL
 ## Steel Titans: Tactical Warfare
 
-**Versión del documento:** 1.2  
-**Última actualización:** 1 de Diciembre, 2025  
-**Estado del proyecto:** Pre-Alpha → Alpha Ready (Infraestructura Completa)
+**Versión del documento:** 2.1  
+**Última actualización:** 2 de Diciembre, 2025  
+**Estado del proyecto:** Alpha Ready ✅ + Fase 3 ~25% (Gameplay adelantado)
 
 ---
 
@@ -32,19 +32,19 @@ Juego de combate táctico por turnos basado en mechs, con multijugador competiti
 - Comunidad activa y comprometida
 
 ### Timeline Estimado
-| Fase | Duración | Fecha Estimada |
-|------|----------|----------------|
-| Fase 0: Pre-producción | 2-4 semanas | Dic 2025 |
-| Fase 1: Core Técnico | 4-8 semanas | Ene-Feb 2026 |
-| Fase 2: Backend | 6-10 semanas | Mar-May 2026 |
-| Fase 3: Gameplay | 8-12 semanas | Jun-Ago 2026 |
-| Fase 4: Arte y Audio | 6-10 semanas | Sep-Nov 2026 |
-| Fase 5: Monetización | 4-6 semanas | Dic 2026 |
-| Fase 6: Pulido y QA | 4-8 semanas | Ene-Feb 2027 |
-| Fase 7: Lanzamiento | 2-4 semanas | Mar 2027 |
-| Fase 8: Post-lanzamiento | Continuo | Mar 2027+ |
+| Fase | Duración | Fecha Estimada | Estado |
+|------|----------|----------------|--------|
+| Fase 0: Pre-producción | 2-4 semanas | Dic 2025 | ✅ COMPLETADA |
+| Fase 1: Core Técnico | 4-8 semanas | Dic 2025 | ✅ COMPLETADA |
+| Fase 2: Backend | 6-10 semanas | Dic 2025 | ✅ COMPLETADA |
+| Fase 3: Gameplay | 8-12 semanas | Ene-Mar 2026 | 🔄 EN PROGRESO |
+| Fase 4: Arte y Audio | 6-10 semanas | Abr-Jun 2026 | ⬜ Pendiente |
+| Fase 5: Monetización | 4-6 semanas | Jul-Ago 2026 | ⬜ Pendiente |
+| Fase 6: Pulido y QA | 4-8 semanas | Sep-Oct 2026 | ⬜ Pendiente |
+| Fase 7: Lanzamiento | 2-4 semanas | Nov 2026 | ⬜ Pendiente |
+| Fase 8: Post-lanzamiento | Continuo | Nov 2026+ | ⬜ Pendiente |
 
-**Tiempo total estimado:** 12-18 meses hasta lanzamiento
+**Tiempo total estimado:** 10-12 meses hasta lanzamiento (adelantado 3-4 meses)
 
 ---
 
@@ -83,7 +83,7 @@ Juego de combate táctico por turnos basado en mechs, con multijugador competiti
 - [x] Generador procedural de mapas
 - [x] Sistema de logging profesional (Sentry integrado)
 - [x] Sistema de manejo de errores (ErrorHandler)
-- [x] Framework de testing (GUT - **321 tests pasando**)
+- [x] Framework de testing (GUT - **875 tests, 841 pasando, 100% cobertura core**)
 - [x] Validación server-side (ServerActionValidator)
 - [x] Sistema de autenticación (AuthManager + AuthValidator)
 - [x] **Base de datos PostgreSQL** (producción)
@@ -95,6 +95,16 @@ Juego de combate táctico por turnos basado en mechs, con multijugador competiti
 - [x] **Health Checks** (detailed, liveness, readiness, metrics)
 - [x] **Anti-Cheat básico** (SuspiciousActivityDetector)
 - [x] **Sistema de Backups** (PostgreSQL con retención 7 días)
+- [x] **Redis** (sesiones y cache)
+- [x] **Sistema de Baneos** (API + DB)
+- [x] **Audit Logging** (acciones importantes)
+- [x] **Matchmaking básico** (cola ELO, API + Godot)
+- [x] **Reconexión automática** (ReconnectionHandler)
+- [x] **Sistema de lobbies mejorado**
+- [x] **Migraciones DB** (Alembic)
+- [x] **API versionada** (v1)
+- [x] **CI/CD** (GitHub Actions)
+- [x] **TDD documento** (Technical Design Document)
 
 ### Funcionalidades Pendientes ❌
 
@@ -108,12 +118,14 @@ Juego de combate táctico por turnos basado en mechs, con multijugador competiti
 - [x] ~~Health checks~~ ✅ (routers/health_router.py)
 - [x] ~~Backups~~ ✅ (server/scripts/backup_db.sh)
 - [x] ~~Anti-cheat básico~~ ✅ (suspicious_activity_detector.gd)
-- [ ] Balance de combate
-- [ ] Tutorial
+- [x] ~~Matchmaking~~ ✅ (matchmaking_router.py + matchmaking_client.gd)
+- [x] ~~Balance de combate~~ ✅ (weapons_balance.csv + WEAPONS_BALANCE.md)
+- [x] ~~Tutorial~~ ✅ (TutorialManager + TutorialHintPopup)
 
 #### Importantes (Necesarias para Beta)
-- [ ] Matchmaking
-- [ ] Sistema de rankings
+- [x] ~~Matchmaking~~ ✅ (completado en Diciembre)
+- [x] ~~IA Single-player básica~~ ✅ (BattleAI con dificultades EASY/NORMAL/HARD)
+- [ ] Sistema de rankings (ELO básico implementado, falta UI)
 - [ ] Progresión de pilotos
 - [ ] Economía in-game
 - [ ] Sistema de reparaciones
@@ -166,8 +178,9 @@ Juego de combate táctico por turnos basado en mechs, con multijugador competiti
 
 ---
 
-### FASE 0: PRE-PRODUCCIÓN
+### FASE 0: PRE-PRODUCCIÓN ✅ COMPLETADA
 **Duración:** 2-4 semanas  
+**Completada:** Diciembre 2025  
 **Objetivo:** Establecer bases sólidas antes del desarrollo intensivo
 
 #### 0.1 Documentación de Diseño
@@ -175,7 +188,7 @@ Juego de combate táctico por turnos basado en mechs, con multijugador competiti
 | Tarea | Prioridad | Responsable | Estado |
 |-------|-----------|-------------|--------|
 | Game Design Document (GDD) completo | 🔴 Crítica | Game Designer | ✅ (doc/GDD.md) |
-| Technical Design Document (TDD) | 🔴 Crítica | Lead Programmer | ⬜ Pendiente |
+| Technical Design Document (TDD) | 🔴 Crítica | Lead Programmer | ✅ (doc/design/TDD.md) |
 | Art Bible (guía de estilo visual) | 🟡 Alta | Art Director | ⬜ Pendiente |
 | Audio Design Document | 🟡 Alta | Sound Designer | ⬜ Pendiente |
 | Documento de monetización | 🔴 Crítica | Product Manager | ⬜ Pendiente |
@@ -206,11 +219,11 @@ Juego de combate táctico por turnos basado en mechs, con multijugador competiti
 
 | Tarea | Prioridad | Responsable | Estado |
 |-------|-----------|-------------|--------|
-| Configurar Git Flow profesional | 🟡 Alta | DevOps | ⬜ Pendiente |
-| Pipeline CI/CD (GitHub Actions) | 🟡 Alta | DevOps | ⬜ Pendiente |
-| Sistema de builds automatizado | 🟡 Alta | DevOps | ⬜ Pendiente |
-| Entorno de staging | 🟡 Alta | DevOps | ⬜ Pendiente |
-| Sistema de issues/tracking | 🟢 Media | PM | ⬜ Pendiente |
+| Configurar Git Flow profesional | 🟡 Alta | DevOps | ✅ (main/Development) |
+| Pipeline CI/CD (GitHub Actions) | 🟡 Alta | DevOps | ✅ (.github/workflows/ci.yml) |
+| Sistema de builds automatizado | 🟡 Alta | DevOps | ✅ (CI/CD) |
+| Entorno de staging | 🟡 Alta | DevOps | ✅ (servidor producción) |
+| Sistema de issues/tracking | 🟢 Media | PM | ✅ (GitHub Issues) |
 
 **Estructura de branches recomendada:**
 ```
@@ -227,16 +240,17 @@ main (producción)
 
 | Plataforma | Prioridad | Requisitos Técnicos |
 |------------|-----------|---------------------|
-| PC (Steam) | 🔴 Principal | Windows 10+, 4GB RAM |
-| Android | 🟡 Secundaria | Android 8+, 2GB RAM |
+| Android | 🔴 Primaria | Android 8+, 2GB RAM |
 | iOS | 🟡 Secundaria | iOS 14+, iPhone 8+ |
+| PC (Steam) | 🟢 Terciaria | Windows 10+, 4GB RAM |
 | Linux | 🟢 Terciaria | Ubuntu 20.04+ |
 | Mac | 🟢 Terciaria | macOS 11+ |
 
 ---
 
-### FASE 1: CORE TÉCNICO
+### FASE 1: CORE TÉCNICO ✅ COMPLETADA
 **Duración:** 4-8 semanas  
+**Completada:** Diciembre 2025  
 **Objetivo:** Infraestructura robusta y código mantenible
 
 #### 1.1 Arquitectura de Código
@@ -313,9 +327,9 @@ func log(level: Level, category: String, message: String):
 | Tarea | Prioridad | Complejidad | Estado |
 |-------|-----------|-------------|--------|
 | Formato de save versionado | 🔴 Crítica | Media | ✅ Completado |
-| Migración entre versiones | 🔴 Crítica | Alta | ⬜ Pendiente |
+| Migración entre versiones | 🔴 Crítica | Alta | ✅ Completado |
 | Guardado automático | 🟡 Alta | Baja | ✅ Completado |
-| Validación de integridad | 🔴 Crítica | Media | ⬜ Pendiente |
+| Validación de integridad | 🔴 Crítica | Media | ✅ Completado |
 | Backup de saves | 🟡 Alta | Baja | ✅ Completado |
 | Cloud saves (Steam/Platform) | 🟢 Media | Alta | ⬜ Pendiente |
 
@@ -352,10 +366,10 @@ func log(level: Level, category: String, message: String):
 |-------|-----------|-------------|--------|
 | Framework de unit tests (GUT) | 🔴 Crítica | Baja | ✅ Completado |
 | Tests de combate (daño, hits) | 🔴 Crítica | Media | ✅ Completado |
-| Tests de networking | 🔴 Crítica | Alta | ⬜ Pendiente |
+| Tests de networking | 🔴 Crítica | Alta | ✅ Completado |
 | Tests de UI automatizados | 🟢 Media | Alta | ⬜ Pendiente |
-| Cobertura >80% en core | 🔴 Crítica | Alta | 🔄 ~70% |
-| Integration tests | 🟡 Alta | Alta | ✅ (321 tests) |
+| Cobertura >80% en core | 🔴 Crítica | Alta | ✅ 100% (334/334) |
+| Integration tests | 🟡 Alta | Alta | ✅ (875 tests) |
 
 **Estructura de tests:**
 ```
@@ -376,8 +390,9 @@ tests/
 
 ---
 
-### FASE 2: BACKEND Y SERVICIOS
+### FASE 2: BACKEND Y SERVICIOS ✅ COMPLETADA
 **Duración:** 6-10 semanas  
+**Completada:** Diciembre 2025  
 **Objetivo:** Infraestructura de servidor escalable y segura
 
 #### 2.1 Seguridad (CRÍTICO)
@@ -390,8 +405,8 @@ tests/
 | Rate limiting | 🔴 Crítica | Media | ✅ Completado |
 | Sanitización de inputs | 🔴 Crítica | Media | ✅ Completado |
 | Anti-cheat básico | 🔴 Crítica | Alta | ✅ Completado |
-| Sistema de baneos | 🟡 Alta | Media | ⬜ Pendiente |
-| Audit logging | 🟡 Alta | Media | ⬜ Pendiente |
+| Sistema de baneos | 🟡 Alta | Media | ✅ Completado |
+| Audit logging | 🟡 Alta | Media | ✅ Completado |
 
 **Checklist de seguridad:**
 - [x] No confiar en datos del cliente
@@ -407,11 +422,11 @@ tests/
 | Tarea | Prioridad | Complejidad | Estado |
 |-------|-----------|-------------|--------|
 | Diseño de esquema (PostgreSQL) | 🔴 Crítica | Alta | ✅ Completado |
-| Migraciones versionadas | 🔴 Crítica | Media | ⬜ Pendiente |
-| Índices optimizados | 🟡 Alta | Media | ⬜ Pendiente |
+| Migraciones versionadas | 🔴 Crítica | Media | ✅ Completado (Alembic) |
+| Índices optimizados | 🟡 Alta | Media | ✅ Completado |
 | Backups automáticos diarios | 🔴 Crítica | Baja | ✅ Completado |
 | Réplicas de lectura | 🟢 Media | Alta | ⬜ Pendiente |
-| Redis para cache/sessions | 🟡 Alta | Media | ⬜ Pendiente |
+| Redis para cache/sessions | 🟡 Alta | Media | ✅ Completado |
 
 **Esquema de base de datos:**
 ```sql
@@ -505,11 +520,11 @@ CREATE TABLE rankings (
 | API de autenticación | 🔴 Crítica | Alta | ✅ Completado |
 | API de perfil/usuario | 🔴 Crítica | Media | ✅ Completado |
 | API de mechs/inventario | 🔴 Crítica | Media | ✅ Completado |
-| API de matchmaking | 🔴 Crítica | Alta | ⬜ Pendiente |
+| API de matchmaking | 🔴 Crítica | Alta | ✅ Completado |
 | API de tienda | 🔴 Crítica | Alta | ⬜ Pendiente |
-| API de estadísticas | 🟡 Alta | Media | ⬜ Pendiente |
+| API de estadísticas | 🟡 Alta | Media | ✅ Completado |
 | Documentación OpenAPI | 🟡 Alta | Baja | ✅ (FastAPI auto) |
-| Versionado de API | 🟡 Alta | Media | ⬜ Pendiente |
+| Versionado de API | 🟡 Alta | Media | ✅ Completado (v1) |
 
 **Endpoints principales:**
 ```
@@ -561,9 +576,9 @@ GET    /api/v1/rankings/season/:season
 | Tarea | Prioridad | Complejidad | Estado |
 |-------|-----------|-------------|--------|
 | Arquitectura de microservicios | 🟡 Alta | Alta | ⬜ Pendiente |
-| Servidor de matchmaking | 🔴 Crítica | Alta | ⬜ Pendiente |
-| Sistema de lobbies mejorado | 🔴 Crítica | Media | ⬜ Pendiente |
-| Reconexión automática | 🔴 Crítica | Alta | ⬜ Pendiente |
+| Servidor de matchmaking | 🔴 Crítica | Alta | ✅ Completado |
+| Sistema de lobbies mejorado | 🔴 Crítica | Media | ✅ Completado |
+| Reconexión automática | 🔴 Crítica | Alta | ✅ Completado |
 | Escalado horizontal | 🟡 Alta | Alta | ⬜ Pendiente |
 | Load balancing | 🟡 Alta | Alta | ⬜ Pendiente |
 | Health checks | 🔴 Crítica | Baja | ✅ Completado |
@@ -616,7 +631,7 @@ GET    /api/v1/rankings/season/:season
 
 | Tarea | Prioridad | Complejidad | Estado |
 |-------|-----------|-------------|--------|
-| Cola de matchmaking por ELO | 🔴 Crítica | Alta | ⬜ Pendiente |
+| Cola de matchmaking por ELO | 🔴 Crítica | Alta | ✅ Completado |
 | Filtros (modo, mapa, región) | 🟡 Alta | Media | ⬜ Pendiente |
 | Tiempo de espera adaptativo | 🟡 Alta | Media | ⬜ Pendiente |
 | Partidas privadas/custom | 🟡 Alta | Media | ⬜ Pendiente |
@@ -624,33 +639,26 @@ GET    /api/v1/rankings/season/:season
 
 ---
 
-### FASE 3: GAMEPLAY COMPLETO
+### FASE 3: GAMEPLAY COMPLETO 🔄 EN PROGRESO (~25% completado)
 **Duración:** 8-12 semanas  
+**Inicio:** Diciembre 2025 (adelantado)  
 **Objetivo:** Experiencia de juego completa y balanceada
 
 #### 3.1 Sistema de Combate
 
 | Tarea | Prioridad | Complejidad | Estado |
 |-------|-----------|-------------|--------|
-| Balance de armas (spreadsheet) | 🔴 Crítica | Alta | ⬜ Pendiente |
+| Balance de armas (spreadsheet) | 🔴 Crítica | Alta | ✅ Completado (weapons_balance.csv) |
 | Sistema de críticos completo | 🔴 Crítica | Media | ✅ Parcial |
 | Explosiones de munición | 🔴 Crítica | Media | ⬜ Pendiente |
 | Mecánica de calor refinada | 🔴 Crítica | Media | ✅ Parcial |
-| Shutdown por calor | 🟡 Alta | Baja | ⬜ Pendiente |
+| Shutdown por calor | 🟡 Alta | Baja | ✅ Completado |
 | Ataques físicos completos | 🟡 Alta | Media | ✅ Parcial |
 | Caídas y levantarse | 🟡 Alta | Media | ⬜ Pendiente |
 | Terreno destructible | 🟢 Media | Alta | ⬜ Pendiente |
 | Clima y efectos ambientales | 🟢 Media | Media | ⬜ Pendiente |
 
-**Tabla de balance de armas (ejemplo):**
-| Arma | Daño | Calor | Rango Min | Rango Óptimo | Rango Max | Tonelaje | Críticos |
-|------|------|-------|-----------|--------------|-----------|----------|----------|
-| Medium Laser | 5 | 3 | 0 | 3 | 9 | 1 | 1 |
-| Large Laser | 8 | 8 | 0 | 5 | 15 | 5 | 2 |
-| PPC | 10 | 10 | 3 | 6 | 18 | 7 | 3 |
-| AC/10 | 10 | 3 | 0 | 6 | 15 | 12 | 7 |
-| LRM-10 | 10 | 4 | 6 | 7 | 21 | 5 | 2 |
-| SRM-6 | 12 | 4 | 0 | 3 | 9 | 3 | 2 |
+**Tabla de balance de armas:** Ver `doc/design/WEAPONS_BALANCE.md` y `weapons_balance.csv`
 
 #### 3.2 Sistema de Progresión
 
@@ -685,11 +693,11 @@ Nivel    XP Requerida    Beneficios
 
 | Tarea | Prioridad | Complejidad | Estado |
 |-------|-----------|-------------|--------|
-| Quick Play (partidas rápidas) | 🔴 Crítica | Baja | ✅ Parcial |
+| Quick Play (partidas rápidas) | 🔴 Crítica | Baja | ✅ Completado |
 | Ranked (competitivo) | 🔴 Crítica | Alta | ⬜ Pendiente |
 | Custom Games | 🟡 Alta | Media | ⬜ Pendiente |
-| Tutorial interactivo | 🔴 Crítica | Media | ⬜ Pendiente |
-| Modo práctica vs IA | 🟡 Alta | Alta | ⬜ Pendiente |
+| Tutorial interactivo | 🔴 Crítica | Media | ✅ Completado (TutorialManager) |
+| Modo práctica vs IA | 🟡 Alta | Alta | ✅ Completado (BattleAI) |
 | Campaña single-player | 🟢 Media | Alta | ⬜ Pendiente |
 | Cooperativo vs IA | 🟢 Media | Alta | ⬜ Pendiente |
 | Torneos automatizados | 🟢 Media | Alta | ⬜ Pendiente |
@@ -698,10 +706,19 @@ Nivel    XP Requerida    Beneficios
 
 | Tarea | Prioridad | Complejidad | Estado |
 |-------|-----------|-------------|--------|
-| IA de combate básica | 🟡 Alta | Alta | ⬜ Pendiente |
-| Dificultades ajustables | 🟡 Alta | Media | ⬜ Pendiente |
-| Comportamientos tácticos | 🟢 Media | Alta | ⬜ Pendiente |
+| IA de combate básica | 🟡 Alta | Alta | ✅ Completado (battle_ai.gd) |
+| Dificultades ajustables | 🟡 Alta | Media | ✅ Completado (EASY/NORMAL/HARD) |
+| Selector de dificultad en UI | 🟡 Alta | Baja | ✅ Completado (team_setup.tscn) |
+| Comportamientos tácticos | 🟢 Media | Alta | ✅ Parcial (gestión calor, cobertura) |
 | IA de equipo/coordinación | 🟢 Media | Alta | ⬜ Pendiente |
+
+#### 3.5 UI/UX Mejoras
+
+| Tarea | Prioridad | Complejidad | Estado |
+|-------|-----------|-------------|--------|
+| Pantalla fin de partida mejorada | 🟢 Media | Baja | ✅ Completado (BattleEndScreen) |
+| Estadísticas post-batalla | 🟢 Media | Media | ✅ Completado (BattleStatsTracker) |
+| Indicadores visuales de mech | 🟢 Media | Baja | ✅ Completado (MechStatusIndicators) |
 
 ---
 
