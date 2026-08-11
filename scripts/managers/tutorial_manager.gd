@@ -378,8 +378,17 @@ func _force_enemy_move(data: Dictionary):
 		# Mover el enemigo directamente
 		enemy.hex_position = target_hex
 		enemy.facing = facing
-		if _battle_scene.hex_grid:
-			enemy.position = _battle_scene.hex_grid.hex_to_pixel(target_hex)
+		# Bug reportado: esto asignaba enemy.position = hex_to_pixel(hex)
+		# directamente, sin sumar hex_grid.position (offset de
+		# Vector2(100, 200) en battle_scene.tscn) ni actualizar z_index.
+		# El enemigo terminaba en un punto incorrecto del mapa - y si el
+		# offset lo sacaba del viewport de la camara, parecia desaparecer
+		# por completo. update_visual_position() es el mismo metodo que usa
+		# el despliegue normal para hex_position -> pixeles.
+		if _battle_scene.hex_grid and enemy.has_method("update_visual_position"):
+			enemy.update_visual_position(_battle_scene.hex_grid)
+		if enemy.has_method("update_facing_visual"):
+			enemy.update_facing_visual()
 		Log.debug("Tutorial", "Forced enemy move to %s facing %d" % [target_hex, facing])
 
 func _force_enemy_attack(data: Dictionary):
