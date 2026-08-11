@@ -129,6 +129,19 @@ func update_mech_visibility():
 	if not hex_grid:
 		return
 	
+	# Bug reportado: el tutorial fuerza al enemigo a posiciones concretas
+	# (ver tutorial_manager._force_enemy_move) sin garantizar que el mech
+	# del jugador tenga linea de vision real hasta ahi. El sistema de
+	# fog-of-war por LoS entonces lo ocultaba (correctamente, segun las
+	# reglas normales de combate) y se quedaba oculto el resto de la
+	# partida, porque el tutorial nunca vuelve a forzar su visibilidad.
+	# El tutorial es una demo 1v1 completamente scripteada: el enemigo
+	# siempre debe verse mientras no este destruido.
+	if is_tutorial_mode:
+		for enemy in enemy_mechs:
+			enemy.set_visibility(not enemy.is_destroyed)
+		return
+	
 	# Actualizar visibilidad de cada mech enemigo
 	for enemy in enemy_mechs:
 		if enemy.is_destroyed:
